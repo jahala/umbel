@@ -1,0 +1,80 @@
+import { z } from 'zod';
+import { RctrlUsageError } from '../core/errors.ts';
+
+// ---------------------------------------------------------------------------
+// parseDuration — e.g. '5m', '30s', '1h', '500ms' → milliseconds
+// ---------------------------------------------------------------------------
+
+export function parseDuration(text: string): number {
+  const match = text.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);
+  if (match === null) {
+    throw new RctrlUsageError(`Invalid duration '${text}'. Use e.g. '5m', '30s', '1h', '500ms'.`);
+  }
+  const value = Number.parseFloat(match[1] ?? '0');
+  const unit = match[2];
+  switch (unit) {
+    case 'ms':
+      return value;
+    case 's':
+      return value * 1000;
+    case 'm':
+      return value * 60 * 1000;
+    case 'h':
+      return value * 60 * 60 * 1000;
+    default:
+      throw new RctrlUsageError(`Unknown duration unit '${unit}'.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VerbSchemas — single source of truth for all verbs
+// ---------------------------------------------------------------------------
+
+export const VerbSchemas = {
+  spawn: z.object({
+    name: z.string().optional(),
+    cwd: z.string().default('.'),
+    model: z.enum(['opus', 'sonnet', 'haiku']).optional(),
+    allowedTools: z.string().optional(),
+  }),
+  send: z.object({
+    name: z.string(),
+    prompt: z.string(),
+  }),
+  wait: z.object({
+    name: z.string(),
+    until: z.enum(['stop', 'file', 'pattern']).default('stop'),
+    file: z.string().optional(),
+    pattern: z.string().optional(),
+    timeout: z.string().optional(),
+  }),
+  status: z.object({
+    name: z.string().optional(),
+  }),
+  ls: z.object({}),
+  kill: z.object({
+    name: z.string(),
+    keepState: z.boolean().default(false),
+  }),
+  attach: z.object({
+    name: z.string(),
+  }),
+  read: z.object({
+    name: z.string(),
+  }),
+  capture: z.object({
+    name: z.string(),
+    lines: z.number().int().positive().default(100),
+  }),
+  logs: z.object({
+    name: z.string(),
+    follow: z.boolean().default(false),
+  }),
+  run: z.object({
+    file: z.string(),
+  }),
+  mcp: z.object({}),
+} as const;
+
+export type VerbName = keyof typeof VerbSchemas;
+export type VerbArgs<V extends VerbName> = z.infer<(typeof VerbSchemas)[V]>;
