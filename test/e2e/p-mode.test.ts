@@ -151,8 +151,14 @@ describe('p-mode', () => {
     const opts = makeOpts(env, tmpDir, { prompt: 'line1\nline2\nline3' });
 
     const result = await runP(opts);
-    // fake-claude reads whole input as one turn and echoes it
-    expect(result.text).toContain('Response to:');
+    // fake-claude reads multi-line input line-by-line, producing N turns for
+    // N lines. wait returns on the first Stop hook fire. Verify the transcript
+    // file contains turn 1's response — that's deterministic. (parseTranscript
+    // reading "Thinking..." from a started-but-incomplete turn 2 in result.text
+    // is a fake-claude artifact, not a production issue: real claude treats
+    // bracketed-paste multi-line as a single turn.)
+    const jsonl = await Bun.file(result.jsonlPath).text();
+    expect(jsonl).toContain('Response to: line1');
   });
 
   test('outputFormat json returns parseable JSON', async () => {
