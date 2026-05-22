@@ -1,25 +1,25 @@
 import { afterEach, expect, test } from 'bun:test';
-import { makeCleanupGuard, runCli, smokeDescribe, smokeName } from './helpers.ts';
+import { makeCleanupGuard, runCli, smokeDescribeFor, smokeName } from '../helpers.ts';
 
 // ---------------------------------------------------------------------------
-// Resume smoke test
+// Codex resume smoke test
 // ---------------------------------------------------------------------------
 
-smokeDescribe('p-mode --resume re-uses conversation context', () => {
+smokeDescribeFor('codex', 'codex p-mode --resume re-uses conversation context', () => {
   const guard = makeCleanupGuard();
 
   afterEach(() => guard.cleanup());
 
-  test('second rctrl -p --resume recalls codeword from first turn', async () => {
+  test('codex second rctrl -p --resume recalls codeword from first turn', async () => {
     // Validates: --name persists session, --resume attaches to existing session,
-    // claude conversation context survives across rctrl invocations
-    const name = smokeName('rsm');
+    // codex conversation context survives across rctrl invocations
+    const name = smokeName('cdx-rsm');
     guard.register(name);
 
     const first = await runCli([
       '-p',
-      '--model',
-      'haiku',
+      '--provider',
+      'codex',
       '--name',
       name,
       'Please remember the codeword GINKO. Reply OK only.',
@@ -28,8 +28,8 @@ smokeDescribe('p-mode --resume re-uses conversation context', () => {
 
     const second = await runCli([
       '-p',
-      '--model',
-      'haiku',
+      '--provider',
+      'codex',
       '--resume',
       name,
       'What was the codeword? Reply with just the codeword.',

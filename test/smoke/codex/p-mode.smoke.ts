@@ -1,23 +1,23 @@
 import { afterEach, expect, test } from 'bun:test';
-import { makeCleanupGuard, runCli, smokeDescribe, smokeName } from './helpers.ts';
+import { makeCleanupGuard, runCli, smokeDescribeFor, smokeName } from '../helpers.ts';
 
 // ---------------------------------------------------------------------------
-// p-mode smoke tests
+// Codex p-mode smoke tests
 // ---------------------------------------------------------------------------
 
-smokeDescribe('p-mode round-trip', () => {
+smokeDescribeFor('codex', 'codex p-mode round-trip', () => {
   const guard = makeCleanupGuard();
   afterEach(() => guard.cleanup());
 
-  test('rctrl -p --model haiku positional prompt exits 0 and stdout contains OK', async () => {
-    // Validates: Stop hook fires from real claude, JSONL is readable, stdout is printed
-    const name = smokeName('pm1');
+  test('rctrl -p --provider codex positional prompt exits 0 and stdout contains OK', async () => {
+    // Validates: Stop hook fires from real codex, JSONL is readable, stdout is printed
+    const name = smokeName('cdx-pm1');
     guard.register(name);
 
     const r = await runCli([
       '-p',
-      '--model',
-      'haiku',
+      '--provider',
+      'codex',
       '--name',
       name,
       'Reply with exactly the word: OK',
@@ -27,9 +27,9 @@ smokeDescribe('p-mode round-trip', () => {
     expect(r.stdout.trim()).toContain('OK');
   }, 120_000);
 
-  test('rctrl -p --model haiku reads prompt from stdin and exits 0', async () => {
+  test('rctrl -p --provider codex reads prompt from stdin and exits 0', async () => {
     // Validates: stdin pipe path through runPMode reads correctly; Stop hook fires
-    const r = await runCli(['-p', '--model', 'haiku'], 'Reply with exactly the word: OK\n');
+    const r = await runCli(['-p', '--provider', 'codex'], 'Reply with exactly the word: OK\n');
 
     expect(r.code).toBe(0);
     expect(r.stdout.trim()).toContain('OK');

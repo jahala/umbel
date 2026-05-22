@@ -4,34 +4,56 @@ import { existsSync } from 'node:fs';
 import { killSession } from '../../src/adapters/tmux.ts';
 
 // ---------------------------------------------------------------------------
-// smokeEnabled
+// Provider-aware gating
 // ---------------------------------------------------------------------------
 
-const CLAUDE_BIN = '/Users/jahala/.local/bin/claude';
+export type Provider = 'claude' | 'codex' | 'gemini';
 
-export function smokeEnabled(): boolean {
+const PROVIDER_BINS: Record<Provider, string[]> = {
+  claude: ['/Users/jahala/.local/bin/claude'],
+  codex: ['/Users/jahala/Library/Application Support/com.conductor.app/bin/codex'],
+  gemini: [],
+};
+
+const PROVIDER_WHICH: Record<Provider, string> = {
+  claude: 'claude',
+  codex: 'codex',
+  gemini: 'gemini',
+};
+
+export function smokeEnabledFor(provider: Provider): boolean {
   if (process.env.RCTRL_SMOKE !== '1') return false;
-  if (existsSync(CLAUDE_BIN)) return true;
-  if (Bun.which('claude') !== null) return true;
+  for (const bin of PROVIDER_BINS[provider]) {
+    if (existsSync(bin)) return true;
+  }
+  if (Bun.which(PROVIDER_WHICH[provider]) !== null) return true;
   return false;
 }
 
+function skipReasonFor(provider: Provider): string {
+  if (process.env.RCTRL_SMOKE !== '1') return 'RCTRL_SMOKE != 1';
+  return `${provider} binary not found`;
+}
+
+export function smokeDescribeFor(provider: Provider, name: string, body: () => void): void {
+  if (smokeEnabledFor(provider)) {
+    bunDescribe(name, body);
+  } else {
+    const reason = skipReasonFor(provider);
+    bunDescribe.skip(`[smoke] skipped (${reason}): ${name}`, body);
+  }
+}
+
 // ---------------------------------------------------------------------------
-// smokeDescribe
+// Backward-compatible wrappers (claude defaults)
 // ---------------------------------------------------------------------------
 
-function skipReason(): string {
-  if (process.env.RCTRL_SMOKE !== '1') return 'RCTRL_SMOKE != 1';
-  return 'claude binary not found';
+export function smokeEnabled(): boolean {
+  return smokeEnabledFor('claude');
 }
 
 export function smokeDescribe(name: string, body: () => void): void {
-  if (smokeEnabled()) {
-    bunDescribe(name, body);
-  } else {
-    const reason = skipReason();
-    bunDescribe.skip(`[smoke] skipped (${reason}): ${name}`, body);
-  }
+  smokeDescribeFor('claude', name, body);
 }
 
 // ---------------------------------------------------------------------------

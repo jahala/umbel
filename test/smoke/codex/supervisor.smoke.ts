@@ -2,13 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { makeCleanupGuard, runCli, smokeDescribe, smokeName } from './helpers.ts';
+import { makeCleanupGuard, runCli, smokeDescribeFor, smokeName } from '../helpers.ts';
 
 // ---------------------------------------------------------------------------
-// Supervisor verb smoke tests
+// Codex supervisor verb smoke tests
 // ---------------------------------------------------------------------------
 
-smokeDescribe('supervisor spawn/send/wait/read/kill lifecycle', () => {
+smokeDescribeFor('codex', 'codex supervisor spawn/send/wait/read/kill lifecycle', () => {
   const guard = makeCleanupGuard();
   let tmpDir = '';
 
@@ -17,20 +17,20 @@ smokeDescribe('supervisor spawn/send/wait/read/kill lifecycle', () => {
     // tmpDir is small; leave OS to clean it
   });
 
-  test('spawn → send → wait → read → kill completes cleanly', async () => {
-    // Validates: tmux session lifecycle, send-keys delivery, Stop hook via --settings inline JSON, JSONL discovery
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-sup-'));
-    const name = smokeName('sup');
+  test('codex spawn → send → wait → read → kill completes cleanly', async () => {
+    // Validates: tmux session lifecycle, send-keys delivery, Stop hook via .codex/hooks.json, JSONL discovery
+    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-cdx-sup-'));
+    const name = smokeName('cdx-sup');
     guard.register(name);
 
     const spawnResult = await runCli([
       'spawn',
+      '--provider',
+      'codex',
       '--name',
       name,
       '--cwd',
       tmpDir,
-      '--model',
-      'haiku',
     ]);
     expect(spawnResult.code).toBe(0);
     expect(spawnResult.stdout).toContain(name);

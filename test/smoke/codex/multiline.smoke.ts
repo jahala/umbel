@@ -2,31 +2,31 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { makeCleanupGuard, runCli, smokeDescribe, smokeName } from './helpers.ts';
+import { makeCleanupGuard, runCli, smokeDescribeFor, smokeName } from '../helpers.ts';
 
 // ---------------------------------------------------------------------------
-// Multi-line prompt smoke test
+// Codex multi-line prompt smoke test
 // ---------------------------------------------------------------------------
 
-smokeDescribe('multiline prompt via paste-buffer', () => {
+smokeDescribeFor('codex', 'codex multiline prompt via paste-buffer', () => {
   const guard = makeCleanupGuard();
 
   afterEach(() => guard.cleanup());
 
-  test('three-line prompt sent via paste-buffer yields coherent response', async () => {
+  test('codex three-line prompt sent via paste-buffer yields coherent response', async () => {
     // Validates: tmux load-buffer + paste-buffer path for prompts containing \n
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-ml-'));
-    const name = smokeName('ml');
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-cdx-ml-'));
+    const name = smokeName('cdx-ml');
     guard.register(name);
 
     const spawnResult = await runCli([
       'spawn',
+      '--provider',
+      'codex',
       '--name',
       name,
       '--cwd',
       tmpDir,
-      '--model',
-      'haiku',
     ]);
     expect(spawnResult.code).toBe(0);
 
