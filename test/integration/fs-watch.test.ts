@@ -25,9 +25,17 @@ async function collectEvents(
 ): Promise<WatchEvent[]> {
   const events: WatchEvent[] = [];
   const deadline = Date.now() + timeoutMs;
-  for await (const evt of iter) {
-    events.push(evt);
-    if (events.length >= count || Date.now() > deadline) break;
+  const iterator = iter[Symbol.asyncIterator]();
+  while (events.length < count) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    type Result = IteratorResult<WatchEvent, undefined>;
+    const timeout = new Promise<Result>((resolve) => {
+      setTimeout(() => resolve({ done: true, value: undefined }), remaining);
+    });
+    const result = await Promise.race([iterator.next(), timeout]);
+    if (result.done) break;
+    events.push(result.value);
   }
   return events;
 }

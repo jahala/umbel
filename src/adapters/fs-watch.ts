@@ -1,5 +1,4 @@
-import { statSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { type Stats, statSync, unwatchFile, watchFile } from 'node:fs';
 import chokidar from 'chokidar';
 
 // ---------------------------------------------------------------------------
@@ -12,32 +11,29 @@ export interface WatchEvent {
 }
 
 // ---------------------------------------------------------------------------
-// normalizeWatchTargets — convert file paths to their parent dirs.
-//
-// Chokidar can technically watch single files, but on Linux (inotify or
-// polling) this is unreliable: file modifications don't always fire 'change'
-// events. Directory watches are reliable across platforms. The caller's
-// predicate re-evaluation pattern (see operations/wait.ts) is fine with extra
-// sibling-file events; only the *fact of activity* matters, not the path.
-// ---------------------------------------------------------------------------
-
-function normalizeWatchTargets(paths: string[]): string[] {
-  const result = new Set<string>();
-  for (const p of paths) {
-    let isDir = false;
-    try {
-      isDir = statSync(p).isDirectory();
-    } catch {
-      // Path doesn't exist yet — treat as a file to watch via its parent dir.
-    }
-    result.add(isDir ? p : dirname(p));
-  }
-  return [...result];
-}
-
-// ---------------------------------------------------------------------------
 // watch — AsyncIterable over file system events, abort-signal aware
+//
+// Hybrid strategy:
+//   - Directories use chokidar (FSEvents on macOS, polling on Linux).
+//     Chokidar emits events with the path of the changed *file inside* the
+//     directory, which is what callers expect.
+//   - Files (and non-existent paths) use Node's native fs.watchFile, which
+//     polls stat changes directly. Reliable across platforms — single-file
+//     watching via chokidar is flaky on Linux even with usePolling.
+//   - For non-existent paths we treat them as files: fs.watchFile polls
+//     until the path appears.
 // ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 50;
+const USE_POLLING = process.platform !== 'darwin';
+
+function classify(path: string): 'dir' | 'file' {
+  try {
+    return statSync(path).isDirectory() ? 'dir' : 'file';
+  } catch {
+    return 'file';
+  }
+}
 
 export function watch(paths: string[], signal: AbortSignal): AsyncIterable<WatchEvent> {
   return {
@@ -46,20 +42,8 @@ export function watch(paths: string[], signal: AbortSignal): AsyncIterable<Watch
       const resolvers: Array<(value: IteratorResult<WatchEvent>) => void> = [];
       let done = false;
 
-      // Polling on non-macOS platforms because chokidar's inotify backend
-      // has known reliability issues with freshly-created paths on Linux.
-      // Polling adds modest CPU overhead but is identical across platforms.
-      const usePolling = process.platform !== 'darwin';
-      const watcher = chokidar.watch(normalizeWatchTargets(paths), {
-        persistent: true,
-        ignoreInitial: false,
-        awaitWriteFinish: false,
-        usePolling,
-        interval: 50,
-        binaryInterval: 100,
-      });
-
       function enqueue(kind: WatchEvent['kind'], path: string): void {
+        if (done) return;
         const event: WatchEvent = { kind, path };
         const resolver = resolvers.shift();
         if (resolver) {
@@ -69,15 +53,74 @@ export function watch(paths: string[], signal: AbortSignal): AsyncIterable<Watch
         }
       }
 
-      watcher.on('add', (path) => enqueue('add', path));
-      watcher.on('change', (path) => enqueue('change', path));
-      watcher.on('unlink', (path) => enqueue('unlink', path));
+      // Partition paths by kind.
+      const dirPaths: string[] = [];
+      const filePaths: string[] = [];
+      for (const p of paths) {
+        if (classify(p) === 'dir') dirPaths.push(p);
+        else filePaths.push(p);
+      }
+
+      // Chokidar handles dir watches (and any future descendants).
+      const chokidarWatcher =
+        dirPaths.length > 0
+          ? chokidar.watch(dirPaths, {
+              persistent: true,
+              ignoreInitial: false,
+              awaitWriteFinish: false,
+              usePolling: USE_POLLING,
+              interval: POLL_INTERVAL_MS,
+              binaryInterval: POLL_INTERVAL_MS * 2,
+            })
+          : undefined;
+
+      if (chokidarWatcher) {
+        chokidarWatcher.on('add', (path) => enqueue('add', path));
+        chokidarWatcher.on('change', (path) => enqueue('change', path));
+        chokidarWatcher.on('unlink', (path) => enqueue('unlink', path));
+      }
+
+      // fs.watchFile handles single files (and non-existent paths). Node's
+      // native polling reports stat transitions, including from "absent" to
+      // "present".
+      const fileListeners: Array<{ path: string; listener: (c: Stats, p: Stats) => void }> = [];
+      for (const path of filePaths) {
+        // fs.watchFile does NOT emit on the initial state. Chokidar (with
+        // ignoreInitial: false) emits 'add' for existing files at watch start.
+        // Match that contract: if the file currently exists, queue an 'add'
+        // on the next tick (after the iterator's first next() can be awaited).
+        try {
+          if (statSync(path).isFile()) {
+            queueMicrotask(() => enqueue('add', path));
+          }
+        } catch {
+          // Doesn't exist yet — fs.watchFile will fire 'add' when it appears.
+        }
+
+        const listener = (curr: Stats, prev: Stats): void => {
+          if (done) return;
+          // Absent file has ino === 0 (fs.watchFile sentinel).
+          const wasAbsent = prev.ino === 0;
+          const isAbsent = curr.ino === 0;
+          if (wasAbsent && !isAbsent) {
+            enqueue('add', path);
+          } else if (!wasAbsent && isAbsent) {
+            enqueue('unlink', path);
+          } else if (curr.mtimeMs !== prev.mtimeMs || curr.size !== prev.size) {
+            enqueue('change', path);
+          }
+        };
+        watchFile(path, { interval: POLL_INTERVAL_MS, persistent: true }, listener);
+        fileListeners.push({ path, listener });
+      }
 
       function close(): void {
         if (done) return;
         done = true;
-        watcher.close();
-        // Drain all pending resolvers with done=true
+        if (chokidarWatcher) chokidarWatcher.close();
+        for (const { path, listener } of fileListeners) {
+          unwatchFile(path, listener);
+        }
         for (const resolver of resolvers.splice(0)) {
           resolver({ value: undefined as unknown as WatchEvent, done: true });
         }
