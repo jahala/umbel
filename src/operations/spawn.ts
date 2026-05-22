@@ -106,14 +106,21 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   const sinceMs = Date.now();
 
-  // Build env for tmux session. By default the spawned claude inherits the
-  // parent rctrl process env (PATH for tools, HOME, FAKE_CLAUDE_* for tests).
-  // Explicit `env` passed in opts wins. RCTRL_STATE/RCTRL_SESSION_ID are
-  // always overridden so the stop hook can locate the session dir.
+  // Build env for tmux session. A curated subset of process.env is inherited
+  // so claude/codex/gemini are findable on PATH and basic locale works.
+  // SHELL/PROMPT_COMMAND/BASH_ENV/ZDOTDIR are deliberately EXCLUDED — passing
+  // them causes bash to emit a startup byte to the pane's stdin which races
+  // the first send-keys and gets consumed as an empty prompt. Explicit `env`
+  // passed in opts wins. RCTRL_STATE/RCTRL_SESSION_ID are always set so the
+  // stop hook can locate the session dir.
   const stateRoot = d.fs.stateDir(env);
+  const SAFE_INHERITED = new Set(['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TZ', 'TMPDIR']);
   const tmuxEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (v !== undefined) tmuxEnv[k] = v;
+    if (v === undefined) continue;
+    if (SAFE_INHERITED.has(k) || k.startsWith('FAKE_CLAUDE_')) {
+      tmuxEnv[k] = v;
+    }
   }
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) tmuxEnv[k] = v;
@@ -134,10 +141,10 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     throw err;
   }
 
-  // Dismiss the workspace-trust dialog if running real claude. Skipped for
-  // fixtures and non-claude providers so they don't pay the polling cost.
   if (isRealClaudeBin(claudeBin)) {
     await dismissTrustDialog(d, name).catch(() => undefined);
+  } else {
+    await Bun.sleep(800);
   }
 
   // jsonlPath is unknown at spawn-time: real claude doesn't create the

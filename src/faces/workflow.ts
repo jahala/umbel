@@ -176,6 +176,9 @@ async function executeStep(
     if (waitResult.reason === 'aborted') {
       throw new Error(`Step '${workerName}' aborted`);
     }
+    if (waitResult.reason === 'timeout') {
+      throw new Error(`Step '${workerName}' timed out waiting for its wait condition`);
+    }
 
     // Capture outputs. JSONL is resolved lazily — spawn-time discovery is no
     // longer reliable for real claude (the transcript only exists after the

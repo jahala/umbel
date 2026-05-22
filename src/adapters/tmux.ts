@@ -12,7 +12,12 @@ function prefixed(name: string): string {
 }
 
 async function tmux(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  // Explicit 'ignore' for stdin so tmux client never consumes our parent's
+  // stdin. Without this, Bun.spawn defaults inherit stdin — and when the
+  // tmux client briefly reads on startup, it can pull a byte from the test
+  // runner's stdin that was meant for the agent inside the new session.
   const proc = Bun.spawn(['tmux', ...args], {
+    stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -59,6 +64,7 @@ export async function newSession(opts: SpawnSessionOpts): Promise<void> {
 
 export async function hasSession(name: string): Promise<boolean> {
   const proc = Bun.spawn(['tmux', 'has-session', '-t', prefixed(name)], {
+    stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -111,7 +117,7 @@ export async function sendText(name: string, text: string): Promise<void> {
 
   if (useBuffer) {
     const bufName = `rctrl-buf-${randomBytes(6).toString('hex')}`;
-    // Write text to buffer via stdin
+    // Write text to buffer via stdin (this call MUST pipe stdin)
     const loadProc = Bun.spawn(['tmux', 'load-buffer', '-b', bufName, '-'], {
       stdin: new TextEncoder().encode(text),
       stdout: 'pipe',

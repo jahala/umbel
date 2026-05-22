@@ -106,28 +106,24 @@ describe('cli', () => {
     expect(r.stdout).toContain('rctrl');
   });
 
-  test(
-    '-p "hi" with fake-claude outputs response and exits 0',
-    async () => {
-      const env = await setup();
-      const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');
-      const jsonlDir = join(projectsDir, encodedCwd);
-      const { mkdir } = await import('node:fs/promises');
-      await mkdir(jsonlDir, { recursive: true });
+  test('-p "hi" with fake-claude outputs response and exits 0', async () => {
+    const env = await setup();
+    const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');
+    const jsonlDir = join(projectsDir, encodedCwd);
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(jsonlDir, { recursive: true });
 
-      const r = await runCli(['-p', 'hi', '--cwd', tmpDir], {
-        ...env,
-        RCTRL_STATE: tmpDir,
-        RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
-        FAKE_CLAUDE_JSONL_DIR: jsonlDir,
-        FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
-      });
+    const r = await runCli(['-p', 'hi', '--cwd', tmpDir], {
+      ...env,
+      RCTRL_STATE: tmpDir,
+      RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
+      FAKE_CLAUDE_JSONL_DIR: jsonlDir,
+      FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+    });
 
-      expect(r.code).toBe(0);
-      expect(r.stdout).toContain('Response to: hi');
-    },
-    30_000,
-  );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('Response to: hi');
+  }, 30_000);
 
   test('spawn + ls + kill lifecycle', async () => {
     const env = await setup();

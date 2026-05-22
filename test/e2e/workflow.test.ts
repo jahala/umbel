@@ -255,9 +255,11 @@ steps:
     const step1 = sessionTag('cln1');
     const step2 = sessionTag('cln2');
 
-    // step2 uses a failing claude so it errors after step1 completes
+    // step2 spawns a binary that exits immediately. With a short wait
+    // timeout, step2's waitFor returns reason='timeout' → workflow marks
+    // the run as failed and cleans up first-wave sessions.
     const failingClaude = join(tmpDir, 'fail-cleanup.sh');
-    await writeFile(failingClaude, '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+    await writeFile(failingClaude, '#!/usr/bin/env bash\nexec sleep 9999\n', { mode: 0o755 });
 
     const yaml = `
 workers:
@@ -273,44 +275,16 @@ steps:
   - run: ${step2}
     needs: [${step1}]
     prompt: "step two fails"
+    wait: { kind: timeout, ms: 500 }
 `;
 
     const yamlFile = join(tmpDir, 'cleanup.yaml');
     await writeFile(yamlFile, yaml, 'utf8');
 
-    const failOpts = {
-      ...makeWorkflowOpts(env, yamlFile),
-      deps: {
-        ...makeWorkflowOpts(env, yamlFile).deps,
-        jsonl: {
-          ...jsonlAdapter,
-          discoverSessionJsonl: async (opts: Parameters<typeof sessionAwareDiscover>[0]) => {
-            // step1 succeeds (use real discovery), step2 times out
-            const path = join(jsonlDir, `${opts.sessionName}.jsonl`);
-            const { stat: statFn } = await import('node:fs/promises');
-            const deadline = Date.now() + 4000;
-            let delay = 50;
-            while (true) {
-              try {
-                await statFn(path);
-                return path;
-              } catch {
-                // not yet
-              }
-              if (Date.now() + delay > deadline) {
-                const { SessionDeadError: SDE } = await import('../../src/core/errors.ts');
-                throw new SDE(opts.sessionName, 'JSONL not found');
-              }
-              await Bun.sleep(delay);
-              delay = Math.min(delay * 2, 200);
-            }
-          },
-        },
-      },
-    };
-
-    // step2 uses a failing binary that exits without creating JSONL
-    const result = await runWorkflow({ ...failOpts, claudeBin: undefined as never });
+    // step2 binary doesn't fire Stop, so step2 hits its wait timeout.
+    // workflow.executeStep throws on timeout → workflow fails the run.
+    const baseOpts = makeWorkflowOpts(env, yamlFile);
+    const result = await runWorkflow(baseOpts);
 
     // The workflow fails
     expect(result.status).toBe('failed');

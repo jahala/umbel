@@ -525,37 +525,31 @@ steps:
 // ---------------------------------------------------------------------------
 
 describe('cli — -p mode', () => {
-  test(
-    '-p "hello" exits 0 and prints response on stdout',
-    async () => {
-      const { realpathSync } = await import('node:fs');
-      const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');
-      const jsonlDir = join(projectsDir, encodedCwd);
-      await mkdir(jsonlDir, { recursive: true });
+  test('-p "hello" exits 0 and prints response on stdout', async () => {
+    const { realpathSync } = await import('node:fs');
+    const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');
+    const jsonlDir = join(projectsDir, encodedCwd);
+    await mkdir(jsonlDir, { recursive: true });
 
-      // runPMode reads RCTRL_CLAUDE_BIN from process.env; set it so spawn
-      // uses the fixture rather than real claude.
-      const savedBin = process.env.RCTRL_CLAUDE_BIN;
-      const savedJsonlDir = process.env.FAKE_CLAUDE_JSONL_DIR;
-      const savedHook = process.env.FAKE_CLAUDE_HOOK;
-      process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
-      process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
-      process.env.FAKE_CLAUDE_HOOK = join(homedir(), '.rctrl', 'hooks', 'stop.sh');
+    // runPMode reads RCTRL_CLAUDE_BIN from process.env; set it so spawn
+    // uses the fixture rather than real claude.
+    const savedBin = process.env.RCTRL_CLAUDE_BIN;
+    const savedJsonlDir = process.env.FAKE_CLAUDE_JSONL_DIR;
+    const savedHook = process.env.FAKE_CLAUDE_HOOK;
+    process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
+    process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
+    process.env.FAKE_CLAUDE_HOOK = join(homedir(), '.rctrl', 'hooks', 'stop.sh');
 
-      try {
-        const result = await runWithCapture(() =>
-          runCli(['-p', 'hello from test', '--cwd', tmpDir]),
-        );
-        expect(result.code).toBe(0);
-        expect(result.stdout).toContain('Response to: hello from test');
-      } finally {
-        process.env.RCTRL_CLAUDE_BIN = savedBin;
-        process.env.FAKE_CLAUDE_JSONL_DIR = savedJsonlDir;
-        process.env.FAKE_CLAUDE_HOOK = savedHook;
-      }
-    },
-    20_000,
-  );
+    try {
+      const result = await runWithCapture(() => runCli(['-p', 'hello from test', '--cwd', tmpDir]));
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('Response to: hello from test');
+    } finally {
+      process.env.RCTRL_CLAUDE_BIN = savedBin;
+      process.env.FAKE_CLAUDE_JSONL_DIR = savedJsonlDir;
+      process.env.FAKE_CLAUDE_HOOK = savedHook;
+    }
+  }, 20_000);
 
   test('-p with TTY stdin and no prompt exits 2', async () => {
     // Simulate TTY stdin to trigger exit-2 path (line 256-257 in cli.ts).

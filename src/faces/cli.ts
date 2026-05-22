@@ -81,14 +81,11 @@ function parseArgv(argv: readonly string[]): ParsedArgs {
         }
       }
     } else if (arg.startsWith('-') && arg.length === 2) {
-      const key = arg.slice(1);
-      const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith('-')) {
-        flags.set(key, next);
-        i++;
-      } else {
-        flags.set(key, true);
-      }
+      // Short flags are ALWAYS boolean. The naive "consume the next arg if it
+      // doesn't start with -" rule eats the positional prompt in `-p "..."`,
+      // which mirrors `claude -p "prompt"`'s contract. If a future flag needs
+      // a value, use the long form: --foo value.
+      flags.set(arg.slice(1), true);
     } else {
       positionals.push(arg);
     }
@@ -173,6 +170,15 @@ function errorExitCode(err: unknown): number {
 
 function printError(err: unknown): void {
   process.stderr.write(`rctrl: ${err instanceof Error ? err.message : String(err)}\n`);
+}
+
+// Forward env vars the user may set in their shell that affect rctrl's
+// behaviour. We deliberately whitelist instead of passing process.env wholesale
+// (see src/operations/spawn.ts for why).
+function getCliEnv(): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  if (process.env.RCTRL_STATE !== undefined) out.RCTRL_STATE = process.env.RCTRL_STATE;
+  return out;
 }
 
 export async function runCli(argv: readonly string[]): Promise<number> {
@@ -275,6 +281,7 @@ async function runPMode(
     prompt,
     cwd: flagStr(flags, 'cwd') ?? process.cwd(),
     outputFormat,
+    env: getCliEnv(),
     ...(name !== undefined ? { name } : {}),
     ...(resume !== undefined ? { resume } : {}),
     ...(model !== undefined ? { model } : {}),
@@ -320,6 +327,7 @@ async function verbSpawn(
 
   const spawnOpts = {
     cwd,
+    env: getCliEnv(),
     ...(name !== undefined ? { name } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
@@ -342,7 +350,7 @@ async function verbSend(
   const prompt = flagStr(flags, 'prompt') ?? positionals[1];
   if (name === undefined) throw new RctrlUsageError('send: <name> is required');
   if (prompt === undefined) throw new RctrlUsageError('send: <prompt> is required');
-  await send({ name, prompt });
+  await send({ name, prompt, env: getCliEnv() });
   return 0;
 }
 
@@ -375,7 +383,7 @@ async function verbWait(
 
   const waitOpts = {
     name,
-    env: {} as Record<string, string | undefined>,
+    env: getCliEnv(),
     ...(condition !== undefined ? { condition } : {}),
     ...(timeoutMs !== undefined ? { defaultTimeoutMs: timeoutMs } : {}),
   };
@@ -396,7 +404,7 @@ async function verbStatus(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  const statusOpts = name !== undefined ? { name } : {};
+  const statusOpts = name !== undefined ? { name, env: getCliEnv() } : { env: getCliEnv() };
   const entries = await status(statusOpts);
   if (entries.length === 0) {
     process.stdout.write('No sessions found.\n');
@@ -411,7 +419,7 @@ async function verbStatus(
 // ---------------------------------------------------------------------------
 
 async function verbLs(): Promise<number> {
-  const entries = await status({});
+  const entries = await status({ env: getCliEnv() });
   if (entries.length === 0) {
     process.stdout.write('No sessions found.\n');
     return 0;
@@ -431,7 +439,7 @@ async function verbKill(
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new RctrlUsageError('kill: <name> is required');
   const keepState = flagBool(flags, 'keep-state', 'keepState');
-  await kill({ name, removeState: !keepState });
+  await kill({ name, removeState: !keepState, env: getCliEnv() });
   return 0;
 }
 
@@ -464,7 +472,8 @@ async function verbRead(
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new RctrlUsageError('read: <name> is required');
-  const session = await defaultDeps.fs.readMeta(name, {});
+  const cliEnv = getCliEnv();
+  const session = await defaultDeps.fs.readMeta(name, cliEnv);
   // jsonlPath in meta may be null until the first Stop event resolves the
   // transcript path. resolveJsonlPath handles the cache + hook-payload +
   // fallback chain.
@@ -472,7 +481,7 @@ async function verbRead(
     name,
     cwd: session.cwd,
     sinceMs: session.createdAt,
-    env: {},
+    env: cliEnv,
   });
   const text = await defaultDeps.jsonl.lastAssistantMessage({ jsonlPath });
   process.stdout.write(`${text}\n`);
@@ -506,7 +515,7 @@ async function verbLogs(
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new RctrlUsageError('logs: <name> is required');
   const follow = flagBool(flags, 'follow', 'f');
-  const logPath = join(defaultDeps.fs.eventsDir(name, {}), 'log');
+  const logPath = join(defaultDeps.fs.eventsDir(name, getCliEnv()), 'log');
 
   let content = '';
   try {
