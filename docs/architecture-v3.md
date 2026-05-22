@@ -3,7 +3,7 @@
 > Remote-control interactive agent CLIs (Claude Code, Codex, Gemini) over tmux.
 > One binary, three faces, **pluggable providers**.
 >
-> **Supersedes** `architecture-v2.md`. v2 is kept for decision history.
+> **Supersedes** the Claude-only v2 design.
 
 ## 0. What changed from v2
 
@@ -129,7 +129,7 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - `buildLaunch` → writes `<cwd>/.gemini/settings.json` with `AfterAgent` hook
 - `files: [{ path: '.gemini/settings.json', content: settingsJsonStr }]`
 - `stopEventName: 'AfterAgent'` (Gemini uses different event names)
-- `parseTranscript`: Gemini transcript envelope (research per findings)
+- `parseTranscript`: Gemini transcript JSONL envelope (`message_response` items, last one is the response)
 
 ### AiderProvider (deferred — backlog)
 - Hookless. Uses `anchorStrategy`.
@@ -262,7 +262,7 @@ Existing rctrl users (Claude only) keep working because:
 2. Existing `Session` shape gains optional fields; old `meta.json` parses fine
 3. CLI verbs accept `--provider` as a new optional flag
 
-No breaking changes. `architecture-v2.md` stays as decision history.
+No breaking changes.
 
 ## 13. Implementation order (this milestone)
 

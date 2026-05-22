@@ -101,7 +101,7 @@ steps:
 
 ## Wait conditions
 
-Defined as `WaitCondition` in `src/core/types.ts:35-41`. Conditions compose with `all` and `any`.
+Defined as `WaitCondition` in `src/core/types.ts`. Conditions compose with `all` and `any`.
 
 ### stop
 
@@ -190,7 +190,7 @@ If `wait:` is omitted from a step, the executor applies:
 
 ## Output capture
 
-Declared in `outputs:` as a map from a key name to an OutputSpec (`src/core/types.ts:90-93`).
+Declared in `outputs:` as a map from a key name to an `OutputSpec` (defined in `src/core/types.ts`).
 
 Two forms:
 

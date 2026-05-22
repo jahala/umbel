@@ -21,7 +21,7 @@ rctrl --version                  Show version (0.0.1)
 | 124 | Wait timeout elapsed |
 | 130 | SIGINT — operation aborted by the user |
 
-The mapping lives at `src/faces/cli.ts:157-171` (`errorExitCode`).
+The mapping lives in `errorExitCode` (`src/faces/cli.ts`).
 
 ---
 
@@ -260,7 +260,7 @@ rctrl read <name>
 **Notes**
 
 - If the session JSONL has not been discovered yet (too soon after spawn), the command errors with exit code 1.
-- The JSONL reader joins consecutive assistant partial entries and only trusts entries carrying `stop_reason` (findings.md Q2).
+- The JSONL reader joins consecutive assistant partial entries and only trusts entries carrying `stop_reason` — partial streams without it are not yet the final response.
 
 **Examples**
 
