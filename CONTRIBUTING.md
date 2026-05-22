@@ -10,7 +10,7 @@ bun test
 
 ## Architecture
 
-See [docs/architecture-v2.md](docs/architecture-v2.md) for a full walkthrough of how rctrl is structured and how the pieces fit together.
+See [docs/architecture-v3.md](docs/architecture-v3.md) for a full walkthrough of how rctrl is structured and how the pieces fit together.
 
 ## Test-first discipline
 

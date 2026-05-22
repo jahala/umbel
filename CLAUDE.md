@@ -8,7 +8,7 @@
 - `rctrl spawn|send|wait|status|kill` (also via MCP) — supervisor verbs for agent-as-supervisor orchestration.
 - `rctrl run workflow.yaml` — declarative pipelines.
 
-**Read `docs/architecture-v2.md` before writing code.** It's the canonical design. `docs/architecture.md` is v1, kept for decision history.
+**Read `docs/architecture-v3.md` before writing code.** It's the canonical multi-CLI design.
 
 ## Non-negotiable principles
 
@@ -73,7 +73,7 @@ Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtim
 - Do NOT use `--bare` — it skips hooks, which are our keystone.
 - Do NOT use `--tmux` / `--worktree` — rctrl manages tmux itself for predictability.
 
-## Open questions (verify before baking — see docs/architecture-v2.md §13)
+## Open questions (verify before baking — see docs/architecture-v3.md §14)
 
 If you encounter behavior that contradicts the design, STOP and update the architecture doc before working around it.
 

@@ -19,7 +19,7 @@ Only the latest minor release receives security updates. Older versions don't.
 - Drives interactive agent CLIs (`claude`, `codex`, `gemini`) over `tmux`.
 - Installs a single global Stop/AfterAgent hook script at `$RCTRL_STATE/hooks/stop.sh` (default `~/.rctrl/`).
 - Writes per-session metadata to `$RCTRL_STATE/sessions/<name>/`.
-- Writes provider hook config inside the worker's `cwd` (`<cwd>/.codex/hooks.json`, `<cwd>/.gemini/settings.json`). See `docs/audit-C.md` §V1 for the known overwrite hazard and the v4 plan to move these out of `cwd`.
+- Writes provider hook config inside the worker's `cwd` (`<cwd>/.codex/hooks.json`, `<cwd>/.gemini/settings.json`). Known hazard: if you have your own Codex/Gemini hooks config in that `cwd`, rctrl will overwrite it on spawn (v4 plan: move provider config out of `cwd` via `CODEX_HOME`/equivalent).
 
 It does **not** open network ports, accept inbound connections, or run as root. All side effects are local-fs + tmux + child processes. The trust boundary is the user's own shell.
 

@@ -143,7 +143,7 @@ describe('CodexProvider.stopEventName', () => {
 // ---------------------------------------------------------------------------
 
 // Inline fixture JSONL matching the Codex rollout envelope exactly as produced
-// by fake-codex.sh and documented in docs/findings.md §Codex CLI wire format.
+// by fake-codex.sh.
 function makeSessionMeta(sessionId: string): string {
   return JSON.stringify({
     timestamp: '2026-05-22T10:00:00.000Z',

@@ -104,8 +104,7 @@ describe('spawn — anonymous', () => {
 
   // Real claude doesn't write the transcript until the first message arrives,
   // so jsonlPath is deferred — meta.json carries null at spawn-time, and the
-  // stop.sh hook captures the path on first Stop. See docs/multi-cli.md and
-  // src/operations/resolve-jsonl.ts.
+  // stop.sh hook captures the path on first Stop.
   test('meta.json records jsonlPath as null at spawn-time', async () => {
     const env = await setup();
     const { session } = await spawn(makeOpts(env, '/tmp'));

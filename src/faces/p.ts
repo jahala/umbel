@@ -118,7 +118,6 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
   };
 
   // Anonymous sessions are killed on any exit path; named sessions persist.
-  // See docs/audit-B.md §B3.
   try {
     const sendResult = await send({
       name: sessionName,

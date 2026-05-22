@@ -108,7 +108,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   // Write any provider-required files before tmux launch. If a later write
   // fails mid-list, unlink the ones already written so we don't leak partial
-  // provider config into the user's cwd. See docs/audit-C.md §F3.
+  // provider config into the user's cwd.
   const providerFilePaths: string[] = [];
   try {
     for (const f of launchSpec.files) {
@@ -168,7 +168,6 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     await d.tmux.killSession(name).catch(() => undefined);
     // Clean up provider files written above so a failed spawn doesn't leak
     // .codex/hooks.json or .gemini/settings.json into the user's cwd.
-    // See docs/audit-C.md §F1.
     for (const filePath of providerFilePaths) {
       await unlink(filePath).catch(() => undefined);
     }
@@ -184,8 +183,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   // jsonlPath is unknown at spawn-time: real claude doesn't create the
   // transcript file until the first user message arrives. The Stop hook
-  // payload contains transcript_path; we capture it then. See
-  // src/adapters/hooks.ts STOP_HOOK_SCRIPT and docs/multi-cli.md.
+  // payload contains transcript_path; we capture it then.
   const session: Session = SessionSchema.parse({
     name,
     cwd: opts.cwd,
@@ -201,7 +199,6 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     await d.fs.writeMeta(name, session, env);
   } catch (err) {
     await d.tmux.killSession(name).catch(() => undefined);
-    // Clean up provider files — see docs/audit-C.md §F2.
     for (const filePath of providerFilePaths) {
       await unlink(filePath).catch(() => undefined);
     }

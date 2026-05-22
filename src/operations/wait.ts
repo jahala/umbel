@@ -275,9 +275,8 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       }
     }
 
-    // NOTE: external signal handling is wired via internalAc above (line ~89).
-    // The internal-abort listener (line ~217) settles with reason='aborted' when
-    // opts.signal triggered the abort. A redundant external listener here would
-    // leak — see docs/audit-B.md §B1.
+    // External signal handling is wired via internalAc. The internal-abort
+    // listener settles with reason='aborted' when opts.signal triggers the
+    // abort. A redundant external listener here would leak.
   });
 }

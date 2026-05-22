@@ -122,7 +122,7 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - `buildLaunch` → writes `<cwd>/.codex/hooks.json` referencing our stop.sh
 - `files: [{ path: '.codex/hooks.json', content: hooksJsonStr }]` — operations layer cleans up on kill
 - `stopEventName: 'Stop'`
-- `parseTranscript`: Codex JSONL envelope (research and implement per `docs/findings.md`)
+- `parseTranscript`: Codex JSONL envelope (`event_msg` items, last `agent_message` is the response)
 - No equivalent of `--session-id` for transcript filename — hook payload's `transcript_path` is the source of truth (may be `null` per Codex docs; rctrl falls back to dir-snapshot)
 
 ### GeminiProvider (`src/core/providers/gemini.ts`)

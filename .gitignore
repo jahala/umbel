@@ -8,3 +8,4 @@ dist/
 .env.local
 *.tsbuildinfo
 coverage/
+docs/research/

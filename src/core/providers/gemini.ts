@@ -74,7 +74,6 @@ const geminiProvider: AgentProvider = {
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsPath = join(opts.cwd, '.gemini', 'settings.json');
 
-    // AfterAgent hook schema per docs/findings.md §Gemini CLI wire format.
     // matcher: "*" is the only supported value for AfterAgent.
     // timeout is in milliseconds (Gemini, unlike Codex which uses seconds).
     const settingsJson = JSON.stringify({
