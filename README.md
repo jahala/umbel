@@ -124,6 +124,10 @@ This tool exists because of the API/subscription billing split that all three ma
 
 PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Test first — every fix and feature starts with a failing test.
 
+## Support
+
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/jahala)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
