@@ -1,5 +1,8 @@
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { RctrlUsageError } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
+import { getProvider } from '../core/providers/registry.ts';
 import type { Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
 import type { Deps } from './deps.ts';
@@ -18,8 +21,8 @@ const TRUST_PANE_CONTENT_THRESHOLD = 120;
 // Real claude binary detection: only the actual claude TUI shows the trust
 // dialog. Skip dismissal for fixtures (fake-claude.sh) and future provider
 // binaries (codex, gemini) — they have their own startup contracts.
-function isRealClaudeBin(claudeBin: string): boolean {
-  return claudeBin === 'claude' || /(^|\/)claude$/.test(claudeBin);
+function isRealClaudeBin(bin: string): boolean {
+  return bin === 'claude' || /(^|\/)claude$/.test(bin);
 }
 
 async function dismissTrustDialog(d: Deps, name: string): Promise<void> {
@@ -55,7 +58,8 @@ async function dismissTrustDialog(d: Deps, name: string): Promise<void> {
 export interface SpawnOpts {
   name?: string;
   cwd: string;
-  model?: 'opus' | 'sonnet' | 'haiku';
+  model?: string;
+  provider?: string;
   allowedTools?: string;
   anonymous?: boolean;
   claudeBin?: string;
@@ -75,7 +79,7 @@ export interface SpawnResult {
 export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const d = { ...defaultDeps, ...opts.deps };
   const env = opts.env ?? {};
-  const claudeBin = opts.claudeBin ?? 'claude';
+  const providerName = opts.provider ?? 'claude';
 
   const name = opts.name ?? generateSessionName('anon');
 
@@ -91,18 +95,39 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // Create session directory
   await d.fs.ensureSessionDir(name, env);
 
-  // Build settings JSON (inline, no collision with existing settings files)
-  const settingsJson = d.hooks.buildSettingsJson(
-    opts.allowedTools !== undefined
-      ? { hookScriptPath: stopScriptPath, allowedTools: opts.allowedTools }
-      : { hookScriptPath: stopScriptPath },
-  );
+  // Ask the provider how to launch. The provider encapsulates all
+  // provider-specific arg building (settings JSON, model flag, etc.).
+  const provider = getProvider(providerName);
+  const launchSpec = provider.buildLaunch({
+    sessionId: name,
+    cwd: opts.cwd,
+    hookScriptPath: stopScriptPath,
+    ...(opts.model !== undefined ? { model: opts.model } : {}),
+    ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
+  });
 
-  // Build claude command args
-  const claudeArgs: string[] = [claudeBin, '--settings', settingsJson];
-  if (opts.model !== undefined) {
-    claudeArgs.push('--model', opts.model);
+  // Write any provider-required files before tmux launch. If a later write
+  // fails mid-list, unlink the ones already written so we don't leak partial
+  // provider config into the user's cwd. See docs/audit-C.md §F3.
+  const providerFilePaths: string[] = [];
+  try {
+    for (const f of launchSpec.files) {
+      await mkdir(dirname(f.path), { recursive: true });
+      await writeFile(f.path, f.content, { mode: f.mode ?? 0o644 });
+      providerFilePaths.push(f.path);
+    }
+  } catch (err) {
+    for (const written of providerFilePaths) {
+      await unlink(written).catch(() => undefined);
+    }
+    await d.fs.rmSession(name, env).catch(() => undefined);
+    throw err;
   }
+
+  // claudeBin overrides the provider's default bin (used by tests to inject
+  // fake-claude.sh). When not provided, use the provider's bin.
+  const bin = opts.claudeBin ?? launchSpec.bin;
+  const cmd: string[] = [bin, ...launchSpec.args];
 
   const sinceMs = Date.now();
 
@@ -122,6 +147,10 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
       tmuxEnv[k] = v;
     }
   }
+  // Merge provider-specific env (over the safe-inherited set).
+  for (const [k, v] of Object.entries(launchSpec.env)) {
+    tmuxEnv[k] = v;
+  }
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) tmuxEnv[k] = v;
   }
@@ -132,16 +161,22 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     await d.tmux.newSession({
       name,
       cwd: opts.cwd,
-      cmd: claudeArgs,
+      cmd,
       env: tmuxEnv,
     });
   } catch (err) {
     await d.tmux.killSession(name).catch(() => undefined);
+    // Clean up provider files written above so a failed spawn doesn't leak
+    // .codex/hooks.json or .gemini/settings.json into the user's cwd.
+    // See docs/audit-C.md §F1.
+    for (const filePath of providerFilePaths) {
+      await unlink(filePath).catch(() => undefined);
+    }
     await d.fs.rmSession(name, env).catch(() => undefined);
     throw err;
   }
 
-  if (isRealClaudeBin(claudeBin)) {
+  if (isRealClaudeBin(bin)) {
     await dismissTrustDialog(d, name).catch(() => undefined);
   } else {
     await Bun.sleep(800);
@@ -155,6 +190,8 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     name,
     cwd: opts.cwd,
     model: opts.model,
+    provider: providerName,
+    providerFiles: providerFilePaths,
     anonymous,
     createdAt: sinceMs,
     jsonlPath: null,
@@ -164,6 +201,10 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     await d.fs.writeMeta(name, session, env);
   } catch (err) {
     await d.tmux.killSession(name).catch(() => undefined);
+    // Clean up provider files — see docs/audit-C.md §F2.
+    for (const filePath of providerFilePaths) {
+      await unlink(filePath).catch(() => undefined);
+    }
     await d.fs.rmSession(name, env).catch(() => undefined);
     throw err;
   }
