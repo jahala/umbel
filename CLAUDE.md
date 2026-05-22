@@ -4,31 +4,32 @@
 
 `rctrl` remote-controls the interactive `claude` TUI (and similar agent CLIs) over tmux. One TypeScript binary, three faces:
 
-- `rctrl -p [PROMPT]` — drop-in for `claude -p`, but routed through the interactive TUI (subscription-billed).
-- `rctrl spawn|send|wait|status|kill` (also via MCP) — supervisor verbs for agent-as-supervisor orchestration.
-- `rctrl run workflow.yaml` — declarative pipelines.
+- `rctrl -p [PROMPT] --provider {claude,codex,gemini}` — drop-in for `claude -p` / `codex -p` / `gemini -p`, but routed through the interactive TUI (subscription-billed). Default provider: `claude`.
+- `rctrl spawn|send|wait|status|kill` (also via MCP) — supervisor verbs for agent-as-supervisor orchestration. `spawn --provider` picks the worker; the provider is recorded in `meta.json` so subsequent verbs auto-route.
+- `rctrl run workflow.yaml` — declarative pipelines with per-worker `provider:`.
 
 **Read `docs/architecture-v3.md` before writing code.** It's the canonical multi-CLI design.
 
 ## Non-negotiable principles
 
 1. **S.U.P.E.R.** — Side effects at the edge, Uncoupled logic, Pure & total functions, Explicit data flow, Replaceable by value. Lower layers know nothing about upper layers.
-2. **Test first.** No fix or feature without a failing test that demonstrates the need. Fake `claude` binary (`test/fixtures/fake-claude.sh`) for e2e — never burn real subscription budget in CI.
+2. **Test first.** No fix or feature without a failing test that demonstrates the need. Fake binaries (`test/fixtures/fake-{claude,codex,gemini}.sh`) drive e2e — never burn real subscription budget in CI. Real-binary smoke tests live in `test/smoke/{claude,codex,gemini}/` and are gated on `RCTRL_SMOKE=1`.
 3. **No daemon.** tmux is the daemon. Filesystem is the state store. Every `rctrl` invocation is short-lived.
-4. **Files as IPC, JSONL as truth.** Hook events are file touches; `chokidar` is the event bus. Agent output is read from `~/.claude/projects/.../session.jsonl`, NEVER from `capture-pane` (which is for watching, not parsing).
+4. **Files as IPC, JSONL as truth.** Hook events are file touches; `chokidar` is the event bus. Agent output is read from the provider's transcript file (location captured per-session from the Stop/AfterAgent hook payload), NEVER from `capture-pane` (which is for watching, not parsing).
 5. **Throw typed errors, catch at face boundary.** No `Result<T,E>` library. Discriminated `Error` subclasses in `src/core/errors.ts`, caught and mapped to exit codes / MCP responses at the faces layer.
 6. **Single zod schema per concept.** Argv parser, MCP tool schema, and YAML validation all share the same zod definitions. No three-times-defined types.
 
 ## Architecture layers (strict downward dependency)
 
 ```
-faces/        cli  |  mcp  |  workflow  |  -p       ← side-effecty user surfaces
-operations/   spawn  send  wait  status  kill      ← composition of adapters
-adapters/     tmux  fs-state  hooks  fs-watch  jsonl  ← thin I/O wrappers
-core/         types  errors  wait  workflow  id    ← pure, no I/O, unit-testable
+faces/             cli  |  mcp  |  workflow  |  -p          ← side-effecty user surfaces
+operations/        spawn  send  wait  status  kill          ← composition of adapters
+adapters/          tmux  fs-state  hooks  fs-watch  jsonl   ← thin I/O wrappers
+core/              types  errors  wait  workflow  id        ← pure
+core/providers/    types  claude  codex  gemini  registry   ← pure provider abstraction
 ```
 
-Adapters are injected into operations. Operations are called by faces. **Nothing reaches across layers.**
+Adapters are injected into operations. Operations are called by faces. Providers are looked up by `name` from `core/providers/registry.ts`. **Nothing reaches across layers.**
 
 ## Stack
 
@@ -43,35 +44,57 @@ Adapters are injected into operations. Operations are called by faces. **Nothing
 ```
 ~/.rctrl/                          # default; override via $RCTRL_STATE
 ├─ sessions/<name>/
-│  ├─ meta.json                    # Session struct
-│  └─ events/{stop, log}           # hook fires touch stop; log appends timestamps
+│  ├─ meta.json                    # Session struct (includes provider, providerFiles)
+│  └─ events/
+│     ├─ stop                      # touch'd by stop.sh on each end-of-turn
+│     ├─ transcript-path           # captured from hook payload (jq)
+│     └─ log                       # appended nanosecond timestamps
 ├─ hooks/stop.sh                   # global, sessions reference it
 └─ workflows/<run-id>/             # workflow run state
 ```
+
+For Codex/Gemini, the provider also writes config files into the worker's `cwd` (`<cwd>/.codex/hooks.json`, `<cwd>/.gemini/settings.json`). Absolute paths are recorded in `meta.providerFiles` so `kill` can clean up.
 
 A session named `foo` lives in tmux as `rctrl-foo`. Anonymous sessions get `anon-XXXXXX`, killed on exit.
 
 ## The Stop hook (keystone)
 
-Three lines, installed once globally:
+Installed once globally at `~/.rctrl/hooks/stop.sh`. Generic — works for Claude's `Stop`, Codex's `Stop`, and Gemini's `AfterAgent` events because all three include `transcript_path` in the payload on stdin:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 state="${RCTRL_STATE:?}/sessions/${RCTRL_SESSION_ID:?}"
-mkdir -p "$state/events"; touch "$state/events/stop"
+mkdir -p "$state/events"
+payload=$(cat || true)
+if command -v jq >/dev/null 2>&1; then
+  printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
+fi
+touch "$state/events/stop"
 date +%s%N >> "$state/events/log"
 ```
 
-Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtime advance → done.** Handles "Stop fired before we started watching" and concurrent waiters correctly.
+Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtime advance → done.** Handles "Stop fired before we started watching" and concurrent waiters correctly. The canonical source is `STOP_HOOK_SCRIPT` in `src/adapters/hooks.ts`; do not duplicate elsewhere.
 
-## Claude Code flags we lean on
+## Provider-specific surfaces
 
-- `--settings '<inline-json>'` — pass hook config inline (no settings.local.json collision)
-- `--session-id <uuid>` — control JSONL filename
-- `--allowedTools "Read,Write,..."` — permission scope without prompts
-- Do NOT use `--bare` — it skips hooks, which are our keystone.
-- Do NOT use `--tmux` / `--worktree` — rctrl manages tmux itself for predictability.
+Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLaunch`, a `stopEventName`, and a `parseTranscript`. Per-vendor specifics:
+
+**Claude** (`claude`)
+- `--settings '<inline-json>'` carries the hook config (no `settings.local.json` collision).
+- `--session-id <uuid>` controls the JSONL filename (we set our own).
+- `--allowedTools "Read,Write,..."` scopes permissions without prompts.
+- `stopEventName: 'Stop'`. Trust dialog is auto-dismissed for real-`claude` binaries only.
+- Do NOT use `--bare` (skips hooks). Do NOT use `--tmux` / `--worktree` (rctrl manages tmux itself).
+
+**Codex** (`codex`)
+- Hook config delivered via `<cwd>/.codex/hooks.json` (no inline-flag equivalent yet).
+- `stopEventName: 'Stop'`. Transcript may be `null` per Codex docs; rctrl falls back to dir-snapshot.
+- Known hazard: rctrl overwrites any pre-existing `<cwd>/.codex/hooks.json`. v4 plan is `CODEX_HOME`-style out-of-cwd config.
+
+**Gemini** (`gemini`)
+- Hook config delivered via `<cwd>/.gemini/settings.json`.
+- `stopEventName: 'AfterAgent'` (not `Stop`). `matcher: "*"`, timeout in ms (Codex uses seconds).
 
 ## Open questions (verify before baking — see docs/architecture-v3.md §14)
 
