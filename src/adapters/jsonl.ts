@@ -1,14 +1,26 @@
+import { realpathSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { JsonlMalformedError, SessionDeadError } from '../core/errors.ts';
 
 // ---------------------------------------------------------------------------
-// encodeCwd — replace non-alphanumeric chars with '-'
+// encodeCwd — claude resolves symlinks before encoding, so we must too.
+// On macOS, /var/folders/... resolves to /private/var/folders/... and the
+// project dir is named after the resolved path. Without realpath, we end up
+// looking in the wrong dir entirely.
 // ---------------------------------------------------------------------------
 
 export function encodeCwd(cwd: string): string {
-  return cwd.replace(/[^a-zA-Z0-9]/g, '-');
+  if (cwd === '') return '';
+  let resolved: string;
+  try {
+    resolved = realpathSync(cwd);
+  } catch {
+    // Path doesn't exist (yet); fall back to literal — caller's problem.
+    resolved = cwd;
+  }
+  return resolved.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 // ---------------------------------------------------------------------------
@@ -228,9 +240,21 @@ async function readLastAssistantGroup(jsonlPath: string): Promise<GroupResult> {
     entries.push(parsed);
   }
 
-  // Walk backward collecting consecutive assistant entries (the last turn)
-  const lastGroup: unknown[] = [];
+  // Claude 2.1.x appends metadata entries (system, last-prompt, ai-title,
+  // permission-mode) AFTER the assistant response. So walking backward and
+  // stopping at the first non-assistant entry returns nothing. Instead:
+  //   1. Find the last assistant entry's index.
+  //   2. From there, walk backward while still in an assistant run.
+  let lastAssistantIdx = -1;
   for (let i = entries.length - 1; i >= 0; i--) {
+    if (isAssistantEntry(entries[i])) {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
+  const lastGroup: unknown[] = [];
+  for (let i = lastAssistantIdx; i >= 0; i--) {
     const entry = entries[i];
     if (isAssistantEntry(entry)) {
       lastGroup.unshift(entry);

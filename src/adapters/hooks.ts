@@ -6,10 +6,20 @@ import { stateDir } from './fs-state.ts';
 // STOP_HOOK_SCRIPT — the three-line script installed globally
 // ---------------------------------------------------------------------------
 
+// Stop hook script. Receives the lifecycle JSON payload on stdin (per Claude
+// Code, Codex, and Gemini conventions — all three include transcript_path).
+// Capture transcript_path FIRST, then touch the stop sentinel — waiters that
+// watch events/stop are guaranteed to find the path on disk after the mtime
+// advances.
 export const STOP_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
 state="\${RCTRL_STATE:?}/sessions/\${RCTRL_SESSION_ID:?}"
-mkdir -p "$state/events"; touch "$state/events/stop"
+mkdir -p "$state/events"
+payload=$(cat || true)
+if command -v jq >/dev/null 2>&1; then
+  printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
+fi
+touch "$state/events/stop"
 date +%s%N >> "$state/events/log"
 `;
 

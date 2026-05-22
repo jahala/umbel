@@ -525,24 +525,37 @@ steps:
 // ---------------------------------------------------------------------------
 
 describe('cli — -p mode', () => {
-  test('-p "hello" exits 0 and prints response on stdout', async () => {
-    const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
-    const jsonlDir = join(projectsDir, encodedCwd);
-    await mkdir(jsonlDir, { recursive: true });
+  test(
+    '-p "hello" exits 0 and prints response on stdout',
+    async () => {
+      const { realpathSync } = await import('node:fs');
+      const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');
+      const jsonlDir = join(projectsDir, encodedCwd);
+      await mkdir(jsonlDir, { recursive: true });
 
-    // runPMode does NOT read RCTRL_CLAUDE_BIN from process.env — it calls runP with no claudeBin.
-    // We inject via deps by patching spawn's defaultDeps. This is not possible without
-    // modifying the CLI. Instead, test via the e2e subprocess approach.
-    // The in-process test here validates the argument parsing and output formatting.
-    // Since we can't inject fakeClaude for -p mode in-process, we test the error path.
+      // runPMode reads RCTRL_CLAUDE_BIN from process.env; set it so spawn
+      // uses the fixture rather than real claude.
+      const savedBin = process.env.RCTRL_CLAUDE_BIN;
+      const savedJsonlDir = process.env.FAKE_CLAUDE_JSONL_DIR;
+      const savedHook = process.env.FAKE_CLAUDE_HOOK;
+      process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
+      process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
+      process.env.FAKE_CLAUDE_HOOK = join(homedir(), '.rctrl', 'hooks', 'stop.sh');
 
-    // -p with no prompt and stdin.isTTY truthy exits 2
-    // In test env, isTTY may be false (reading from stdin); test usage arg parsing instead.
-    // We test that -p at minimum starts the execution chain (exits 1 if claude not found)
-    const result = await runWithCapture(() => runCli(['-p', 'hello from test']));
-    // May exit 1 (claude not found) or 0 (fake claude). Not 2 (not a usage error).
-    expect(result.code).not.toBe(2);
-  });
+      try {
+        const result = await runWithCapture(() =>
+          runCli(['-p', 'hello from test', '--cwd', tmpDir]),
+        );
+        expect(result.code).toBe(0);
+        expect(result.stdout).toContain('Response to: hello from test');
+      } finally {
+        process.env.RCTRL_CLAUDE_BIN = savedBin;
+        process.env.FAKE_CLAUDE_JSONL_DIR = savedJsonlDir;
+        process.env.FAKE_CLAUDE_HOOK = savedHook;
+      }
+    },
+    20_000,
+  );
 
   test('-p with TTY stdin and no prompt exits 2', async () => {
     // Simulate TTY stdin to trigger exit-2 path (line 256-257 in cli.ts).

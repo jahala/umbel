@@ -13,6 +13,7 @@ import { isValidSessionName } from '../core/id.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
+import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
@@ -267,6 +268,8 @@ async function runPMode(
   const resume = flagStr(flags, 'resume');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   const timeoutMs = rawTimeout !== undefined ? parseDuration(rawTimeout) : undefined;
+  // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
+  const claudeBin = process.env.RCTRL_CLAUDE_BIN;
 
   const pOpts = {
     prompt,
@@ -277,6 +280,7 @@ async function runPMode(
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    ...(claudeBin !== undefined ? { claudeBin } : {}),
   };
 
   try {
@@ -461,10 +465,16 @@ async function verbRead(
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new RctrlUsageError('read: <name> is required');
   const session = await defaultDeps.fs.readMeta(name, {});
-  if (session.jsonlPath === null) {
-    throw new SessionDeadError(name, 'no JSONL path recorded');
-  }
-  const text = await defaultDeps.jsonl.lastAssistantMessage({ jsonlPath: session.jsonlPath });
+  // jsonlPath in meta may be null until the first Stop event resolves the
+  // transcript path. resolveJsonlPath handles the cache + hook-payload +
+  // fallback chain.
+  const jsonlPath = await resolveJsonlPath({
+    name,
+    cwd: session.cwd,
+    sinceMs: session.createdAt,
+    env: {},
+  });
+  const text = await defaultDeps.jsonl.lastAssistantMessage({ jsonlPath });
   process.stdout.write(`${text}\n`);
   return 0;
 }

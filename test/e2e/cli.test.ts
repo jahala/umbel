@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { killSession } from '../../src/adapters/tmux.ts';
+
+const FAKE_CLAUDE = join(import.meta.dir, '..', 'fixtures', 'fake-claude.sh');
 
 // ---------------------------------------------------------------------------
 // Test isolation
@@ -103,29 +106,28 @@ describe('cli', () => {
     expect(r.stdout).toContain('rctrl');
   });
 
-  test('-p "hi" with fake-claude outputs response and exits 0', async () => {
-    const env = await setup();
-    const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
-    const jsonlDir = join(projectsDir, encodedCwd);
+  test(
+    '-p "hi" with fake-claude outputs response and exits 0',
+    async () => {
+      const env = await setup();
+      const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');
+      const jsonlDir = join(projectsDir, encodedCwd);
+      const { mkdir } = await import('node:fs/promises');
+      await mkdir(jsonlDir, { recursive: true });
 
-    const r = await runCli(['-p', 'hi'], {
-      ...env,
-      RCTRL_STATE: tmpDir,
-      FAKE_CLAUDE_JSONL_DIR: jsonlDir,
-      FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
-      // Override PATH so fake-claude is found as 'claude'
-      // We rely on claudeBin being set; for CLI we need to set CLAUDE_BIN or use --cwd
-    });
+      const r = await runCli(['-p', 'hi', '--cwd', tmpDir], {
+        ...env,
+        RCTRL_STATE: tmpDir,
+        RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
+        FAKE_CLAUDE_JSONL_DIR: jsonlDir,
+        FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+      });
 
-    // The CLI uses 'claude' binary by default — we need to use fake-claude as the binary.
-    // Since CLI doesn't expose --claudeBin, we test via FAKE_CLAUDE env and accept
-    // that this test may fail if 'claude' is not installed. Mark it accordingly.
-    // Actually we can pass claudeBin via a symlink trick or we just test the behavior
-    // differently — we'll test with a real spawn opts via a named session approach.
-    // For now we accept exit 1 (claude not found) or 0 (claude found).
-    // The important thing is code is not 2 (usage error).
-    expect(r.code).not.toBe(2);
-  });
+      expect(r.code).toBe(0);
+      expect(r.stdout).toContain('Response to: hi');
+    },
+    30_000,
+  );
 
   test('spawn + ls + kill lifecycle', async () => {
     const env = await setup();

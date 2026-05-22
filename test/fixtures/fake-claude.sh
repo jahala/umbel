@@ -26,7 +26,16 @@ touch "${JSONL_FILE}"
 
 fire_hook() {
   if [[ -n "${FAKE_CLAUDE_HOOK:-}" && -x "${FAKE_CLAUDE_HOOK}" ]]; then
-    bash "${FAKE_CLAUDE_HOOK}"
+    # Mirror real claude's hook contract: payload with session_id, transcript_path,
+    # cwd, hook_event_name on stdin. The stop.sh script extracts transcript_path
+    # via jq. Use printf directly (no python dependency) — values here are
+    # internal and contain no characters that need JSON escaping.
+    local cwd_now
+    cwd_now="$(pwd)"
+    local payload
+    payload=$(printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"Stop"}' \
+      "${SESSION_ID}" "${JSONL_FILE}" "${cwd_now}")
+    printf '%s' "${payload}" | bash "${FAKE_CLAUDE_HOOK}"
   fi
 }
 

@@ -6,6 +6,7 @@ import { parseWorkflow, substitute, topoSort } from '../core/workflow.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import type { Deps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
+import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { waitFor } from '../operations/wait.ts';
@@ -176,14 +177,25 @@ async function executeStep(
       throw new Error(`Step '${workerName}' aborted`);
     }
 
-    // Capture outputs
+    // Capture outputs. JSONL is resolved lazily — spawn-time discovery is no
+    // longer reliable for real claude (the transcript only exists after the
+    // first message). resolveJsonlPath checks the hook-payload path first,
+    // then falls back to dir-snapshot discovery.
     const outputs: Record<string, string> = {};
     const d = { ...defaultDeps, ...deps };
+    let resolvedJsonl: string | undefined;
     for (const [outputKey, outputSpec] of Object.entries(step.outputs ?? {})) {
       if (outputSpec === 'assistant_last_message') {
-        outputs[outputKey] = await d.jsonl.lastAssistantMessage({
-          jsonlPath: spawnResult.jsonlPath,
-        });
+        if (resolvedJsonl === undefined) {
+          resolvedJsonl = await resolveJsonlPath({
+            name: sessionName,
+            cwd: spawnResult.session.cwd,
+            sinceMs: spawnResult.session.createdAt,
+            env,
+            ...(deps !== undefined ? { deps } : {}),
+          });
+        }
+        outputs[outputKey] = await d.jsonl.lastAssistantMessage({ jsonlPath: resolvedJsonl });
       } else if (outputSpec.startsWith('file:')) {
         const filePath = outputSpec.slice('file:'.length);
         const resolved = filePath.startsWith('/') ? filePath : join(cwd, filePath);

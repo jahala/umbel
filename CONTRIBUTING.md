@@ -18,6 +18,32 @@ Every bug fix and new feature starts with a failing test. If you can't write a t
 
 For end-to-end tests, rctrl uses a fake-claude fixture — a lightweight stand-in that exercises the CLI without burning real Claude API budget. **Never call the real Claude API in CI.**
 
+## Smoke tests (real claude, local only)
+
+Smoke tests live in `test/smoke/` and run against the actual installed `claude` binary. They are excluded from the default `bun test` and from CI.
+
+**When to run smoke tests:**
+
+- After touching any wire-surface code: `--settings` inline JSON hook installation, `send-keys` / `paste-buffer` logic, Stop hook detection, JSONL discovery.
+- Before tagging a release.
+- After a `claude` CLI version bump (the binary interface may have changed).
+
+**How to run:**
+
+```sh
+RCTRL_SMOKE=1 bun run test:smoke
+```
+
+**Requirements:**
+
+- Interactive `claude` installed and authenticated with an active subscription (not API key billing).
+- `tmux` installed and available on `$PATH`.
+- `RCTRL_SMOKE=1` set in the shell environment. Without this variable the smoke suite auto-skips every test.
+
+**Cost:** approximately $0.01 per full run at Haiku rates, charged to your Claude subscription. Keep an eye on usage if running frequently.
+
+**Why local-only:** rctrl exists precisely to route through the interactive TUI rather than the API. Running smoke tests in CI against an API key would defeat the entire purpose of the tool and incur per-token billing. Smoke tests are a human-triggered gate, not a CI gate.
+
 ## Style
 
 [Biome](https://biomejs.dev) enforces formatting and linting. Before pushing:

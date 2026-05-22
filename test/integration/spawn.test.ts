@@ -102,12 +102,15 @@ describe('spawn — anonymous', () => {
     expect(s.isFile()).toBe(true);
   });
 
-  test('jsonlPath is discovered', async () => {
+  // Real claude doesn't write the transcript until the first message arrives,
+  // so jsonlPath is deferred — meta.json carries null at spawn-time, and the
+  // stop.sh hook captures the path on first Stop. See docs/multi-cli.md and
+  // src/operations/resolve-jsonl.ts.
+  test('meta.json records jsonlPath as null at spawn-time', async () => {
     const env = await setup();
-    const { jsonlPath, session } = await spawn(makeOpts(env, '/tmp'));
+    const { session } = await spawn(makeOpts(env, '/tmp'));
     CREATED.push(session.name);
-    expect(typeof jsonlPath).toBe('string');
-    expect(jsonlPath.endsWith('.jsonl')).toBe(true);
+    expect(session.jsonlPath).toBeNull();
   });
 });
 

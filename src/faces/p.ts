@@ -5,6 +5,7 @@ import { SessionNameSchema } from '../core/types.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import type { Deps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
+import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { waitFor } from '../operations/wait.ts';
@@ -45,13 +46,19 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
   const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1000;
 
   let sessionName: string;
-  let jsonlPath: string;
   let anonymous = false;
+  // sessionCwd is the cwd of the running claude process — used later to resolve
+  // the transcript path when it isn't already cached in meta.
+  let sessionCwd: string;
+  // spawnSinceMs is the timestamp captured before tmux launched claude. Used
+  // by the discoverSessionJsonl fallback when transcript-path isn't available.
+  let spawnSinceMs: number;
 
   if (opts.resume !== undefined) {
     const session = await d.fs.readMeta(opts.resume, env);
     sessionName = session.name;
-    jsonlPath = session.jsonlPath ?? '';
+    sessionCwd = session.cwd;
+    spawnSinceMs = session.createdAt;
     anonymous = false;
   } else if (opts.name !== undefined) {
     const name = opts.name;
@@ -63,7 +70,8 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
     }
     if (existing !== undefined) {
       sessionName = existing.name;
-      jsonlPath = existing.jsonlPath ?? '';
+      sessionCwd = existing.cwd;
+      spawnSinceMs = existing.createdAt;
     } else {
       const spawnOpts = {
         name,
@@ -77,7 +85,8 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
       };
       const result = await spawn(spawnOpts);
       sessionName = result.session.name;
-      jsonlPath = result.jsonlPath;
+      sessionCwd = result.session.cwd;
+      spawnSinceMs = result.session.createdAt;
     }
     anonymous = false;
   } else {
@@ -94,7 +103,8 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
     };
     const result = await spawn(spawnOpts);
     sessionName = result.session.name;
-    jsonlPath = result.jsonlPath;
+    sessionCwd = result.session.cwd;
+    spawnSinceMs = result.session.createdAt;
     anonymous = true;
   }
 
@@ -141,13 +151,24 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
       throw new WaitTimeoutError(condition);
     }
 
-    const text = await jsonl.lastAssistantMessage({ jsonlPath });
+    // Real claude doesn't write the transcript until first message arrives, so
+    // jsonlPath isn't known at spawn time. After Stop, the hook payload's
+    // transcript_path landed in events/transcript-path (see stop.sh).
+    const resolvedJsonl = await resolveJsonlPath({
+      name: sessionName,
+      cwd: sessionCwd,
+      sinceMs: spawnSinceMs,
+      env,
+      ...(deps !== undefined ? { deps } : {}),
+    });
+
+    const text = await jsonl.lastAssistantMessage({ jsonlPath: resolvedJsonl });
 
     if (anonymous) {
       await kill(killOpts).catch(() => undefined);
     }
 
-    return { text, jsonlPath, sessionName };
+    return { text, jsonlPath: resolvedJsonl, sessionName };
   } catch (err) {
     if (anonymous) {
       await kill(killOpts).catch(() => undefined);
