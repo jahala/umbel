@@ -1,6 +1,6 @@
 # rctrl Workflow Guide
 
-A workflow YAML file lets you declare a set of Claude sessions (workers) and a sequence of prompts to send them, with dependencies and output capture. `rctrl run` executes the file, handles topological ordering, and tears everything down on exit.
+A workflow YAML file lets you declare a set of agent sessions (workers) and a sequence of prompts to send them, with dependencies and output capture. `rctrl run` executes the file, handles topological ordering, and tears everything down on exit. Each worker can use a different provider — claude, codex, or gemini — in the same run.
 
 For the schema source, see `src/core/types.ts` (`WorkflowSpecSchema`, `WorkflowStepSchema`, `WorkerSpecSchema`, `OutputSpecSchema`, `WaitConditionSchema`).
 
@@ -58,14 +58,16 @@ Declared under `workers:`. Specifies how a session is spawned.
 workers:
   reviewer:
     cwd: ./worktrees/review      # required; must exist before rctrl run
-    model: sonnet                # optional: opus | sonnet | haiku
-    allowedTools: "Read,Bash"   # optional; forwarded to claude --allowedTools
+    provider: claude             # optional: claude | codex | gemini (default: claude)
+    model: sonnet                # optional: free-form; the provider validates at spawn time
+    allowedTools: "Read,Bash"   # optional; forwarded to the provider's equivalent flag
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `cwd` | yes | Working directory for the session. rctrl does not create worktrees; use `git worktree add` first. |
-| `model` | no | Model selection. |
+| `provider` | no | Which CLI to launch. One of `claude`, `codex`, `gemini`. Defaults to `claude` — existing v2 YAML files work without changes. |
+| `model` | no | Free-form model string. Each provider validates its own model names at spawn time; the YAML schema does not restrict values. |
 | `allowedTools` | no | Comma-separated tool list. Mirrors `rctrl spawn --allowed-tools`. |
 
 ---
@@ -303,16 +305,18 @@ Override the base directory with `$RCTRL_STATE`.
 
 ## A realistic example
 
-Three-step pipeline: review a PR, apply fixes, verify.
+Three-step pipeline: review a PR with claude, apply fixes with codex, verify with claude. Different steps in the same workflow can use different providers; the provider is declared per-worker and looked up from `meta.json` for the lifetime of the run.
 
 ```yaml
 workers:
   reviewer:
     cwd: ./worktrees/review
+    provider: claude
     model: sonnet
   fixer:
     cwd: ./worktrees/fix
-    model: opus
+    provider: codex
+    model: o4-mini
     allowedTools: "Read,Edit,Bash"
 
 steps:

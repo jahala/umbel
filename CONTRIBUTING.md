@@ -18,15 +18,25 @@ Every bug fix and new feature starts with a failing test. If you can't write a t
 
 For end-to-end tests, rctrl uses a fake-claude fixture — a lightweight stand-in that exercises the CLI without burning real Claude API budget. **Never call the real Claude API in CI.**
 
-## Smoke tests (real claude, local only)
+## Smoke tests (real providers, local only)
 
-Smoke tests live in `test/smoke/` and run against the actual installed `claude` binary. They are excluded from the default `bun test` and from CI.
+Smoke tests live in `test/smoke/` and run against the actual installed provider binaries (Claude, Codex, Gemini). They are excluded from the default `bun test` and from CI.
+
+Three suites, one gate:
+
+| Suite | Files | Binary required |
+|---|---|---|
+| Claude | `p-mode`, `supervisor`, `multiline`, `resume`, `workflow` | `claude` (interactive TUI) |
+| Codex | `codex-*` | `codex` |
+| Gemini | `gemini-*` | `gemini` |
+
+Each provider's tests auto-skip if its binary is not found on `$PATH` (or the well-known install location). You do not need all three installed to run the suite — providers with a missing binary emit a skip message and move on.
 
 **When to run smoke tests:**
 
-- After touching any wire-surface code: `--settings` inline JSON hook installation, `send-keys` / `paste-buffer` logic, Stop hook detection, JSONL discovery.
+- After touching any wire-surface code: hook installation, `send-keys` / `paste-buffer` logic, Stop/AfterAgent hook detection, JSONL discovery, provider launch args.
 - Before tagging a release.
-- After a `claude` CLI version bump (the binary interface may have changed).
+- After a provider CLI version bump (the binary interface may have changed).
 
 **How to run:**
 
@@ -34,13 +44,23 @@ Smoke tests live in `test/smoke/` and run against the actual installed `claude` 
 RCTRL_SMOKE=1 bun run test:smoke
 ```
 
+Run a single provider's suite only:
+
+```sh
+RCTRL_SMOKE=1 bun run test:smoke:claude
+RCTRL_SMOKE=1 bun run test:smoke:codex
+RCTRL_SMOKE=1 bun run test:smoke:gemini
+```
+
+Smoke files are organised by provider under `test/smoke/{claude,codex,gemini}/` and gated by `smokeDescribeFor(provider, …)` in `test/smoke/helpers.ts`.
+
 **Requirements:**
 
-- Interactive `claude` installed and authenticated with an active subscription (not API key billing).
+- The provider binary installed and authenticated with an active subscription (not API key billing).
 - `tmux` installed and available on `$PATH`.
 - `RCTRL_SMOKE=1` set in the shell environment. Without this variable the smoke suite auto-skips every test.
 
-**Cost:** approximately $0.01 per full run at Haiku rates, charged to your Claude subscription. Keep an eye on usage if running frequently.
+**Cost:** Keep an eye on usage — each full run exercises real provider subscriptions. Claude runs at Haiku rates (~$0.01/run); Codex and Gemini costs depend on the model the provider defaults to.
 
 **Why local-only:** rctrl exists precisely to route through the interactive TUI rather than the API. Running smoke tests in CI against an API key would defeat the entire purpose of the tool and incur per-token billing. Smoke tests are a human-triggered gate, not a CI gate.
 

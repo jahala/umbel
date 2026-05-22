@@ -29,10 +29,10 @@ The mapping lives at `src/faces/cli.ts:157-171` (`errorExitCode`).
 
 ### spawn
 
-Create a named tmux session running `claude` interactively. The session is registered in `~/.rctrl/sessions/<name>/meta.json` and appears in tmux as `rctrl-<name>`.
+Create a named tmux session running a provider CLI interactively. The session is registered in `~/.rctrl/sessions/<name>/meta.json` and appears in tmux as `rctrl-<name>`.
 
 ```
-rctrl spawn [--name NAME] [--cwd PATH] [--model MODEL] [--allowed-tools TOOLS]
+rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS]
 ```
 
 **Flags**
@@ -40,17 +40,26 @@ rctrl spawn [--name NAME] [--cwd PATH] [--model MODEL] [--allowed-tools TOOLS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name NAME` | auto-generated `anon-XXXXXX` | Session name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`. Can also be the first positional argument. |
-| `--cwd PATH` | `$PWD` | Working directory for the claude process. Must exist. |
-| `--model opus\|sonnet\|haiku` | claude default | Model to pass to the interactive binary. |
-| `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to `claude --allowedTools`. |
+| `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist. |
+| `--provider claude\|codex\|gemini` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
+| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; rctrl does not restrict the values. |
+| `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. |
 
 **Output:** `spawned: <name>` on stdout.
+
+`--provider` is only valid on `spawn` and `-p`. For `send`, `wait`, `read`, `kill`, `status`, `ls`, `attach`, `capture`, and `logs`, the provider is looked up automatically from `meta.json` — no `--provider` flag is accepted.
 
 **Examples**
 
 ```bash
 # Named session, specific model
 rctrl spawn --name reviewer --cwd ./worktrees/review --model sonnet
+
+# Codex provider
+rctrl spawn --name fixer --provider codex --cwd ./worktrees/fix --model o4-mini
+
+# Gemini provider
+rctrl spawn --name analyst --provider gemini --cwd ./worktrees/analysis
 
 # Anonymous (auto-killed after one turn via rctrl -p)
 rctrl spawn --cwd /tmp/scratch
@@ -368,11 +377,11 @@ rctrl mcp
 
 ### -p / --print (drop-in mode)
 
-Run a single-turn prompt through the interactive `claude` binary, wait for completion, and write the response to stdout. Drop-in replacement for `claude -p` that routes through the subscription-billed interactive TUI.
+Run a single-turn prompt through the interactive provider CLI, wait for completion, and write the response to stdout. Drop-in replacement for `claude -p` that routes through the subscription-billed interactive TUI.
 
 ```
-rctrl -p [PROMPT] [--name NAME] [--resume NAME] [--cwd PATH] [--model MODEL] \
-         [--allowed-tools TOOLS] [--output-format text|json] [--timeout DURATION]
+rctrl -p [PROMPT] [--name NAME] [--resume NAME] [--cwd PATH] [--provider PROVIDER] \
+         [--model MODEL] [--allowed-tools TOOLS] [--output-format text|json] [--timeout DURATION]
 ```
 
 If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
@@ -384,8 +393,9 @@ If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
 | `--name NAME` | auto | Name the session. Session survives after the turn (not auto-killed). |
 | `--resume NAME` | — | Attach to an existing named session. Sends the prompt and waits; does not kill on exit. |
 | `--cwd PATH` | `$PWD` | Working directory. |
-| `--model opus\|sonnet\|haiku` | claude default | Model selection. |
-| `--allowed-tools TOOLS` | unset | Forwarded to `claude --allowedTools`. |
+| `--provider claude\|codex\|gemini` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
+| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time. |
+| `--allowed-tools TOOLS` | unset | Forwarded to the provider's equivalent of `--allowedTools`. |
 | `--output-format text\|json` | `text` | `json` emits `{"text": "...", "sessionName": "..."}`. |
 | `--timeout DURATION` | unset (30m default from wait layer) | Maximum wait time. Exit 124 on expiry. |
 
@@ -427,3 +437,5 @@ rctrl -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
 |----------|-------------|
 | `RCTRL_STATE` | Override the default state directory (`~/.rctrl/`). All session metadata, hook event files, and workflow run state are stored here. Useful in CI or for isolated test environments. |
 | `RCTRL_CLAUDE_BIN` | Override the `claude` binary path. Used by the test suite to inject `test/fixtures/fake-claude.sh`. Not intended for production use. |
+| `RCTRL_CODEX_BIN` | Override the `codex` binary path. Same contract as `RCTRL_CLAUDE_BIN` — inject `test/fixtures/fake-codex.sh` in tests, or point at a non-PATH install. |
+| `RCTRL_GEMINI_BIN` | Override the `gemini` binary path. Same contract as `RCTRL_CLAUDE_BIN`. |
