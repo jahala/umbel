@@ -285,4 +285,116 @@ describe('lastAssistantMessage', () => {
     const msg = await lastAssistantMessage({ jsonlPath: path, retryUntilComplete: false });
     expect(msg).toBe('');
   });
+
+  // Line 42: msgField is null (message field present but null)
+  test('returns null text (skips entry) when message field is null', async () => {
+    const dir = await setup();
+    const path = join(dir, 'null-message.jsonl');
+    // Shape A with message:null — not assistant entry, so no text extracted
+    const line = JSON.stringify({ message: null, type: 'system', uuid: 'u1' });
+    const assistantLine = JSON.stringify({
+      role: 'assistant',
+      content: 'Hello from shape B.',
+      stop_reason: 'end_turn',
+    });
+    await writeFile(path, `${line}\n${assistantLine}\n`);
+
+    const msg = await lastAssistantMessage({ jsonlPath: path, retryUntilComplete: false });
+    // Only the shape-B assistant line contributes
+    expect(msg).toBe('Hello from shape B.');
+  });
+
+  // Line 48: top-level role==='assistant' with content (shape B, no .message wrapper)
+  test('extracts text from top-level role=assistant with content string (shape B)', async () => {
+    const dir = await setup();
+    const path = join(dir, 'shape-b.jsonl');
+    const line = JSON.stringify({
+      role: 'assistant',
+      content: 'Direct content string.',
+      stop_reason: 'end_turn',
+    });
+    await writeFile(path, `${line}\n`);
+
+    const msg = await lastAssistantMessage({ jsonlPath: path, retryUntilComplete: false });
+    expect(msg).toBe('Direct content string.');
+  });
+
+  // Line 50: line with no recognizable shape — returns null from extractText, falls through
+  test('ignores entries with no recognizable shape (no role/message field)', async () => {
+    const dir = await setup();
+    const path = join(dir, 'unknown-shape.jsonl');
+    // An entry with no role and no message — extractText returns null
+    const unknownLine = JSON.stringify({ foo: 'bar', baz: 42 });
+    const assistantLine = JSON.stringify({
+      role: 'assistant',
+      content: 'Real content.',
+      stop_reason: 'end_turn',
+    });
+    await writeFile(path, `${unknownLine}\n${assistantLine}\n`);
+
+    const msg = await lastAssistantMessage({ jsonlPath: path, retryUntilComplete: false });
+    expect(msg).toBe('Real content.');
+  });
+
+  // Lines 66-67: content array with non-text blocks (tool_use) — only text parts joined
+  test('joins only text blocks from content array (ignores tool_use blocks)', async () => {
+    const dir = await setup();
+    const path = join(dir, 'mixed-content.jsonl');
+    const line = JSON.stringify({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Part A. ' },
+        { type: 'tool_use', id: 'tool1', name: 'Read', input: {} },
+        { type: 'text', text: 'Part B.' },
+      ],
+      stop_reason: 'end_turn',
+    });
+    await writeFile(path, `${line}\n`);
+
+    const msg = await lastAssistantMessage({ jsonlPath: path, retryUntilComplete: false });
+    expect(msg).toBe('Part A. Part B.');
+  });
+
+  // Line 89: top-level stop_reason (shape B: no .message wrapper)
+  test('detects stop_reason at top level (shape B)', async () => {
+    const dir = await setup();
+    const path = join(dir, 'stop-reason-top.jsonl');
+    // Shape B with top-level stop_reason — hasStopReason checks obj.stop_reason
+    const line = JSON.stringify({
+      role: 'assistant',
+      content: 'Done here.',
+      stop_reason: 'end_turn',
+    });
+    await writeFile(path, `${line}\n`);
+
+    // With retryUntilComplete=true this should NOT retry because stop_reason present
+    const msg = await lastAssistantMessage({
+      jsonlPath: path,
+      retryUntilComplete: true,
+      maxRetries: 0,
+    });
+    expect(msg).toBe('Done here.');
+  });
+
+  // Line 205: retry exhaustion — JSONL never gets stop_reason; maxRetries=1 returns text anyway
+  test('returns text after retry exhaustion even without stop_reason', async () => {
+    const dir = await setup();
+    const path = join(dir, 'no-stop-reason.jsonl');
+    // Incomplete assistant entry — no stop_reason ever set
+    const line = JSON.stringify({
+      role: 'assistant',
+      content: 'Incomplete response.',
+    });
+    await writeFile(path, `${line}\n`);
+
+    // maxRetries=1, retryDelayMs=10 — exhausts quickly and returns what it has
+    const msg = await lastAssistantMessage({
+      jsonlPath: path,
+      retryUntilComplete: true,
+      maxRetries: 1,
+      retryDelayMs: 10,
+    });
+    // After exhausting retries it returns the incomplete text
+    expect(msg).toBe('Incomplete response.');
+  });
 });

@@ -139,3 +139,40 @@ describe('TmuxError on invalid operations', () => {
     await expect(capturePane(`no-such-session-${RUN_ID}`, 10)).rejects.toBeInstanceOf(TmuxError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Line 93: listSessions catch path — no server running
+// This test runs last; it kills the server and tests that listSessions returns [].
+// It then starts a new server so subsequent tests in other files are not affected.
+// ---------------------------------------------------------------------------
+
+describe('listSessions — no server (line 93 catch path)', () => {
+  test('returns [] when tmux server is not running', async () => {
+    // Clean up all test sessions first
+    await Promise.all(CREATED.splice(0).map(safeKill));
+
+    // Kill the tmux server
+    const killProc = Bun.spawn(['tmux', 'kill-server'], { stdout: 'pipe', stderr: 'pipe' });
+    await killProc.exited;
+    // Brief pause so the server fully stops
+    await Bun.sleep(200);
+
+    // listSessions must catch the TmuxError and return empty array
+    const sessions = await listSessions();
+    expect(Array.isArray(sessions)).toBe(true);
+    expect(sessions).toEqual([]);
+
+    // Restart the server with a dummy session so other tests still work
+    const startProc = Bun.spawn(['tmux', 'new-session', '-d', '-s', `rctrl-boot-${RUN_ID}`], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    await startProc.exited;
+    // Clean it up immediately
+    const cleanProc = Bun.spawn(['tmux', 'kill-session', '-t', `rctrl-boot-${RUN_ID}`], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    await cleanProc.exited;
+  });
+});

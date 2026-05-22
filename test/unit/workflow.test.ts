@@ -215,10 +215,27 @@ describe('substitute', () => {
     expect(() => substitute('value is {{ env.MISSING }}', emptyCtx)).toThrow(RctrlUsageError);
   });
 
-  test('throws RctrlUsageError on unresolved step output', () => {
+  test('throws RctrlUsageError on unresolved step output (step not found)', () => {
     expect(() => substitute('value is {{ steps.missing.outputs.x }}', emptyCtx)).toThrow(
       RctrlUsageError,
     );
+  });
+
+  // Lines 128-130: step EXISTS but output key not found — unique throw path
+  test('throws RctrlUsageError when step exists but output key is missing', () => {
+    const ctx = {
+      ...emptyCtx,
+      steps: { reviewer: { outputs: { summary: 'LGTM' } } },
+    };
+    let caught: unknown;
+    try {
+      substitute('value is {{ steps.reviewer.outputs.nonexistent }}', ctx);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught instanceof RctrlUsageError).toBe(true);
+    expect((caught as RctrlUsageError).message).toContain('nonexistent');
+    expect((caught as RctrlUsageError).message).toContain('reviewer');
   });
 
   test('throws RctrlUsageError on unresolved $session', () => {

@@ -184,3 +184,125 @@ describe('spawn — stop hook', () => {
     expect(found).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Line 61: model arg forwarded to claude command
+// ---------------------------------------------------------------------------
+
+describe('spawn — model arg', () => {
+  test('spawn with model=sonnet passes --model arg; session spawns successfully', async () => {
+    const env = await setup();
+    // fake-claude.sh ignores --model but spawn must still succeed (session created + JSONL found)
+    const { session } = await spawn(
+      makeOpts(env, '/tmp', { name: sessionName('model'), model: 'sonnet' }),
+    );
+    CREATED.push(session.name);
+    // Session created with model stored in meta
+    expect(session.model).toBe('sonnet');
+    // Tmux session must be alive (fake-claude ran)
+    const sessions = await listSessions();
+    expect(sessions).toContain(session.name);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lines 86-89: cleanup when tmux.newSession throws
+// ---------------------------------------------------------------------------
+
+describe('spawn — cleanup on tmux failure', () => {
+  test('cleanup fires and original error propagates when newSession throws', async () => {
+    const env = await setup();
+    const name = sessionName('tmuxfail');
+
+    let killCalled = false;
+    let rmCalled = false;
+
+    const failingTmux = {
+      ...(await import('../../src/adapters/tmux.ts')),
+      newSession: async () => {
+        throw new Error('tmux exploded');
+      },
+      killSession: async (_n: string) => {
+        killCalled = true;
+      },
+    };
+    const fsState = await import('../../src/adapters/fs-state.ts');
+    const failingFs = {
+      ...fsState,
+      rmSession: async (_n: string, _env: Record<string, string | undefined>) => {
+        rmCalled = true;
+      },
+    };
+
+    let caughtErr: unknown;
+    try {
+      await spawn({
+        ...makeOpts(env, '/tmp', { name }),
+        deps: { tmux: failingTmux as never, fs: failingFs as never },
+      });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr instanceof Error).toBe(true);
+    expect((caughtErr as Error).message).toBe('tmux exploded');
+    expect(killCalled).toBe(true);
+    expect(rmCalled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lines 117-119: cleanup when writeMeta throws
+// ---------------------------------------------------------------------------
+
+describe('spawn — cleanup on writeMeta failure', () => {
+  test('cleanup fires and error propagates when writeMeta throws', async () => {
+    const env = await setup();
+    const name = sessionName('metafail');
+
+    let killCalled = false;
+    let rmCalled = false;
+
+    const tmuxAdapter = await import('../../src/adapters/tmux.ts');
+    const fsState = await import('../../src/adapters/fs-state.ts');
+
+    const spyTmux = {
+      ...tmuxAdapter,
+      killSession: async (_n: string) => {
+        killCalled = true;
+        // Still try real kill to avoid tmux leaks
+        await tmuxAdapter.killSession(_n).catch(() => undefined);
+      },
+    };
+    const spyFs = {
+      ...fsState,
+      writeMeta: async (_n: string, _s: unknown, _e: unknown) => {
+        throw new Error('disk full');
+      },
+      rmSession: async (_n: string, _env: Record<string, string | undefined>) => {
+        rmCalled = true;
+        await fsState.rmSession(_n, _env).catch(() => undefined);
+      },
+    };
+
+    const baseOpts = makeOpts(env, '/tmp', { name });
+    let caughtErr: unknown;
+    try {
+      await spawn({
+        ...baseOpts,
+        deps: {
+          ...baseOpts.deps,
+          tmux: spyTmux as never,
+          fs: spyFs as never,
+        },
+      });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr instanceof Error).toBe(true);
+    expect((caughtErr as Error).message).toBe('disk full');
+    expect(killCalled).toBe(true);
+    expect(rmCalled).toBe(true);
+  });
+});

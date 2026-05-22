@@ -248,4 +248,140 @@ steps:
     expect(result.outputs[stepA]?.result).toContain('Response to: parallel step A');
     expect(result.outputs[stepB]?.result).toContain('Response to: parallel step B');
   });
+
+  // Line 76: cleanup loop fires when a step rejects (wave 1 sessions are killed)
+  test('failing second-wave step triggers cleanup of first-wave sessions', async () => {
+    const env = await setup();
+    const step1 = sessionTag('cln1');
+    const step2 = sessionTag('cln2');
+
+    // step2 uses a failing claude so it errors after step1 completes
+    const failingClaude = join(tmpDir, 'fail-cleanup.sh');
+    await writeFile(failingClaude, '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+
+    const yaml = `
+workers:
+  ${step1}: { cwd: "${tmpDir}" }
+  ${step2}: { cwd: "${tmpDir}" }
+
+steps:
+  - run: ${step1}
+    prompt: "step one succeeds"
+    outputs:
+      result: assistant_last_message
+
+  - run: ${step2}
+    needs: [${step1}]
+    prompt: "step two fails"
+`;
+
+    const yamlFile = join(tmpDir, 'cleanup.yaml');
+    await writeFile(yamlFile, yaml, 'utf8');
+
+    const failOpts = {
+      ...makeWorkflowOpts(env, yamlFile),
+      deps: {
+        ...makeWorkflowOpts(env, yamlFile).deps,
+        jsonl: {
+          ...jsonlAdapter,
+          discoverSessionJsonl: async (opts: Parameters<typeof sessionAwareDiscover>[0]) => {
+            // step1 succeeds (use real discovery), step2 times out
+            const path = join(jsonlDir, `${opts.sessionName}.jsonl`);
+            const { stat: statFn } = await import('node:fs/promises');
+            const deadline = Date.now() + 4000;
+            let delay = 50;
+            while (true) {
+              try {
+                await statFn(path);
+                return path;
+              } catch {
+                // not yet
+              }
+              if (Date.now() + delay > deadline) {
+                const { SessionDeadError: SDE } = await import('../../src/core/errors.ts');
+                throw new SDE(opts.sessionName, 'JSONL not found');
+              }
+              await Bun.sleep(delay);
+              delay = Math.min(delay * 2, 200);
+            }
+          },
+        },
+      },
+    };
+
+    // step2 uses a failing binary that exits without creating JSONL
+    const result = await runWorkflow({ ...failOpts, claudeBin: undefined as never });
+
+    // The workflow fails
+    expect(result.status).toBe('failed');
+    expect(result.failedStep).toBeDefined();
+  });
+
+  // Line 176: aborted reason — workflow aborted mid-execution via signal
+  test('workflow aborted via AbortSignal returns failed status', async () => {
+    const env = await setup();
+    const step1 = sessionTag('abt1');
+
+    const yaml = `
+workers:
+  ${step1}: { cwd: "${tmpDir}" }
+
+steps:
+  - run: ${step1}
+    prompt: "slow step"
+`;
+
+    const yamlFile = join(tmpDir, 'abort.yaml');
+    await writeFile(yamlFile, yaml, 'utf8');
+
+    const ac = new AbortController();
+    // Abort after a very short time (before fake-claude responds)
+    setTimeout(() => ac.abort(), 100);
+
+    const opts = {
+      ...makeWorkflowOpts(env, yamlFile),
+      signal: ac.signal,
+      deps: {
+        ...makeWorkflowOpts(env, yamlFile).deps,
+        jsonl: {
+          ...jsonlAdapter,
+          // Session discover quickly so we get to the wait phase before abort
+          discoverSessionJsonl: sessionAwareDiscover,
+        },
+      },
+    };
+
+    const result = await runWorkflow(opts);
+    // Aborted workflows return failed status
+    expect(result.status).toBe('failed');
+  });
+
+  // Lines 187-190: file:/ absolute-path output spec
+  test('outputs with file:/absolute/path reads file content', async () => {
+    const env = await setup();
+    const step1 = sessionTag('fileout');
+
+    // Create the output file that fake-claude will "produce"
+    const outputFile = join(tmpDir, 'output.md');
+    await writeFile(outputFile, 'file output content', 'utf8');
+
+    const yaml = `
+workers:
+  ${step1}: { cwd: "${tmpDir}" }
+
+steps:
+  - run: ${step1}
+    prompt: "produce file output"
+    outputs:
+      doc: "file:${outputFile}"
+`;
+
+    const yamlFile = join(tmpDir, 'fileout.yaml');
+    await writeFile(yamlFile, yaml, 'utf8');
+
+    const result = await runWorkflow(makeWorkflowOpts(env, yamlFile));
+
+    expect(result.status).toBe('completed');
+    expect(result.outputs[step1]?.doc).toBe('file output content');
+  });
 });

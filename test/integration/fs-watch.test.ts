@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WatchEvent } from '../../src/adapters/fs-watch.ts';
@@ -139,5 +139,75 @@ describe('watch', () => {
       drainPromise,
       Bun.sleep(2000).then(() => Promise.reject(new Error('timeout'))),
     ]);
+  });
+
+  // Line 33: classify catch path — non-existent path treated as 'file' (fs.watchFile)
+  // Verifies that a non-existent path fires 'add' when the file is created
+  test('non-existent path watched as file; creation fires add event', async () => {
+    const dir = await setup();
+    const nonExistentFile = join(dir, 'not-yet-created.txt');
+    const controller = new AbortController();
+
+    // Watch a path that does not exist — classify() catches statSync and returns 'file'
+    const iter = watch([nonExistentFile], controller.signal);
+
+    // Give watcher time to set up, then create the file
+    await Bun.sleep(200);
+    await writeFile(nonExistentFile, 'hello');
+
+    const events = await collectEvents(iter, 1, 4000);
+    controller.abort();
+
+    const addEvent = events.find((e) => e.path === nonExistentFile && e.kind === 'add');
+    expect(addEvent).toBeDefined();
+  });
+
+  // Lines 100-110: fs.watchFile listener — existing file deleted fires 'unlink'
+  test('file deletion fires unlink event on watched file', async () => {
+    const dir = await setup();
+    const filePath = join(dir, 'to-delete.txt');
+    await writeFile(filePath, 'initial');
+
+    const controller = new AbortController();
+    // Watching a file path uses the fs.watchFile code path.
+    // IMPORTANT: start collecting BEFORE sleeping/deleting so the watcher is set up
+    // (Symbol.asyncIterator is called lazily inside collectEvents) while the file exists.
+    const iter = watch([filePath], controller.signal);
+
+    // Start collection immediately — this calls Symbol.asyncIterator() which sets up
+    // the fs.watchFile watcher while the file still exists.
+    const collectPromise = collectEvents(iter, 2, 4000);
+
+    // Let the watcher settle and initial 'add' event be queued (via queueMicrotask)
+    await Bun.sleep(200);
+
+    // Delete the file — fs.watchFile should detect ino transition → 'unlink'
+    await unlink(filePath);
+
+    const events = await collectPromise;
+    controller.abort();
+
+    const unlinkEvent = events.find((e) => e.path === filePath && e.kind === 'unlink');
+    expect(unlinkEvent).toBeDefined();
+  }, 10_000);
+
+  // Lines 144-145: iterator return() method terminates the iterator and returns done=true
+  test('iterator return() sets done=true and stops iteration', async () => {
+    const dir = await setup();
+    const controller = new AbortController();
+    const iter = watch([dir], controller.signal);
+    const iterator = iter[Symbol.asyncIterator]();
+
+    // Call return() directly — exercises the return() method on lines 144-145
+    // Our impl always defines return(), but the iterator-protocol type marks it optional.
+    if (iterator.return === undefined) throw new Error('iterator.return missing');
+    const returnResult = await iterator.return();
+    expect(returnResult.done).toBe(true);
+
+    // Subsequent next() calls must also return done=true (watcher closed)
+    const nextResult = await iterator.next();
+    expect(nextResult.done).toBe(true);
+
+    controller.abort();
   });
 });

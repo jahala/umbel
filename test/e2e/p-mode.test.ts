@@ -105,6 +105,30 @@ describe('p-mode', () => {
     expect(alive).toBe(true);
   });
 
+  // Lines 65-66: named session reuse path — second call with same name reuses existing
+  test('--name foo second call reuses existing session (no second spawn)', async () => {
+    const env = await setup();
+    const name = sessionName('reuse');
+    CREATED.push(name);
+
+    // First call: creates the named session
+    const opts1 = makeOpts(env, tmpDir, { prompt: 'first', name });
+    const result1 = await runP(opts1);
+    expect(result1.sessionName).toBe(name);
+
+    // Second call: session already exists — should reuse, not spawn again
+    const opts2 = makeOpts(env, tmpDir, { prompt: 'second', name });
+    const result2 = await runP(opts2);
+    expect(result2.sessionName).toBe(name);
+    expect(result2.text).toContain('Response to: second');
+
+    // Verify only one tmux session exists with this name
+    const { listSessions } = await import('../../src/adapters/tmux.ts');
+    const sessions = await listSessions();
+    const matching = sessions.filter((s) => s === name);
+    expect(matching.length).toBe(1);
+  });
+
   test('--resume reuses existing session', async () => {
     const env = await setup();
     const name = sessionName('rs');
