@@ -12,13 +12,27 @@ export const SessionNameSchema = z
 export type SessionName = z.infer<typeof SessionNameSchema>;
 
 // ---------------------------------------------------------------------------
+// Provider name
+// ---------------------------------------------------------------------------
+
+// All three planned providers are listed here so type-checking protects
+// against typos. Only 'claude' is wired in the registry today; 'codex' and
+// 'gemini' are structural placeholders for subsequent milestones.
+export const ProviderNameSchema = z.enum(['claude', 'codex', 'gemini']);
+export type ProviderName = z.infer<typeof ProviderNameSchema>;
+
+// ---------------------------------------------------------------------------
 // Session (persisted as meta.json)
 // ---------------------------------------------------------------------------
 
 export const SessionSchema = z.object({
   name: SessionNameSchema,
   cwd: z.string(),
-  model: z.enum(['opus', 'sonnet', 'haiku']).optional(),
+  // model is provider-agnostic; each provider has its own model names, so we
+  // cannot constrain to a Claude-only enum here.
+  model: z.string().optional(),
+  provider: ProviderNameSchema.default('claude'),
+  providerFiles: z.array(z.string()).default([]),
   anonymous: z.boolean(),
   createdAt: z.number().int().nonnegative(),
   jsonlPath: z.string().nullable(),
@@ -81,7 +95,10 @@ export const WaitConditionSchema = WaitConditionBaseSchema;
 
 export const WorkerSpecSchema = z.object({
   cwd: z.string(),
-  model: z.enum(['opus', 'sonnet', 'haiku']).optional(),
+  // model is provider-agnostic free-form string; provider validates its own
+  // model names at launch time.
+  model: z.string().optional(),
+  provider: ProviderNameSchema.optional(),
   allowedTools: z.string().optional(),
 });
 

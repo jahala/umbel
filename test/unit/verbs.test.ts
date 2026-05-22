@@ -93,12 +93,10 @@ describe('VerbSchemas.spawn', () => {
     }
   });
 
-  test('rejects invalid model value', () => {
+  test('accepts any string model (provider-agnostic)', () => {
+    // model is now z.string() — each provider validates its own model names.
     const result = VerbSchemas.spawn.safeParse({ model: 'turbo' });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.path).toContain('model');
-    }
+    expect(result.success).toBe(true);
   });
 });
 

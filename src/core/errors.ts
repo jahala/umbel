@@ -63,3 +63,11 @@ export class WaitTimeoutError extends Error {
 export class RctrlUsageError extends Error {
   override name = 'RctrlUsageError';
 }
+
+export class ProviderUnknownError extends Error {
+  override name = 'ProviderUnknownError';
+
+  constructor(public providerName: string) {
+    super(`Unknown provider: ${providerName}`);
+  }
+}

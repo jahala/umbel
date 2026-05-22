@@ -34,6 +34,8 @@ function makeSession(name: string): Session {
     name: name as Session['name'],
     cwd: '/tmp/test',
     model: 'sonnet',
+    provider: 'claude',
+    providerFiles: [],
     anonymous: false,
     createdAt: Date.now(),
     jsonlPath: null,

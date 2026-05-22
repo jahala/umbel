@@ -52,9 +52,10 @@ describe('SessionSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  test('rejects invalid model', () => {
+  test('accepts any string model (provider-agnostic)', () => {
+    // model is now z.string() — each provider validates its own model names.
     const result = SessionSchema.safeParse({ ...validSession, model: 'gpt-4' });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   test('rejects missing cwd', () => {
