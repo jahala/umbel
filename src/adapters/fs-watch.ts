@@ -20,10 +20,18 @@ export function watch(paths: string[], signal: AbortSignal): AsyncIterable<Watch
       const resolvers: Array<(value: IteratorResult<WatchEvent>) => void> = [];
       let done = false;
 
+      // Polling is enabled on non-macOS platforms because chokidar's inotify
+      // backend has known issues with single-file watches and freshly-created
+      // paths on Linux. Polling adds modest CPU overhead but is reliable and
+      // works identically across platforms. macOS keeps native FSEvents.
+      const usePolling = process.platform !== 'darwin';
       const watcher = chokidar.watch(paths, {
         persistent: true,
         ignoreInitial: false,
         awaitWriteFinish: false,
+        usePolling,
+        interval: 50,
+        binaryInterval: 100,
       });
 
       function enqueue(kind: WatchEvent['kind'], path: string): void {

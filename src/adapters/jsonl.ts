@@ -132,6 +132,12 @@ export async function discoverSessionJsonl(opts: {
   const timeoutMs = opts.timeoutMs ?? 5000;
   const deadline = Date.now() + timeoutMs;
 
+  // Filesystem mtime precision is 1s on ext4 with old kernels and on FAT-family
+  // mounts. sinceMs is captured at ms precision; comparing them naively misses
+  // files created in the same second. Subtract 1s of tolerance.
+  const FS_PRECISION_TOLERANCE_MS = 1000;
+  const sinceThreshold = opts.sinceMs - FS_PRECISION_TOLERANCE_MS;
+
   async function findCandidates(): Promise<string[]> {
     let entries: string[];
     try {
@@ -148,7 +154,7 @@ export async function discoverSessionJsonl(opts: {
         // birthtimeMs is unreliable on some Linux filesystems (returns 0).
         // Fall back to mtimeMs when birthtime is unavailable.
         const createdAt = s.birthtimeMs > 0 ? s.birthtimeMs : s.mtimeMs;
-        if (createdAt >= opts.sinceMs) {
+        if (createdAt >= sinceThreshold) {
           candidates.push({ path: fullPath, createdAt });
         }
       } catch {
