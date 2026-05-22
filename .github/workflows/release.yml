@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Fail fast if package.json version doesn't match the tag
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # ratchet:oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify version matches tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG_VER=$(bun -e "console.log(require('./package.json').version)")
+          echo "Tag: $TAG  package.json: $PKG_VER"
+          if [ "$PKG_VER" != "$TAG" ]; then
+            echo "::error::package.json version ($PKG_VER) does not match tag ($TAG)"
+            exit 1
+          fi
+
+  build:
+    needs: version-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # softprops/action-gh-release uploads release assets
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # ratchet:oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build all targets
+        run: bun run scripts/build.ts --all
+
+      - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # ratchet:softprops/action-gh-release@v3
+        with:
+          files: dist/rctrl-*
+          generate_release_notes: true

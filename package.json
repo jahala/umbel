@@ -1,0 +1,40 @@
+{
+  "name": "rctrl",
+  "version": "0.0.1",
+  "description": "Remote-control interactive Claude Code (and other agent CLIs) over tmux. Subscription-billed orchestration.",
+  "type": "module",
+  "module": "src/main.ts",
+  "bin": {
+    "rctrl": "./dist/rctrl"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun test test/unit test/integration test/e2e",
+    "test:unit": "bun test test/unit",
+    "test:integration": "bun test test/integration",
+    "test:e2e": "bun test test/e2e",
+    "test:smoke": "bun test ./test/smoke/claude/*.smoke.ts ./test/smoke/codex/*.smoke.ts ./test/smoke/gemini/*.smoke.ts",
+    "test:smoke:claude": "bun test ./test/smoke/claude/*.smoke.ts",
+    "test:smoke:codex": "bun test ./test/smoke/codex/*.smoke.ts",
+    "test:smoke:gemini": "bun test ./test/smoke/gemini/*.smoke.ts",
+    "lint": "biome check src test",
+    "lint:fix": "biome check --write src test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun run lint && bun run test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "chokidar": "^4.0.0",
+    "yaml": "^2.6.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}

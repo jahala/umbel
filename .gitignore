@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.rctrl-state/
+*.log
+.DS_Store
+.context/
+.env
+.env.local
+*.tsbuildinfo
+coverage/
+docs/research/
