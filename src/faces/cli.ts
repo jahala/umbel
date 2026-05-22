@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   HookTimeoutError,
   JsonlMalformedError,
+  ProviderUnknownError,
   RctrlUsageError,
   SessionDeadError,
   SessionNotFoundError,
@@ -10,6 +11,7 @@ import {
   WaitTimeoutError,
 } from '../core/errors.ts';
 import { isValidSessionName } from '../core/id.ts';
+import { getProvider } from '../core/providers/registry.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
@@ -154,7 +156,7 @@ function printStatusTable(entries: StatusEntry[]): void {
 
 function errorExitCode(err: unknown): number {
   if (err instanceof WaitTimeoutError) return 124;
-  if (err instanceof RctrlUsageError) return 2;
+  if (err instanceof RctrlUsageError || err instanceof ProviderUnknownError) return 2;
   if (
     err instanceof SessionDeadError ||
     err instanceof TmuxError ||
@@ -269,7 +271,8 @@ async function runPMode(
   const rawFormat = flagStr(flags, 'output-format') ?? 'text';
   const outputFormat = rawFormat === 'json' ? ('json' as const) : ('text' as const);
   const rawTimeout = flagStr(flags, 'timeout');
-  const model = flagStr(flags, 'model') as 'opus' | 'sonnet' | 'haiku' | undefined;
+  const provider = flagStr(flags, 'provider');
+  const model = flagStr(flags, 'model');
   const name = flagStr(flags, 'name');
   const resume = flagStr(flags, 'resume');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
@@ -284,6 +287,7 @@ async function runPMode(
     env: getCliEnv(),
     ...(name !== undefined ? { name } : {}),
     ...(resume !== undefined ? { resume } : {}),
+    ...(provider !== undefined ? { provider } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -320,7 +324,8 @@ async function verbSpawn(
     throw new RctrlUsageError(`Invalid session name: ${name}`);
   }
   const cwd = flagStr(flags, 'cwd') ?? process.cwd();
-  const model = flagStr(flags, 'model') as 'opus' | 'sonnet' | 'haiku' | undefined;
+  const provider = flagStr(flags, 'provider');
+  const model = flagStr(flags, 'model');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
   const claudeBin = process.env.RCTRL_CLAUDE_BIN;
@@ -329,6 +334,7 @@ async function verbSpawn(
     cwd,
     env: getCliEnv(),
     ...(name !== undefined ? { name } : {}),
+    ...(provider !== undefined ? { provider } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
     ...(claudeBin !== undefined ? { claudeBin } : {}),
@@ -483,7 +489,9 @@ async function verbRead(
     sinceMs: session.createdAt,
     env: cliEnv,
   });
-  const text = await defaultDeps.jsonl.lastAssistantMessage({ jsonlPath });
+  const provider = getProvider(session.provider);
+  const content = await Bun.file(jsonlPath).text();
+  const text = provider.parseTranscript(content);
   process.stdout.write(`${text}\n`);
   return 0;
 }

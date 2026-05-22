@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { getProvider } from '../core/providers/registry.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import type { Deps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
@@ -41,7 +42,8 @@ export interface McpToolHandlers {
   rctrl_spawn: (args: {
     name?: string | undefined;
     cwd: string;
-    model?: 'opus' | 'sonnet' | 'haiku' | undefined;
+    provider?: 'claude' | 'codex' | 'gemini' | undefined;
+    model?: string | undefined;
     allowedTools?: string | undefined;
   }) => Promise<ToolResult>;
   rctrl_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
@@ -71,6 +73,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         cwd: args.cwd,
         env,
         ...(args.name !== undefined ? { name: args.name } : {}),
+        ...(args.provider !== undefined ? { provider: args.provider } : {}),
         ...(args.model !== undefined ? { model: args.model } : {}),
         ...(args.allowedTools !== undefined ? { allowedTools: args.allowedTools } : {}),
         ...(deps !== undefined ? { deps } : {}),
@@ -145,7 +148,9 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       if (jsonlPath === null) {
         return { content: [{ type: 'text' as const, text: '' }] };
       }
-      const text = await d.jsonl.lastAssistantMessage({ jsonlPath });
+      const provider = getProvider(session.provider);
+      const content = await Bun.file(jsonlPath).text();
+      const text = provider.parseTranscript(content);
       return { content: [{ type: 'text' as const, text }] };
     },
 

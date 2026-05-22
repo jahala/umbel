@@ -1,6 +1,6 @@
-import * as jsonl from '../adapters/jsonl.ts';
 import { SessionNotFoundError, WaitTimeoutError } from '../core/errors.ts';
 import { generateSessionName } from '../core/id.ts';
+import { getProvider } from '../core/providers/registry.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import type { Deps } from '../operations/deps.ts';
@@ -19,7 +19,8 @@ export interface PModeOpts {
   name?: string;
   resume?: string;
   cwd: string;
-  model?: 'opus' | 'sonnet' | 'haiku';
+  provider?: string;
+  model?: string;
   allowedTools?: string;
   outputFormat: 'text' | 'json';
   timeoutMs?: number;
@@ -78,6 +79,7 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
         cwd: opts.cwd,
         anonymous: false as const,
         env,
+        ...(opts.provider !== undefined ? { provider: opts.provider } : {}),
         ...(opts.model !== undefined ? { model: opts.model } : {}),
         ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
         ...(opts.claudeBin !== undefined ? { claudeBin: opts.claudeBin } : {}),
@@ -96,6 +98,7 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
       cwd: opts.cwd,
       anonymous: true as const,
       env,
+      ...(opts.provider !== undefined ? { provider: opts.provider } : {}),
       ...(opts.model !== undefined ? { model: opts.model } : {}),
       ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
       ...(opts.claudeBin !== undefined ? { claudeBin: opts.claudeBin } : {}),
@@ -162,7 +165,11 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
       ...(deps !== undefined ? { deps } : {}),
     });
 
-    const text = await jsonl.lastAssistantMessage({ jsonlPath: resolvedJsonl });
+    // Look up the provider for this session and extract the response text.
+    const sessionMeta = await d.fs.readMeta(sessionName, env);
+    const provider = getProvider(sessionMeta.provider);
+    const content = await Bun.file(resolvedJsonl).text();
+    const text = provider.parseTranscript(content);
 
     if (anonymous) {
       await kill(killOpts).catch(() => undefined);

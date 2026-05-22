@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { generateSessionName } from '../core/id.ts';
+import { getProvider } from '../core/providers/registry.ts';
 import type { WorkflowSpec, WorkflowStep } from '../core/types.ts';
 import { parseWorkflow, substitute, topoSort } from '../core/workflow.ts';
 import { defaultDeps } from '../operations/deps.ts';
@@ -148,6 +149,7 @@ async function executeStep(
       cwd,
       anonymous: true as const,
       env,
+      ...(workerSpec?.provider !== undefined ? { provider: workerSpec.provider } : {}),
       ...(workerSpec?.model !== undefined ? { model: workerSpec.model } : {}),
       ...(workerSpec?.allowedTools !== undefined ? { allowedTools: workerSpec.allowedTools } : {}),
       ...(opts.claudeBin !== undefined ? { claudeBin: opts.claudeBin } : {}),
@@ -198,7 +200,10 @@ async function executeStep(
             ...(deps !== undefined ? { deps } : {}),
           });
         }
-        outputs[outputKey] = await d.jsonl.lastAssistantMessage({ jsonlPath: resolvedJsonl });
+        const sessionMeta = await d.fs.readMeta(sessionName, env);
+        const provider = getProvider(sessionMeta.provider);
+        const content = await Bun.file(resolvedJsonl).text();
+        outputs[outputKey] = provider.parseTranscript(content);
       } else if (outputSpec.startsWith('file:')) {
         const filePath = outputSpec.slice('file:'.length);
         const resolved = filePath.startsWith('/') ? filePath : join(cwd, filePath);
