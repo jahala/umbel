@@ -13,6 +13,10 @@ permissions:
 
 jobs:
   review:
+    # dependency-review-action requires a public repo OR GitHub Advanced Security.
+    # Skip silently when neither holds — keeps the job green-on-private without
+    # blocking PRs. Once the repo is public, this gate becomes a no-op.
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
