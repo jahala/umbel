@@ -159,6 +159,98 @@ describe('mcp-smoke', () => {
     expect(SERVER_INSTRUCTIONS).toContain('rctrl_help');
   });
 
+  test('rctrl mcp serves rctrl_help with topic content over JSON-RPC', async () => {
+    const subTmp = await mkdtemp(join(tmpdir(), 'rctrl-mcp-help-smoke-'));
+
+    const proc = Bun.spawn(['bun', 'run', MAIN, 'mcp'], {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, RCTRL_STATE: subTmp },
+    });
+
+    const init = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      },
+    });
+    // No topic → index. Then a real topic → content.
+    const callIndex = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'rctrl_help', arguments: {} },
+    });
+    const callWorkflow = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'rctrl_help', arguments: { topic: 'workflow' } },
+    });
+
+    proc.stdin.write(`${init}\n`);
+    proc.stdin.write(`${callIndex}\n`);
+    proc.stdin.write(`${callWorkflow}\n`);
+
+    let buf = '';
+    let indexResp: { id?: number; result?: { content?: Array<{ text?: string }> } } | undefined;
+    let workflowResp: { id?: number; result?: { content?: Array<{ text?: string }> } } | undefined;
+
+    const deadline = Date.now() + 10000;
+    const stream = new Response(proc.stdout).body;
+    if (stream !== null) {
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      while ((indexResp === undefined || workflowResp === undefined) && Date.now() < deadline) {
+        const readPromise = reader.read();
+        const timeoutPromise = new Promise<{ done: true; value: undefined }>((resolve) =>
+          setTimeout(() => resolve({ done: true, value: undefined }), 500),
+        );
+        const { done, value } = await Promise.race([readPromise, timeoutPromise]);
+        if (done) break;
+        if (value !== undefined) {
+          buf += decoder.decode(value);
+        }
+        for (const line of buf.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed.length === 0) continue;
+          try {
+            const parsed = JSON.parse(trimmed) as {
+              id?: number;
+              result?: { content?: Array<{ text?: string }> };
+            };
+            if (parsed.id === 2 && parsed.result !== undefined) indexResp = parsed;
+            if (parsed.id === 3 && parsed.result !== undefined) workflowResp = parsed;
+          } catch {
+            // not JSON yet
+          }
+        }
+      }
+      reader.cancel().catch(() => undefined);
+    }
+    proc.kill();
+    await rm(subTmp, { recursive: true, force: true });
+
+    expect(indexResp).toBeDefined();
+    expect(workflowResp).toBeDefined();
+
+    const indexText = indexResp?.result?.content?.[0]?.text ?? '';
+    expect(indexText).toContain('rctrl_help topics');
+    expect(indexText).toContain('lifecycle');
+    expect(indexText).toContain('workflow');
+    expect(indexText).toContain('providers');
+
+    const wfText = workflowResp?.result?.content?.[0]?.text ?? '';
+    expect(wfText).toContain('workers:');
+    expect(wfText).toContain('steps:');
+    expect(wfText).toContain('{{ steps.NAME.outputs.KEY }}');
+  });
+
   test('TOOL_DESCRIPTIONS has an entry per registered tool, each non-empty and bounded', () => {
     const expected = [
       'rctrl_spawn',
