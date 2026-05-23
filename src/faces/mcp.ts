@@ -9,7 +9,45 @@ import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
 import { waitFor } from '../operations/wait.ts';
+import { HELP_TOPICS, type HelpTopic, helpForTopic } from './mcp-help.ts';
 import { VerbSchemas } from './verbs.ts';
+
+// ---------------------------------------------------------------------------
+// Agent-facing copy. Exported so tests can snapshot the strings.
+// ---------------------------------------------------------------------------
+
+// Always-on context the MCP client renders into the agent's system prompt.
+// Kept tight — fork-decision (when to use rctrl vs the host's own subagent)
+// plus the lifecycle one-liner. Deeper docs go behind rctrl_help.
+export const SERVER_INSTRUCTIONS = `rctrl drives interactive agent CLIs (Claude Code, Codex, Gemini) in tmux, subscription-billed.
+
+USE rctrl when you need: a persistent worker across many turns (review→fix→verify); a different provider than yourself (e.g., you're Claude but want Codex); parallel workers in separate cwds (git worktrees); granular send/wait/read control.
+
+USE your host's subagent/Task tool instead for single-shot research, specialized agent types (Explore, debugger), or context-isolated one-shot results.
+
+Lifecycle: spawn → send → wait → read → (loop or kill). rctrl_send does NOT wait — always pair with rctrl_wait. Call rctrl_help for workflow YAML, provider quirks, or examples.`;
+
+// Per-tool descriptions. Narrow + specific. Lifecycle hints where they
+// prevent bugs (send→wait pairing, capture-vs-read).
+export const TOOL_DESCRIPTIONS = {
+  rctrl_spawn:
+    'Spawn a worker. `provider` selects claude/codex/gemini. Returns the session name to pass to other verbs.',
+  rctrl_send: 'Send a prompt to a session. Returns immediately — pair with rctrl_wait.',
+  rctrl_wait:
+    'Block until the session finishes a turn, or a file/regex condition is met. Call after rctrl_send.',
+  rctrl_status:
+    'Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity.',
+  rctrl_ls: 'List all sessions. Same as rctrl_status with no name.',
+  rctrl_kill: 'Kill a session and its tmux process. Removes state unless `keepState=true`.',
+  rctrl_read:
+    "Read the last assistant response from the session's transcript. Call after rctrl_wait returns.",
+  rctrl_capture:
+    'Snapshot N lines from the tmux pane. Human inspection only — use rctrl_read to parse agent output.',
+  rctrl_logs:
+    "Read the session's event log. Each end-of-turn appends a timestamp. For lifecycle debugging.",
+  rctrl_help:
+    'Get rctrl reference docs. `topic` ∈ {lifecycle, workflow, providers} for a section; omit for the index.',
+} as const;
 
 // ---------------------------------------------------------------------------
 // McpToolOpts — context injected into tool handlers
@@ -60,6 +98,7 @@ export interface McpToolHandlers {
   rctrl_read: (args: { name: string }) => Promise<ToolResult>;
   rctrl_capture: (args: { name: string; lines: number }) => Promise<ToolResult>;
   rctrl_logs: (args: { name: string }) => Promise<ToolResult>;
+  rctrl_help: (args: { topic?: HelpTopic | undefined }) => Promise<ToolResult>;
 }
 
 export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
@@ -169,6 +208,12 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       }
       return { content: [{ type: 'text' as const, text: content }] };
     },
+
+    rctrl_help: async (args) => {
+      return {
+        content: [{ type: 'text' as const, text: helpForTopic(args.topic) }],
+      };
+    },
   };
 }
 
@@ -181,57 +226,38 @@ export async function runMcpServer(opts: McpServerOpts): Promise<void> {
 
   const server = new McpServer(
     { name: 'rctrl', version: '0.0.1' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
   );
 
   server.tool(
     'rctrl_spawn',
-    'Spawn a new rctrl session running claude',
+    TOOL_DESCRIPTIONS.rctrl_spawn,
     VerbSchemas.spawn.shape,
     tools.rctrl_spawn,
   );
-  server.tool(
-    'rctrl_send',
-    'Send a prompt to a running rctrl session',
-    VerbSchemas.send.shape,
-    tools.rctrl_send,
-  );
-  server.tool(
-    'rctrl_wait',
-    'Wait for a session to complete a turn',
-    VerbSchemas.wait.shape,
-    tools.rctrl_wait,
-  );
+  server.tool('rctrl_send', TOOL_DESCRIPTIONS.rctrl_send, VerbSchemas.send.shape, tools.rctrl_send);
+  server.tool('rctrl_wait', TOOL_DESCRIPTIONS.rctrl_wait, VerbSchemas.wait.shape, tools.rctrl_wait);
   server.tool(
     'rctrl_status',
-    'Get status of one or all sessions',
+    TOOL_DESCRIPTIONS.rctrl_status,
     VerbSchemas.status.shape,
     tools.rctrl_status,
   );
-  server.tool('rctrl_ls', 'List all rctrl sessions', VerbSchemas.ls.shape, tools.rctrl_ls);
-  server.tool(
-    'rctrl_kill',
-    'Kill a session and optionally remove state',
-    VerbSchemas.kill.shape,
-    tools.rctrl_kill,
-  );
-  server.tool(
-    'rctrl_read',
-    'Read the last assistant message from a session',
-    VerbSchemas.read.shape,
-    tools.rctrl_read,
-  );
+  server.tool('rctrl_ls', TOOL_DESCRIPTIONS.rctrl_ls, VerbSchemas.ls.shape, tools.rctrl_ls);
+  server.tool('rctrl_kill', TOOL_DESCRIPTIONS.rctrl_kill, VerbSchemas.kill.shape, tools.rctrl_kill);
+  server.tool('rctrl_read', TOOL_DESCRIPTIONS.rctrl_read, VerbSchemas.read.shape, tools.rctrl_read);
   server.tool(
     'rctrl_capture',
-    'Capture last N lines from the tmux pane',
+    TOOL_DESCRIPTIONS.rctrl_capture,
     VerbSchemas.capture.shape,
     tools.rctrl_capture,
   );
+  server.tool('rctrl_logs', TOOL_DESCRIPTIONS.rctrl_logs, { name: z.string() }, tools.rctrl_logs);
   server.tool(
-    'rctrl_logs',
-    'Read session event log (non-follow)',
-    { name: z.string() },
-    tools.rctrl_logs,
+    'rctrl_help',
+    TOOL_DESCRIPTIONS.rctrl_help,
+    { topic: z.enum(HELP_TOPICS).optional() },
+    tools.rctrl_help,
   );
 
   const transport = new StdioServerTransport();
