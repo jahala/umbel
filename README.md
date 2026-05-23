@@ -3,58 +3,44 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/jahala/rctrl/ci.yml?branch=master)](https://github.com/jahala/rctrl/actions)
 
-Remote-control interactive agent CLIs — **Claude Code, Codex, Gemini** — over tmux. One binary, three faces, one provider abstraction.
+**Spawn other-provider agent workers from inside your agent session.** Drive `claude`, `codex`, or `gemini` interactively in tmux from a CLI, MCP server, or YAML workflow. One binary, one provider abstraction, three vendors — all subscription-billed.
 
-Anthropic, OpenAI, and Google all priced their `-p`/`--print` modes at API rates while leaving the interactive TUI on subscription. `rctrl` gives you a programmatic surface — CLI, MCP server, YAML workflows — over the *interactive* binary of whichever vendor you're paying. Subscription-billed throughout.
+## Claude Code orchestrating Codex (and Gemini, in parallel)
 
-## `rctrl -p` — drop-in for `claude -p` / `codex -p` / `gemini -p`
+Your `claude` session can't spawn a `codex` session directly. With `rctrl mcp` configured, it can:
 
-```bash
-# Before
-claude -p "summarise $FILE" --model sonnet --allowedTools Read
-
-# After — same flags, subscription billing, your choice of provider
-rctrl -p "summarise $FILE" --provider claude --model sonnet --allowedTools Read
-rctrl -p "summarise $FILE" --provider codex  --model o4-mini
-rctrl -p "summarise $FILE" --provider gemini --model gemini-2.5-pro
+```jsonc
+// .mcp.json
+{ "mcpServers": { "rctrl": { "command": "rctrl", "args": ["mcp"] } } }
 ```
 
-`--provider` defaults to `claude` for backward compatibility. All other flags pass through: `--model`, `--allowedTools`, `--output-format`, `--timeout`.
+Your Claude Code agent now has `rctrl_spawn`, `rctrl_send`, `rctrl_wait`, `rctrl_read`, `rctrl_kill`, and `rctrl_help` in its toolbelt. Tell it:
 
-Cold-start cost is ~3–5s on the first call to a new session. Use `--name` to keep a session warm across calls:
+> Spawn a Codex reviewer in `./worktrees/a` and a Gemini tester in `./worktrees/b`. Have them work in parallel, then synthesize their findings.
 
-```bash
-rctrl -p --name analyst --provider claude "first question"
-rctrl -p --resume analyst "follow-up"   # reuses the warm session, same provider
-```
+It'll stand up both workers, dispatch the prompts, wait for completion, and read their outputs. Three subscriptions, three roles, one orchestration. The host's context stays clean — it spends tokens on planning and synthesis, not on doing the work itself.
 
-## Supervisor mode
+The server ships a server-level `instructions` block plus an on-demand `rctrl_help` tool (topics: `lifecycle`, `workflow`, `providers`) so your agent learns when to reach for rctrl and how to use it without being drowned in upfront context.
 
-Spawn named sessions and drive them from a parent agent (or shell script):
+## Supervisor mode (CLI)
+
+The same verbs from your shell — useful in scripts, cron, or when driving rctrl without an MCP host:
 
 ```bash
 rctrl spawn --name reviewer --provider claude --cwd ./worktrees/review --model sonnet
 rctrl spawn --name fixer    --provider codex  --cwd ./worktrees/fix    --model o4-mini
-rctrl send reviewer "review the diff in $PWD and write findings to review.md"
+rctrl send reviewer "review the diff and write findings to review.md"
 rctrl wait reviewer
 rctrl read reviewer
 ```
 
-A single supervisor can drive workers from different providers concurrently. The provider is recorded in `meta.json` per session so `send`/`wait`/`read`/`kill` work the same way regardless.
-
-`rctrl mcp` exposes the same verbs as MCP tools, so a supervisor agent can dispatch and watch workers without leaving its own session:
-
-```bash
-rctrl mcp    # MCP server on stdio — add to .mcp.json
-```
+A single supervisor can drive workers across providers concurrently. The provider is recorded in `meta.json` per session so `send`/`wait`/`read`/`kill` auto-route — no `--provider` needed after spawn.
 
 Full verb list: `spawn`, `send`, `wait`, `status`, `ls`, `kill`, `attach`, `read`, `capture`, `logs`, `run`, `mcp`.
 
-The MCP server ships a server-level `instructions` block (when to use rctrl vs the host's own subagent + lifecycle order) and an on-demand `rctrl_help` tool that returns deep docs by topic (`lifecycle`, `workflow`, `providers`) — so the upfront token cost stays small while detail is one call away.
-
 ## Workflow mode
 
-Declarative multi-agent pipelines, optionally mixing providers per step:
+Declarative multi-step pipelines, mixed-provider per step:
 
 ```yaml
 workers:
@@ -89,6 +75,23 @@ rctrl run review-then-fix.yaml
 
 Steps run in parallel where `needs` allows. Templating is intentionally minimal: `{{ env.X }}`, `{{ steps.NAME.outputs.X }}`, `{{ $session }}`.
 
+## `rctrl -p` — drop-in for `claude -p` / `codex -p` / `gemini -p`
+
+Same flags as the vendor `-p` mode, with provider as a parameter:
+
+```bash
+rctrl -p "summarise $FILE" --provider claude --model sonnet --allowedTools Read
+rctrl -p "summarise $FILE" --provider codex  --model o4-mini
+rctrl -p "summarise $FILE" --provider gemini --model gemini-2.5-pro
+```
+
+`--provider` defaults to `claude` for backward compatibility. Cold-start ~3–5s on first call; use `--name` / `--resume` to keep a session warm:
+
+```bash
+rctrl -p --name analyst --provider claude "first question"
+rctrl -p --resume analyst "follow-up"   # reuses the warm session, same provider
+```
+
 ## Install
 
 ```bash
@@ -106,17 +109,17 @@ Homebrew tap coming. For now, build from source.
   - `codex` (ChatGPT Plus / Pro / Team / Enterprise)
   - `gemini` (Google AI Pro / Ultra)
 
-Providers without their binary installed simply can't be selected. `rctrl spawn --provider gemini` will fail loudly when tmux can't exec `gemini`.
+Providers without their binary installed simply can't be selected. `rctrl spawn --provider gemini` fails loudly when tmux can't exec `gemini`.
 
 ## Architecture
 
-No daemon. tmux is the daemon; `~/.rctrl/` is the state store. Every `rctrl` invocation is short-lived. Completion detection uses each provider's native lifecycle hook (Claude's `Stop`, Codex's `Stop`, Gemini's `AfterAgent`) — not terminal scraping. Agent output is read from each provider's transcript file, never from `capture-pane`.
+No daemon. `tmux` is the daemon; `~/.rctrl/` is the state store. Every `rctrl` invocation is short-lived. Completion detection uses each provider's native lifecycle event (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`) — not terminal scraping. Agent output is read from each provider's transcript file, never from `capture-pane`. Providers are pluggable via a small interface (`src/core/providers/types.ts`) — adding a 4th CLI is a ~150 LOC implementation, not a rewrite. See [`docs/architecture-v3.md`](docs/architecture-v3.md) for the full design.
 
-Providers are pluggable via a small interface (`src/core/providers/types.ts`). Adding a 4th CLI is a `~150 LOC` implementation, not a rewrite. See [`docs/architecture-v3.md`](docs/architecture-v3.md) for the full design.
+## Why this exists
 
-## Positioning
+Anthropic, OpenAI, and Google all priced their `-p` / `--print` modes at API rates while leaving the interactive TUI on subscription. `rctrl` gives you a programmatic surface over the *interactive* binary of whichever vendor you're paying — so the work you'd otherwise do by hand in the TUI runs against the subscription you already pay for, not per-token API billing on top.
 
-This tool exists because of the API/subscription billing split that all three major vendors have adopted. Aimed at solo developers automating their own work — not for commercial resale, not for evasion. See [`docs/tos.md`](docs/tos.md) for the longer version.
+Aimed at solo developers automating their own work. Not for commercial resale or evasion at scale. See [`docs/tos.md`](docs/tos.md) for the defensibility spectrum across all three vendors.
 
 ## Sister project
 
