@@ -50,6 +50,8 @@ rctrl mcp    # MCP server on stdio — add to .mcp.json
 
 Full verb list: `spawn`, `send`, `wait`, `status`, `ls`, `kill`, `attach`, `read`, `capture`, `logs`, `run`, `mcp`.
 
+The MCP server ships a server-level `instructions` block (when to use rctrl vs the host's own subagent + lifecycle order) and an on-demand `rctrl_help` tool that returns deep docs by topic (`lifecycle`, `workflow`, `providers`) — so the upfront token cost stays small while detail is one call away.
+
 ## Workflow mode
 
 Declarative multi-agent pipelines, optionally mixing providers per step:
