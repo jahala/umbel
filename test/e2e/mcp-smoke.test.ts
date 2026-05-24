@@ -128,6 +128,8 @@ describe('mcp-smoke', () => {
       'rctrl_ls',
       'rctrl_kill',
       'rctrl_read',
+      'rctrl_actions',
+      'rctrl_diff',
       'rctrl_capture',
       'rctrl_logs',
       'rctrl_help',
@@ -260,6 +262,8 @@ describe('mcp-smoke', () => {
       'rctrl_ls',
       'rctrl_kill',
       'rctrl_read',
+      'rctrl_actions',
+      'rctrl_diff',
       'rctrl_capture',
       'rctrl_logs',
       'rctrl_help',
@@ -269,7 +273,9 @@ describe('mcp-smoke', () => {
       expect(desc).toBeTruthy();
       if (desc !== undefined) {
         expect(desc.length).toBeGreaterThan(20);
-        expect(desc.length).toBeLessThan(200);
+        // rctrl_actions description is a bit longer (it spells out the
+        // contrast with rctrl_read); allow up to 260 chars.
+        expect(desc.length).toBeLessThan(260);
       }
     }
   });

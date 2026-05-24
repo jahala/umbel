@@ -2,8 +2,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { getProvider } from '../core/providers/registry.ts';
+import { truncateAssistantText } from '../core/truncate.ts';
+import { actions } from '../operations/actions.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import type { Deps } from '../operations/deps.ts';
+import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
@@ -40,7 +43,11 @@ export const TOOL_DESCRIPTIONS = {
   rctrl_ls: 'List all sessions. Same as rctrl_status with no name.',
   rctrl_kill: 'Kill a session and its tmux process. Removes state unless `keepState=true`.',
   rctrl_read:
-    "Read the last assistant response from the session's transcript. Call after rctrl_wait returns.",
+    "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after rctrl_wait returns.",
+  rctrl_actions:
+    'Structured digest of what a worker DID this session (tools used, files touched, errors, final message). Use INSTEAD of rctrl_read when you want the summary, not the verbatim response — much smaller payload.',
+  rctrl_diff:
+    'Unified text diff between two turns of a session. Default: latest vs previous. Negative indices count from end. Useful in review→fix loops to see only what changed since last turn.',
   rctrl_capture:
     'Snapshot N lines from the tmux pane. Human inspection only — use rctrl_read to parse agent output.',
   rctrl_logs:
@@ -95,7 +102,19 @@ export interface McpToolHandlers {
   rctrl_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
   rctrl_ls: (args: Record<string, never>) => Promise<ToolResult>;
   rctrl_kill: (args: { name: string; keepState: boolean }) => Promise<ToolResult>;
-  rctrl_read: (args: { name: string }) => Promise<ToolResult>;
+  rctrl_read: (args: {
+    name: string;
+    head?: number | undefined;
+    tail?: number | undefined;
+    section?: string | undefined;
+    full?: boolean | undefined;
+  }) => Promise<ToolResult>;
+  rctrl_actions: (args: { name: string }) => Promise<ToolResult>;
+  rctrl_diff: (args: {
+    name: string;
+    from?: number | undefined;
+    to?: number | undefined;
+  }) => Promise<ToolResult>;
   rctrl_capture: (args: { name: string; lines: number }) => Promise<ToolResult>;
   rctrl_logs: (args: { name: string }) => Promise<ToolResult>;
   rctrl_help: (args: { topic?: HelpTopic | undefined }) => Promise<ToolResult>;
@@ -189,7 +208,35 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       }
       const provider = getProvider(session.provider);
       const content = await Bun.file(jsonlPath).text();
-      const text = provider.parseTranscript(content);
+      const rawText = provider.parseTranscript(content);
+      const truncated = truncateAssistantText(rawText, {
+        ...(args.head !== undefined ? { head: args.head } : {}),
+        ...(args.tail !== undefined ? { tail: args.tail } : {}),
+        ...(args.section !== undefined ? { section: args.section } : {}),
+        ...(args.full !== undefined ? { full: args.full } : {}),
+      });
+      return { content: [{ type: 'text' as const, text: truncated }] };
+    },
+
+    rctrl_actions: async (args) => {
+      const actionsOpts = {
+        name: args.name,
+        env,
+        ...(deps !== undefined ? { deps } : {}),
+      };
+      const text = await actions(actionsOpts);
+      return { content: [{ type: 'text' as const, text }] };
+    },
+
+    rctrl_diff: async (args) => {
+      const diffOpts = {
+        name: args.name,
+        env,
+        ...(deps !== undefined ? { deps } : {}),
+        ...(args.from !== undefined ? { from: args.from } : {}),
+        ...(args.to !== undefined ? { to: args.to } : {}),
+      };
+      const text = await diff(diffOpts);
       return { content: [{ type: 'text' as const, text }] };
     },
 
@@ -246,6 +293,18 @@ export async function runMcpServer(opts: McpServerOpts): Promise<void> {
   server.tool('rctrl_ls', TOOL_DESCRIPTIONS.rctrl_ls, VerbSchemas.ls.shape, tools.rctrl_ls);
   server.tool('rctrl_kill', TOOL_DESCRIPTIONS.rctrl_kill, VerbSchemas.kill.shape, tools.rctrl_kill);
   server.tool('rctrl_read', TOOL_DESCRIPTIONS.rctrl_read, VerbSchemas.read.shape, tools.rctrl_read);
+  server.tool(
+    'rctrl_actions',
+    TOOL_DESCRIPTIONS.rctrl_actions,
+    { name: z.string() },
+    tools.rctrl_actions,
+  );
+  server.tool(
+    'rctrl_diff',
+    TOOL_DESCRIPTIONS.rctrl_diff,
+    { name: z.string(), from: z.number().int().optional(), to: z.number().int().optional() },
+    tools.rctrl_diff,
+  );
   server.tool(
     'rctrl_capture',
     TOOL_DESCRIPTIONS.rctrl_capture,
