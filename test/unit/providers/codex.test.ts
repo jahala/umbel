@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { CodexProvider } from '../../../src/core/providers/codex.ts';
-import { PROVIDERS, getProvider } from '../../../src/core/providers/registry.ts';
+import { getProvider, PROVIDERS } from '../../../src/core/providers/registry.ts';
 
 // ---------------------------------------------------------------------------
 // CodexProvider.buildLaunch

@@ -2,8 +2,8 @@ import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { SessionNotFoundError } from '../core/errors.ts';
-import { SessionSchema } from '../core/types.ts';
 import type { Session } from '../core/types.ts';
+import { SessionSchema } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------
 // Path helpers — all accept env explicitly, no direct process.env reads

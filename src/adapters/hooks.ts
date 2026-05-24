@@ -27,10 +27,7 @@ date +%s%N >> "$state/events/log"
 // buildSettingsJson — inline JSON for claude's --settings flag
 // ---------------------------------------------------------------------------
 
-export function buildSettingsJson(opts: {
-  hookScriptPath: string;
-  allowedTools?: string;
-}): string {
+export function buildSettingsJson(opts: { hookScriptPath: string; allowedTools?: string }): string {
   const hooksBlock = {
     Stop: [
       {

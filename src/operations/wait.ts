@@ -2,8 +2,8 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
-import { applyDefaultTimeout, compile } from '../core/wait.ts';
 import type { WaitContext } from '../core/wait.ts';
+import { applyDefaultTimeout, compile } from '../core/wait.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { ProviderUnknownError } from '../../../src/core/errors.ts';
 import { GeminiProvider } from '../../../src/core/providers/gemini.ts';
-import { PROVIDERS, getProvider } from '../../../src/core/providers/registry.ts';
+import { getProvider, PROVIDERS } from '../../../src/core/providers/registry.ts';
 
 // ---------------------------------------------------------------------------
 // GeminiProvider.buildLaunch

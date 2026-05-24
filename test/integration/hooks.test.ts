@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  STOP_HOOK_SCRIPT,
   buildSettingsJson,
   ensureGlobalHooks,
+  STOP_HOOK_SCRIPT,
 } from '../../src/adapters/hooks.ts';
 
 let tmpDir: string;
