@@ -13,6 +13,67 @@ export interface ProviderLaunchSpec {
   //   inline-config flags (Claude's --settings).
 }
 
+// ---------------------------------------------------------------------------
+// ActionManifest — structured digest of what a worker DID in a session
+// ---------------------------------------------------------------------------
+//
+// Returned by AgentProvider.extractActions. Normalized across providers so
+// the orchestrator gets the same shape whether it's reading from Claude,
+// Codex, or Gemini transcripts. Each field is a pure projection of the
+// provider's JSONL into a small, agent-consumable summary.
+//
+// Empty/zero values are valid (e.g. a turn that produced no tool calls
+// returns toolsUsed = {}). Implementations MUST NOT throw on malformed
+// input — return a partial or empty manifest instead.
+
+export interface ActionManifest {
+  // Count of each tool the worker invoked, e.g. { Read: 7, Edit: 3, Bash: 1 }.
+  // Keys are the provider's native tool names (Claude uses 'Read'/'Edit'/etc.;
+  // Codex/Gemini may use different identifiers — normalized per-provider).
+  toolsUsed: Record<string, number>;
+
+  // Absolute or relative file paths the worker read, edited, wrote.
+  // Each list is order-of-first-occurrence, deduplicated.
+  filesRead: string[];
+  filesEdited: string[];
+  filesWritten: string[];
+
+  // Bash commands the worker executed, in order. Multi-line commands kept as
+  // one string. No deduplication (repetition is meaningful).
+  bashCommands: string[];
+
+  // Human-readable error messages extracted from tool_result entries that
+  // signal failure (is_error: true for Claude; provider-specific markers for
+  // Codex/Gemini). One entry per failed tool call.
+  errors: string[];
+
+  // Final assistant text from the most recent completed turn (stop_reason:
+  // end_turn for Claude, task_complete event for Codex, AfterAgent boundary
+  // for Gemini). Empty string if no completed turn yet.
+  finalMessage: string;
+
+  // Number of completed turns observed in the transcript. Zero if no turn
+  // has finished.
+  turnCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Turn — single completed cycle in a session
+// ---------------------------------------------------------------------------
+//
+// Returned by AgentProvider.extractTurns. A turn = everything between one
+// user prompt and the assistant's end-of-turn signal. `text` is the final
+// assistant text for that turn (matches what parseTranscript would return
+// if called against just that turn's slice of the JSONL).
+//
+// Index is zero-based, in chronological order. Used by operations/diff.ts
+// to compute deltas between turns.
+
+export interface Turn {
+  index: number;
+  text: string;
+}
+
 export interface AgentProvider {
   readonly name: string;
 
@@ -32,6 +93,18 @@ export interface AgentProvider {
   // Extract the final assistant text from the transcript file. Different
   // JSONL/JSON envelopes per provider.
   parseTranscript(content: string): string;
+
+  // Optional: extract a normalized digest of tool calls, files touched, and
+  // errors from the transcript. Returned shape is ActionManifest. Pure —
+  // never throws on malformed input; returns an empty/partial manifest.
+  // Operations layer (rctrl_actions) falls back to a "not implemented for
+  // this provider" message when this is undefined.
+  extractActions?(content: string): ActionManifest;
+
+  // Optional: split the transcript into completed turns. Each turn carries
+  // its final assistant text. Pure — never throws; returns [] for malformed
+  // or empty input. Used by operations/diff.ts to compute inter-turn deltas.
+  extractTurns?(content: string): Turn[];
 
   // For providers without hook lifecycle (aider): anchor-string fallback.
   // Mutually exclusive with hook-based completion; the operations layer
