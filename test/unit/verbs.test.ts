@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { RctrlUsageError } from '../../src/core/errors.ts';
-import { VerbSchemas, parseDuration } from '../../src/faces/verbs.ts';
+import { parseDuration, VerbSchemas } from '../../src/faces/verbs.ts';
 
 // ---------------------------------------------------------------------------
 // parseDuration
