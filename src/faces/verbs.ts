@@ -63,6 +63,10 @@ export const VerbSchemas = {
   }),
   read: z.object({
     name: z.string(),
+    head: z.number().int().nonnegative().optional(),
+    tail: z.number().int().nonnegative().optional(),
+    section: z.string().optional(),
+    full: z.boolean().optional(),
   }),
   capture: z.object({
     name: z.string(),

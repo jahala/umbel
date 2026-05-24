@@ -41,7 +41,15 @@ Verbs are short-lived. Per-session state lives in $RCTRL_STATE/sessions/<name>/ 
 
 ## Critical rule
 
-Pair every rctrl_send with a rctrl_wait. Sending without waiting causes your next rctrl_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.`;
+Pair every rctrl_send with a rctrl_wait. Sending without waiting causes your next rctrl_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.
+
+## Reading worker output efficiently
+
+- \`rctrl_read\` returns the verbatim final assistant text. Long responses (>~2000 tokens) auto-truncate to head+tail with an elision marker. Override with \`full: true\` to see everything, or \`head\`/\`tail\` (approx token counts) / \`section: "## Heading"\` to control the window.
+- \`rctrl_actions\` returns a structured digest (tools used, files touched, errors, final message). The right shape for "what HAPPENED?" — easier to scan than verbatim text and surfaces info rctrl_read doesn't (file paths touched, bash commands run, error count). Default reach for orchestration.
+- \`rctrl_diff\` returns a unified text diff between two turns of a session. Default: latest vs previous. Indispensable in review→fix loops — you see only what's NEW, not the prefix the reviewer keeps repeating.
+
+When orchestrating multiple workers, prefer rctrl_actions per worker and only escalate to rctrl_read when you need the verbatim text. In iterative loops, use rctrl_diff to track the delta between turns.`;
 
 const WORKFLOW = `# rctrl workflow YAML
 
