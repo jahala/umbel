@@ -22,6 +22,12 @@ jobs:
       id-token: write
       contents: read
       actions: read
+      # Scorecard's ListCommits GraphQL query + branch-protection check need
+      # these — without them: "Resource not accessible by integration".
+      # See ossf/scorecard-action issue #856 + #1248.
+      issues: read
+      pull-requests: read
+      checks: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:
