@@ -1,8 +1,9 @@
 import { unifiedDiff } from '../core/diff.ts';
-import { RctrlUsageError } from '../core/errors.ts';
+import { RctrlUsageError, SessionDeadError } from '../core/errors.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
+import { resolveJsonlPath } from './resolve-jsonl.ts';
 
 // ---------------------------------------------------------------------------
 // diff — return a unified text diff between two turns of a session.
@@ -28,13 +29,25 @@ export async function diff(opts: DiffOpts): Promise<string> {
   const env = opts.env ?? {};
 
   const session = await d.fs.readMeta(opts.name, env);
-  const jsonlPath = session.jsonlPath;
-  if (jsonlPath === null) return '(no transcript yet)';
-
   const provider = getProvider(session.provider);
   if (provider.extractTurns === undefined) {
     return `(turn extraction not implemented for provider: ${session.provider})`;
   }
+
+  let jsonlPath: string;
+  try {
+    jsonlPath = await resolveJsonlPath({
+      name: opts.name,
+      cwd: session.cwd,
+      sinceMs: session.createdAt,
+      env,
+      ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
+    });
+  } catch (err) {
+    if (err instanceof SessionDeadError) return '(no transcript yet)';
+    throw err;
+  }
+  if (jsonlPath.length === 0) return '(no transcript yet)';
 
   const content = await Bun.file(jsonlPath).text();
   const turns = provider.extractTurns(content);

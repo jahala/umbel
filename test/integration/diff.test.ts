@@ -151,4 +151,65 @@ describe('diff operation', () => {
     });
     await expect(diff({ name: 's9', env, from: -10 })).rejects.toBeInstanceOf(RctrlUsageError);
   });
+
+  // ---------------------------------------------------------------------------
+  // Regression: meta.jsonlPath=null + events/transcript-path written
+  // ---------------------------------------------------------------------------
+  // Same bug class as actions: after Stop, stop.sh writes events/transcript-path
+  // but meta.json.jsonlPath remains null. diff() must use resolveJsonlPath, not
+  // session.jsonlPath directly. See test/integration/actions.test.ts comment.
+
+  test('meta.jsonlPath=null + events/transcript-path → resolves and diffs (not "(no transcript yet)")', async () => {
+    const turn0 = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: 'q1' }] },
+    });
+    const turn0reply = JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'alpha' }],
+        stop_reason: 'end_turn',
+      },
+    });
+    const turn1 = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: 'q2' }] },
+    });
+    const turn1reply = JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'beta' }],
+        stop_reason: 'end_turn',
+      },
+    });
+    const jsonl = [turn0, turn0reply, turn1, turn1reply].join('\n');
+
+    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-diff-fallback-'));
+    const env = { RCTRL_STATE: tmpDir };
+    const name = 'sfallback';
+    const sessionDir = join(tmpDir, 'sessions', name);
+    await mkdir(join(sessionDir, 'events'), { recursive: true });
+
+    const transcriptPath = join(tmpDir, `${name}.jsonl`);
+    await writeFile(transcriptPath, jsonl, 'utf8');
+    await writeFile(join(sessionDir, 'events', 'transcript-path'), transcriptPath, 'utf8');
+
+    const meta = SessionSchema.parse({
+      name,
+      cwd: '/tmp',
+      provider: 'claude',
+      anonymous: false,
+      createdAt: Date.now(),
+      jsonlPath: null,
+    });
+    await writeFile(join(sessionDir, 'meta.json'), JSON.stringify(meta), 'utf8');
+
+    const out = await diff({ name, env });
+
+    expect(out).not.toContain('(no transcript yet)');
+    expect(out).toContain('-alpha');
+    expect(out).toContain('+beta');
+  });
 });
