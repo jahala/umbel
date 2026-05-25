@@ -203,7 +203,7 @@ describe('rctrl_ls', () => {
 // ---------------------------------------------------------------------------
 
 describe('rctrl_read', () => {
-  test('read session with null jsonlPath returns empty content', async () => {
+  test('read session with null jsonlPath and no transcript-path returns empty content', async () => {
     const env = await setup();
     const name = sessionName('readnull');
 
@@ -227,8 +227,55 @@ describe('rctrl_read', () => {
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
     const result = await tools.rctrl_read({ name });
-    // null jsonlPath → empty text
+    // null jsonlPath AND no events/transcript-path → empty text
     expect(result.content[0]?.text).toBe('');
+  });
+
+  // Regression — handler must fall back to events/transcript-path when
+  // meta.jsonlPath is null. Pre-fix this returned '' even though the data
+  // was available via the fallback chain. See actions.test.ts comment.
+  test('read with null jsonlPath but events/transcript-path written → resolves and returns text', async () => {
+    const env = await setup();
+    const name = sessionName('readfb');
+
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { newSession } = await import('../../src/adapters/tmux.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+    const { mkdir, writeFile } = await import('node:fs/promises');
+
+    await ensureSessionDir(name, env);
+    await newSession({ name, cwd: '/tmp', cmd: ['bash'] });
+    CREATED.push(name);
+
+    // Write a real JSONL elsewhere and point events/transcript-path at it.
+    const jsonlPath = join(tmpDir, `${name}.jsonl`);
+    const jsonl = JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Resolved from fallback.' }],
+        stop_reason: 'end_turn',
+      },
+    });
+    await writeFile(jsonlPath, jsonl, 'utf8');
+
+    const eventsDir = join(tmpDir, 'sessions', name, 'events');
+    await mkdir(eventsDir, { recursive: true });
+    await writeFile(join(eventsDir, 'transcript-path'), jsonlPath, 'utf8');
+
+    const session = SessionSchema.parse({
+      name,
+      cwd: '/tmp',
+      provider: 'claude',
+      anonymous: false,
+      createdAt: Date.now(),
+      jsonlPath: null,
+    });
+    await writeMeta(name, session, env);
+
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+    const result = await tools.rctrl_read({ name });
+    expect(result.content[0]?.text).toBe('Resolved from fallback.');
   });
 });
 

@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { SessionDeadError } from '../core/errors.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { truncateAssistantText } from '../core/truncate.ts';
 import { actions } from '../operations/actions.ts';
@@ -8,6 +9,7 @@ import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
+import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
@@ -202,8 +204,26 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
 
     rctrl_read: async (args) => {
       const session = await d.fs.readMeta(args.name, env);
-      const jsonlPath = session.jsonlPath;
-      if (jsonlPath === null) {
+      // resolveJsonlPath falls back to events/transcript-path when
+      // meta.jsonlPath is still null (the normal case for a freshly-stopped
+      // session — the Stop hook writes the path file but doesn't update meta
+      // itself; resolveJsonlPath persists it on first successful resolve).
+      let jsonlPath: string;
+      try {
+        jsonlPath = await resolveJsonlPath({
+          name: args.name,
+          cwd: session.cwd,
+          sinceMs: session.createdAt,
+          env,
+          ...(deps !== undefined ? { deps } : {}),
+        });
+      } catch (err) {
+        if (err instanceof SessionDeadError) {
+          return { content: [{ type: 'text' as const, text: '' }] };
+        }
+        throw err;
+      }
+      if (jsonlPath.length === 0) {
         return { content: [{ type: 'text' as const, text: '' }] };
       }
       const provider = getProvider(session.provider);
