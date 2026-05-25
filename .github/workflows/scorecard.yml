@@ -45,6 +45,12 @@ jobs:
           path: results.sarif
           retention-days: 5
 
+      # Non-blocking: requires Code Scanning to be enabled at the repo level
+      # (Settings → Code security → Code scanning → Set up). Until that's on,
+      # this step would otherwise fail the whole workflow. Scorecard's results
+      # still publish to scorecard.dev via publish_results: true above, and
+      # are visible in the workflow logs + the uploaded SARIF artifact.
       - uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # ratchet:github/codeql-action/upload-sarif@v4
+        continue-on-error: true
         with:
           sarif_file: results.sarif
