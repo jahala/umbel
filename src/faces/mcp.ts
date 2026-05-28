@@ -342,11 +342,43 @@ export async function runMcpServer(opts: McpServerOpts): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // Block until signal fires
+  // Block until the session ends, then return so main.ts can process.exit().
+  //
+  // CRITICAL: the MCP SDK's StdioServerTransport registers only 'data'/'error'
+  // listeners on stdin — it does NOT watch for 'end'/'close', and its onclose
+  // only fires on an explicit transport.close(). So when the parent (the MCP
+  // client) dies, stdin hits EOF but nothing here would notice: the process
+  // would stay alive on this Promise AND leave stdin flowing on an EOF'd pipe,
+  // busy-looping a CPU core. We must detect EOF ourselves.
+  //
+  // Resolve on ANY of: stdin end/close (parent death), SIGINT/SIGTERM, or an
+  // injected opts.signal (used by in-proc tests).
   await new Promise<void>((resolve) => {
+    let settled = false;
+    const done = (): void => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
     if (opts.signal !== undefined) {
-      opts.signal.addEventListener('abort', () => resolve());
+      if (opts.signal.aborted) {
+        done();
+        return;
+      }
+      opts.signal.addEventListener('abort', done, { once: true });
     }
-    // stdin close is handled by StdioServerTransport
+
+    process.stdin.once('end', done);
+    process.stdin.once('close', done);
+    process.once('SIGINT', done);
+    process.once('SIGTERM', done);
+    // stdin must be flowing/resumed for 'end' to fire on EOF. The transport's
+    // 'data' listener already resumed it, but resume() is idempotent + safe.
+    process.stdin.resume();
   });
+
+  // Clean shutdown: removes the transport's stdin listeners and pauses stdin
+  // so the fd stops being polled. Best-effort — we're exiting regardless.
+  await transport.close().catch(() => undefined);
 }
