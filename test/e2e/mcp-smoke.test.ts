@@ -279,4 +279,59 @@ describe('mcp-smoke', () => {
       }
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Regression: process must EXIT when stdin closes (parent death)
+  // ---------------------------------------------------------------------------
+  //
+  // Production bug: `rctrl mcp` blocked forever on a Promise that only resolved
+  // on opts.signal — which the CLI never passes. On stdin EOF (the MCP client /
+  // parent dying) the process reparented to launchd and busy-looped a CPU core
+  // (stdin left flowing on an EOF'd pipe). Every session reconnect leaked one.
+  //
+  // Spawns the real `rctrl mcp` subprocess, completes the initialize handshake
+  // (so start() has registered its stdin listeners — the exact leak state),
+  // then closes stdin and asserts the process exits promptly. Pre-fix:
+  // proc.exited never resolves → loses the race against the timeout.
+
+  test('rctrl mcp exits promptly when stdin closes (no orphan/spin)', async () => {
+    const subTmp = await mkdtemp(join(tmpdir(), 'rctrl-mcp-exit-'));
+
+    const proc = Bun.spawn(['bun', 'run', MAIN, 'mcp'], {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, RCTRL_STATE: subTmp },
+    });
+
+    const init = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      },
+    });
+    proc.stdin.write(`${init}\n`);
+    await proc.stdin.flush();
+
+    // Let the server process initialize, then close stdin = parent-death EOF.
+    await Bun.sleep(500);
+    await proc.stdin.end();
+
+    const TIMEOUT = Symbol('timeout');
+    const result = await Promise.race([proc.exited, Bun.sleep(4000).then(() => TIMEOUT)]);
+
+    if (result === TIMEOUT) {
+      proc.kill('SIGKILL');
+      throw new Error('rctrl mcp did not exit within 4s of stdin close — orphan/leak regression');
+    }
+
+    // Any prompt exit proves it didn't hang/spin.
+    expect(typeof result).toBe('number');
+
+    await rm(subTmp, { recursive: true, force: true });
+  });
 });
