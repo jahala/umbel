@@ -58,11 +58,21 @@ Verbs:
 interface ParsedArgs {
   flags: Map<string, string | boolean>;
   positionals: string[];
+  // String-valued flags captured per-occurrence so repeatable flags (e.g.
+  // --env KEY=VAL) collect every value, not just the last. `flags` stays
+  // last-wins for everything else.
+  repeated: Map<string, string[]>;
 }
 
 function parseArgv(argv: readonly string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
+  const repeated = new Map<string, string[]>();
   const positionals: string[] = [];
+  const addRepeated = (key: string, value: string): void => {
+    const arr = repeated.get(key);
+    if (arr === undefined) repeated.set(key, [value]);
+    else arr.push(value);
+  };
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i] ?? '';
@@ -75,12 +85,16 @@ function parseArgv(argv: readonly string[]): ParsedArgs {
     if (arg.startsWith('--')) {
       const eqIdx = arg.indexOf('=');
       if (eqIdx !== -1) {
-        flags.set(arg.slice(2, eqIdx), arg.slice(eqIdx + 1));
+        const key = arg.slice(2, eqIdx);
+        const value = arg.slice(eqIdx + 1);
+        flags.set(key, value);
+        addRepeated(key, value);
       } else {
         const key = arg.slice(2);
         const next = argv[i + 1];
         if (next !== undefined && !next.startsWith('-')) {
           flags.set(key, next);
+          addRepeated(key, next);
           i++;
         } else {
           flags.set(key, true);
@@ -97,7 +111,7 @@ function parseArgv(argv: readonly string[]): ParsedArgs {
     }
     i++;
   }
-  return { flags, positionals };
+  return { flags, positionals, repeated };
 }
 
 function flagStr(flags: Map<string, string | boolean>, ...keys: string[]): string | undefined {
@@ -113,6 +127,21 @@ function flagBool(flags: Map<string, string | boolean>, ...keys: string[]): bool
     if (flags.has(key) && flags.get(key) !== false) return true;
   }
   return false;
+}
+
+// Parse repeated `--env KEY=VALUE` flags into an override map. Throws on a
+// malformed entry (no '=' or empty key) so the user sees the error instead of
+// a silently-dropped var.
+export function parseEnvFlags(entries: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const entry of entries) {
+    const eq = entry.indexOf('=');
+    if (eq <= 0) {
+      throw new RctrlUsageError(`Invalid --env '${entry}'. Use --env KEY=VALUE.`);
+    }
+    out[entry.slice(0, eq)] = entry.slice(eq + 1);
+  }
+  return out;
 }
 
 function formatTimestamp(ms: number): string {
@@ -188,7 +217,7 @@ function getCliEnv(): Record<string, string | undefined> {
 }
 
 export async function runCli(argv: readonly string[]): Promise<number> {
-  const { flags, positionals } = parseArgv(argv);
+  const { flags, positionals, repeated } = parseArgv(argv);
 
   if (flagBool(flags, 'help', 'h')) {
     process.stdout.write(HELP);
@@ -201,7 +230,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (flagBool(flags, 'p', 'print')) {
-    return runPMode(flags, positionals);
+    return runPMode(flags, positionals, repeated);
   }
 
   if (positionals.length === 0) {
@@ -215,7 +244,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   try {
     switch (verb) {
       case 'spawn':
-        return await verbSpawn(flags, rest);
+        return await verbSpawn(flags, rest, repeated);
       case 'send':
         return await verbSend(flags, rest);
       case 'wait':
@@ -260,6 +289,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 async function runPMode(
   flags: Map<string, string | boolean>,
   positionals: string[],
+  repeated: Map<string, string[]>,
 ): Promise<number> {
   let prompt: string | undefined = positionals[0];
 
@@ -288,21 +318,23 @@ async function runPMode(
   // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
   const claudeBin = process.env.RCTRL_CLAUDE_BIN;
 
-  const pOpts = {
-    prompt,
-    cwd: flagStr(flags, 'cwd') ?? process.cwd(),
-    outputFormat,
-    env: getCliEnv(),
-    ...(name !== undefined ? { name } : {}),
-    ...(resume !== undefined ? { resume } : {}),
-    ...(provider !== undefined ? { provider } : {}),
-    ...(model !== undefined ? { model } : {}),
-    ...(allowedTools !== undefined ? { allowedTools } : {}),
-    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    ...(claudeBin !== undefined ? { claudeBin } : {}),
-  };
-
   try {
+    const envEntries = repeated.get('env') ?? [];
+    const workerEnv = envEntries.length > 0 ? parseEnvFlags(envEntries) : undefined;
+    const pOpts = {
+      prompt,
+      cwd: flagStr(flags, 'cwd') ?? process.cwd(),
+      outputFormat,
+      env: getCliEnv(),
+      ...(name !== undefined ? { name } : {}),
+      ...(resume !== undefined ? { resume } : {}),
+      ...(provider !== undefined ? { provider } : {}),
+      ...(model !== undefined ? { model } : {}),
+      ...(allowedTools !== undefined ? { allowedTools } : {}),
+      ...(workerEnv !== undefined ? { workerEnv } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(claudeBin !== undefined ? { claudeBin } : {}),
+    };
     const result = await runP(pOpts);
 
     if (outputFormat === 'json') {
@@ -326,6 +358,7 @@ async function runPMode(
 async function verbSpawn(
   flags: Map<string, string | boolean>,
   positionals: string[],
+  repeated: Map<string, string[]>,
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name !== undefined && !isValidSessionName(name)) {
@@ -337,6 +370,8 @@ async function verbSpawn(
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
   const claudeBin = process.env.RCTRL_CLAUDE_BIN;
+  const envEntries = repeated.get('env') ?? [];
+  const workerEnv = envEntries.length > 0 ? parseEnvFlags(envEntries) : undefined;
 
   const spawnOpts = {
     cwd,
@@ -345,6 +380,7 @@ async function verbSpawn(
     ...(provider !== undefined ? { provider } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
+    ...(workerEnv !== undefined ? { workerEnv } : {}),
     ...(claudeBin !== undefined ? { claudeBin } : {}),
   };
   const result = await spawn(spawnOpts);

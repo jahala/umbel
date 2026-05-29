@@ -79,6 +79,9 @@ export interface SpawnOpts {
   anonymous?: boolean;
   claudeBin?: string;
   env?: Record<string, string | undefined>;
+  // Explicit per-worker environment overrides (e.g. from `--env KEY=VAL`).
+  // Merged OVER the inherited environment; never persisted to meta.json.
+  workerEnv?: Record<string, string>;
   deps?: Partial<Deps>;
 }
 
@@ -146,28 +149,34 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   const sinceMs = Date.now();
 
-  // Build env for tmux session. A curated subset of process.env is inherited
-  // so claude/codex/gemini are findable on PATH and basic locale works.
-  // SHELL/PROMPT_COMMAND/BASH_ENV/ZDOTDIR are deliberately EXCLUDED — passing
-  // them causes bash to emit a startup byte to the pane's stdin which races
-  // the first send-keys and gets consumed as an empty prompt. Explicit `env`
-  // passed in opts wins. RCTRL_STATE/RCTRL_SESSION_ID are always set so the
-  // stop hook can locate the session dir.
+  // Build env for the tmux session. The worker runs with the user's
+  // environment by default — it should behave like running the CLI yourself,
+  // so an exported proxy / API key / config-dir reaches it — MINUS the
+  // shell-init vars below: passing them makes the pane's login shell emit a
+  // startup byte to stdin that races the first send-keys and gets consumed as
+  // an empty prompt. Precedence (low→high): inherited < provider launch env <
+  // operational env < explicit workerEnv override. RCTRL_STATE/RCTRL_SESSION_ID
+  // are forced last so the stop hook can always locate the session dir.
   const stateRoot = d.fs.stateDir(env);
-  const SAFE_INHERITED = new Set(['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TZ', 'TMPDIR']);
+  const SHELL_INIT_DENYLIST = new Set(['SHELL', 'PROMPT_COMMAND', 'BASH_ENV', 'ZDOTDIR', 'ENV']);
   const tmuxEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (v === undefined) continue;
-    if (SAFE_INHERITED.has(k) || k.startsWith('FAKE_CLAUDE_')) {
-      tmuxEnv[k] = v;
-    }
+    if (v === undefined || SHELL_INIT_DENYLIST.has(k)) continue;
+    tmuxEnv[k] = v;
   }
-  // Merge provider-specific env (over the safe-inherited set).
+  // Provider-required env (over the inherited base).
   for (const [k, v] of Object.entries(launchSpec.env)) {
     tmuxEnv[k] = v;
   }
+  // Operational env (RCTRL_STATE, test-injected vars).
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) tmuxEnv[k] = v;
+  }
+  // Explicit per-worker overrides win over everything except reserved vars.
+  if (opts.workerEnv !== undefined) {
+    for (const [k, v] of Object.entries(opts.workerEnv)) {
+      tmuxEnv[k] = v;
+    }
   }
   tmuxEnv.RCTRL_STATE = stateRoot;
   tmuxEnv.RCTRL_SESSION_ID = name;

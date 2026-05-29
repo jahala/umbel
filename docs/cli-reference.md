@@ -32,7 +32,7 @@ The mapping lives in `errorExitCode` (`src/faces/cli.ts`).
 Create a named tmux session running a provider CLI interactively. The session is registered in `~/.rctrl/sessions/<name>/meta.json` and appears in tmux as `rctrl-<name>`.
 
 ```
-rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS]
+rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS] [--env KEY=VALUE]...
 ```
 
 **Flags**
@@ -44,6 +44,7 @@ rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--provider claude\|codex\|gemini` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; rctrl does not restrict the values. |
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. |
+| `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. Use for per-worker proxies, API keys, or custom config dirs. Not persisted to `meta.json`. |
 
 **Output:** `spawned: <name>` on stdout.
 
@@ -60,6 +61,9 @@ rctrl spawn --name fixer --provider codex --cwd ./worktrees/fix --model o4-mini
 
 # Gemini provider
 rctrl spawn --name analyst --provider gemini --cwd ./worktrees/analysis
+
+# Pass env vars to the worker (repeatable) — e.g. a proxy or a custom-endpoint key
+rctrl spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --env FOO=bar
 
 # Anonymous (auto-killed after one turn via rctrl -p)
 rctrl spawn --cwd /tmp/scratch
@@ -448,6 +452,7 @@ If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
 | `--provider claude\|codex\|gemini` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time. |
 | `--allowed-tools TOOLS` | unset | Forwarded to the provider's equivalent of `--allowedTools`. |
+| `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. |
 | `--output-format text\|json` | `text` | `json` emits `{"text": "...", "sessionName": "..."}`. |
 | `--timeout DURATION` | unset (30m default from wait layer) | Maximum wait time. Exit 124 on expiry. |
 
