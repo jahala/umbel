@@ -3,51 +3,66 @@ import { dirname } from 'node:path';
 import { RctrlUsageError } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
+import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
 import type { Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
-// Auto-dismiss the workspace-trust dialog. Real claude shows this on first
-// launch in every fresh cwd; the default option ("Yes, I trust this folder")
-// is selected, so a single Enter dismisses it. We poll capture-pane briefly
-// and bail as soon as either (a) the trust prompt appears (dismiss + return)
-// or (b) any substantive content renders (UI is past the dialog → return).
-const TRUST_PROMPT_RE = /trust this folder|trust this directory/i;
-const TRUST_POLL_INTERVAL_MS = 100;
-const TRUST_POLL_TIMEOUT_MS = 5000;
-const TRUST_PANE_CONTENT_THRESHOLD = 120;
+// Auto-dismiss a provider's interactive startup dialogs (workspace-trust /
+// hook-review prompts). Generic over providers: each declares its dialogs in
+// `provider.startupDialogs`; we poll capture-pane and send each dialog's keys
+// as it appears. Dialogs are dismissed in declared order (later ones only
+// render after earlier ones clear). Bails early when all known dialogs have
+// fired OR the provider's readyMatch shows the main UI is up (already-trusted
+// cwd → no dialogs appear). Best-effort throughout — never throws.
+const DIALOG_POLL_INTERVAL_MS = 150;
+const DIALOG_POLL_TIMEOUT_MS = 8000;
+const DIALOG_KEY_SETTLE_MS = 300;
 
-// Real claude binary detection: only the actual claude TUI shows the trust
-// dialog. Skip dismissal for fixtures (fake-claude.sh) and future provider
-// binaries (codex, gemini) — they have their own startup contracts.
-function isRealClaudeBin(bin: string): boolean {
-  return bin === 'claude' || /(^|\/)claude$/.test(bin);
-}
+export async function dismissStartupDialogs(
+  d: Pick<Deps, 'tmux'>,
+  name: string,
+  dialogs: readonly StartupDialog[],
+  readyMatch?: RegExp,
+): Promise<void> {
+  if (dialogs.length === 0) return;
+  const deadline = Date.now() + DIALOG_POLL_TIMEOUT_MS;
+  const fired = new Set<number>();
 
-async function dismissTrustDialog(d: Deps, name: string): Promise<void> {
-  const deadline = Date.now() + TRUST_POLL_TIMEOUT_MS;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && fired.size < dialogs.length) {
     let pane = '';
     try {
-      pane = await d.tmux.capturePane(name, 30);
+      pane = await d.tmux.capturePane(name, 40);
     } catch {
       return;
     }
-    if (TRUST_PROMPT_RE.test(pane)) {
-      try {
-        await d.tmux.sendText(name, '\n');
-      } catch {
-        // best-effort; ignore
+
+    const idx = nextStartupDialog(pane, dialogs, fired);
+    if (idx !== null) {
+      const dialog = dialogs[idx];
+      if (dialog !== undefined) {
+        try {
+          await d.tmux.sendKeys(name, dialog.keys);
+        } catch {
+          // best-effort; ignore
+        }
+        fired.add(idx);
+        // Give the TUI a moment to render the next dialog (or the main UI)
+        // before the next capture.
+        await Bun.sleep(DIALOG_KEY_SETTLE_MS);
+        continue;
       }
+    }
+
+    // No pending dialog matched. If the main UI is up and we've handled
+    // everything visible, we're done (covers already-trusted cwds where no
+    // dialog ever appears).
+    if (readyMatch !== undefined && readyMatch.test(pane)) {
       return;
     }
-    // UI has rendered something else (welcome screen, main prompt, etc.) — we
-    // are past the trust dialog.
-    if (pane.trim().length > TRUST_PANE_CONTENT_THRESHOLD) {
-      return;
-    }
-    await Bun.sleep(TRUST_POLL_INTERVAL_MS);
+
+    await Bun.sleep(DIALOG_POLL_INTERVAL_MS);
   }
 }
 
@@ -175,8 +190,13 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     throw err;
   }
 
-  if (isRealClaudeBin(bin)) {
-    await dismissTrustDialog(d, name).catch(() => undefined);
+  // Auto-dismiss startup dialogs only for REAL provider binaries. Test
+  // fixtures inject their bin via opts.claudeBin (fake-*.sh) and show no
+  // dialogs — for them we just give the fixture a brief warm-up instead.
+  if (opts.claudeBin === undefined && provider.startupDialogs !== undefined) {
+    await dismissStartupDialogs(d, name, provider.startupDialogs, provider.readyMatch).catch(
+      () => undefined,
+    );
   } else {
     await Bun.sleep(800);
   }

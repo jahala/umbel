@@ -189,6 +189,35 @@ const codexProvider: AgentProvider = {
 
   stopEventName: 'Stop',
 
+  // Codex's TUI shows up to THREE interactive gates on first launch in a
+  // fresh cwd (verified against the real 0.133/0.135 binary). They appear in
+  // this order, but each is matched independently against the live pane, so
+  // the loop dismisses whichever is actually showing:
+  //   1. "Update available!" — options Update now / Skip / Skip until next.
+  //      We MUST avoid the default "Update now" (it runs `npm install -g`);
+  //      Down then Enter selects "Skip". Only appears when an update is
+  //      pending, hence variable ordering.
+  //   2. "Do you trust the contents of this directory?" — default "Yes,
+  //      continue"; a single Enter dismisses it. Also gates hook loading —
+  //      until the dir is trusted, hooks won't load at all.
+  //   3. "Hooks need review" — we need option 2 "Trust all and continue",
+  //      reached with Down then Enter, so our Stop hook runs.
+  // codex persists the trust + hook decisions to ~/.codex/config.toml, so
+  // later launches in the same dir skip 2 and 3 — the loop then no-ops and
+  // readyMatch fires.
+  startupDialogs: [
+    { match: /update available/i, keys: ['Down', 'Enter'] },
+    { match: /trust the contents of this directory/i, keys: ['Enter'] },
+    { match: /hooks need review/i, keys: ['Down', 'Enter'] },
+  ],
+  readyMatch: /OpenAI Codex|Implement \{|gpt-/i,
+
+  // Codex's TUI ignores a submitting Enter that lands immediately after the
+  // pasted prompt — the text stays in the input box, unsent, and no turn runs.
+  // A pause before Enter lets it ingest the paste. 750ms verified sufficient
+  // against the real binary (an immediate Enter consistently failed).
+  submitDelayMs: 750,
+
   buildLaunch(opts): ProviderLaunchSpec {
     // Codex has no --config-dir or --hooks flag. Hook discovery is via the
     // filesystem: $CODEX_HOME/hooks.json or <cwd>/.codex/hooks.json. We write

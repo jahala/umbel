@@ -111,7 +111,14 @@ export async function listSessions(): Promise<string[]> {
 // sendText — auto-routes based on content
 // ---------------------------------------------------------------------------
 
-export async function sendText(name: string, text: string): Promise<void> {
+export interface SendTextOpts {
+  // Milliseconds to wait between delivering the text and the submitting Enter.
+  // Some provider TUIs (Codex) drop an Enter that arrives too soon after a
+  // paste. Default 0 (Claude submits fine immediately).
+  submitDelayMs?: number;
+}
+
+export async function sendText(name: string, text: string, opts?: SendTextOpts): Promise<void> {
   const target = prefixed(name);
   const useBuffer = text.includes('\n') || text.length > 1000;
 
@@ -135,8 +142,28 @@ export async function sendText(name: string, text: string): Promise<void> {
   } else {
     await tmux(['send-keys', '-t', target, '-l', text]);
   }
+  // Let the TUI ingest the text before the submitting Enter (see SendTextOpts).
+  const delay = opts?.submitDelayMs ?? 0;
+  if (delay > 0) {
+    await Bun.sleep(delay);
+  }
   // Send Enter to submit
   await tmux(['send-keys', '-t', target, 'Enter']);
+}
+
+// ---------------------------------------------------------------------------
+// sendKeys — send named tmux keys (Enter, Down, Escape, …) without auto-Enter
+// ---------------------------------------------------------------------------
+//
+// Unlike sendText (which sends literal text + a submitting Enter), this sends
+// raw tmux key tokens in order. Used for dismissing startup dialogs where the
+// keystroke is a navigation/confirm key, not text. Each token is a tmux
+// key-name as understood by `send-keys` (e.g. 'Enter', 'Down', 'Up', 'Escape').
+
+export async function sendKeys(name: string, keys: readonly string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const target = prefixed(name);
+  await tmux(['send-keys', '-t', target, ...keys]);
 }
 
 // ---------------------------------------------------------------------------

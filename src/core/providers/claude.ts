@@ -279,6 +279,11 @@ const claudeProvider: AgentProvider = {
 
   stopEventName: 'Stop',
 
+  // Real claude shows a workspace-trust prompt on first launch in a fresh cwd.
+  // Default option is "Yes, I trust this folder" — a single Enter dismisses it.
+  startupDialogs: [{ match: /trust this folder|trust this directory/i, keys: ['Enter'] }],
+  readyMatch: /Try |for shortcuts|│/,
+
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsJson = buildSettingsJson(
       opts.allowedTools !== undefined
