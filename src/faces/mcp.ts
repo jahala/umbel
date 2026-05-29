@@ -9,7 +9,7 @@ import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
-import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
+import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
@@ -89,7 +89,7 @@ export interface McpToolHandlers {
   rctrl_spawn: (args: {
     name?: string | undefined;
     cwd: string;
-    provider?: 'claude' | 'codex' | 'gemini' | undefined;
+    provider?: 'claude' | 'codex' | 'gemini' | 'opencode' | undefined;
     model?: string | undefined;
     allowedTools?: string | undefined;
     env?: Record<string, string> | undefined;
@@ -210,16 +210,14 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
 
     rctrl_read: async (args) => {
       const session = await d.fs.readMeta(args.name, env);
-      // resolveJsonlPath falls back to events/transcript-path when
-      // meta.jsonlPath is still null (the normal case for a freshly-stopped
-      // session — the Stop hook writes the path file but doesn't update meta
-      // itself; resolveJsonlPath persists it on first successful resolve).
-      let jsonlPath: string;
+      const provider = getProvider(session.provider);
+      let content: string;
       try {
-        jsonlPath = await resolveJsonlPath({
+        content = await resolveTranscriptContent({
           name: args.name,
           cwd: session.cwd,
           sinceMs: session.createdAt,
+          provider,
           env,
           ...(deps !== undefined ? { deps } : {}),
         });
@@ -229,11 +227,6 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         }
         throw err;
       }
-      if (jsonlPath.length === 0) {
-        return { content: [{ type: 'text' as const, text: '' }] };
-      }
-      const provider = getProvider(session.provider);
-      const content = await Bun.file(jsonlPath).text();
       const rawText = provider.parseTranscript(content);
       const truncated = truncateAssistantText(rawText, {
         ...(args.head !== undefined ? { head: args.head } : {}),

@@ -17,7 +17,7 @@ import { actions } from '../operations/actions.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
-import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
+import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
@@ -529,17 +529,14 @@ async function verbRead(
   if (name === undefined) throw new RctrlUsageError('read: <name> is required');
   const cliEnv = getCliEnv();
   const session = await defaultDeps.fs.readMeta(name, cliEnv);
-  // jsonlPath in meta may be null until the first Stop event resolves the
-  // transcript path. resolveJsonlPath handles the cache + hook-payload +
-  // fallback chain.
-  const jsonlPath = await resolveJsonlPath({
+  const provider = getProvider(session.provider);
+  const content = await resolveTranscriptContent({
     name,
     cwd: session.cwd,
     sinceMs: session.createdAt,
+    provider,
     env: cliEnv,
   });
-  const provider = getProvider(session.provider);
-  const content = await Bun.file(jsonlPath).text();
   const text = provider.parseTranscript(content);
   process.stdout.write(`${text}\n`);
   return 0;

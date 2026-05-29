@@ -110,6 +110,12 @@ export interface AgentProvider {
   // or empty input. Used by operations/diff.ts to compute inter-turn deltas.
   extractTurns?(content: string): Turn[];
 
+  // Optional: providers whose transcript is NOT an on-disk file (e.g. OpenCode,
+  // SQLite-backed) declare the argv to run to export it as text. PURE — returns
+  // the command; the operations layer executes it. Mutually exclusive with the
+  // file-based path (meta.jsonlPath / events/transcript-path).
+  exportTranscript?(sessionId: string): readonly string[];
+
   // Optional: interactive startup dialogs this provider's TUI shows on first
   // launch in a fresh cwd (workspace-trust prompts, hook-review prompts).
   // spawn auto-dismisses them by watching the pane and sending each dialog's
@@ -135,5 +141,14 @@ export interface AgentProvider {
     sentinel: string; // e.g. '<<<RCTRL_DONE_8e2a>>>'
     promptSuffix: string; // appended to user prompts so the model
     // is instructed to emit the sentinel
+  };
+
+  // Optional: a one-time global plugin to install alongside stop.sh.
+  // Provider declares the file name and content; the hooks adapter writes it
+  // to hooksDir and merges its absolute path into the provider's config file.
+  // Pure — no I/O here; the adapter owns installation.
+  readonly globalPlugin?: {
+    readonly fileName: string;
+    readonly content: string;
   };
 }

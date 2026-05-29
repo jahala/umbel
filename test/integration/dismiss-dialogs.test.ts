@@ -148,3 +148,24 @@ describe('dismissStartupDialogs (GeminiProvider specs)', () => {
     expect(sent).toEqual([]);
   }, 12_000);
 });
+
+describe('dismissStartupDialogs (dialog-less warm-up via readyMatch)', () => {
+  // opencode has no startup dialogs but DOES have a readyMatch. The loop must
+  // poll until the UI renders (warm-up) so the first send doesn't race boot —
+  // returning immediately on empty dialogs (the old behaviour) dropped the
+  // first prompt into a still-booting TUI.
+  test('empty dialogs + readyMatch: polls until ready, sends nothing', async () => {
+    let captures = 0;
+    const panes = ['booting…', 'booting…', 'Ask anything...'];
+    let sentCount = 0;
+    const tmux = {
+      capturePane: async () => panes[Math.min(captures++, panes.length - 1)] ?? '',
+      sendKeys: async () => {
+        sentCount++;
+      },
+    };
+    await dismissStartupDialogs({ tmux } as never, 'sess', [], /Ask anything\.\.\.|Build · /);
+    expect(captures).toBeGreaterThan(1); // polled — did NOT return immediately
+    expect(sentCount).toBe(0); // no dialogs → no keystrokes
+  });
+});

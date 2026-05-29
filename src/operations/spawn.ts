@@ -26,11 +26,12 @@ export async function dismissStartupDialogs(
   dialogs: readonly StartupDialog[],
   readyMatch?: RegExp,
 ): Promise<void> {
-  if (dialogs.length === 0) return;
+  // Nothing to wait for: no dialogs to dismiss AND no ready signal to poll for.
+  if (dialogs.length === 0 && readyMatch === undefined) return;
   const deadline = Date.now() + DIALOG_POLL_TIMEOUT_MS;
   const fired = new Set<number>();
 
-  while (Date.now() < deadline && fired.size < dialogs.length) {
+  while (Date.now() < deadline) {
     let pane = '';
     try {
       pane = await d.tmux.capturePane(name, 40);
@@ -55,10 +56,14 @@ export async function dismissStartupDialogs(
       }
     }
 
-    // No pending dialog matched. If the main UI is up and we've handled
-    // everything visible, we're done (covers already-trusted cwds where no
-    // dialog ever appears).
-    if (readyMatch !== undefined && readyMatch.test(pane)) {
+    // No pending dialog matched.
+    if (readyMatch !== undefined) {
+      // Poll until the main UI renders. This doubles as a warm-up for
+      // dialog-less providers (e.g. opencode) so the first send doesn't race
+      // the TUI's boot and get dropped.
+      if (readyMatch.test(pane)) return;
+    } else if (fired.size >= dialogs.length) {
+      // No ready signal to wait for; done once all known dialogs are dismissed.
       return;
     }
 
@@ -107,15 +112,22 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   const anonymous = opts.anonymous ?? opts.name === undefined;
 
+  // Resolve provider first — fails fast on unknown provider before any I/O.
+  const provider = getProvider(providerName);
+
   // Install global stop hook
   const { stopScriptPath } = await d.hooks.ensureGlobalHooks(env);
+
+  // Install provider-specific global plugin (e.g. opencode-stop.ts), if declared.
+  if (provider.globalPlugin !== undefined) {
+    await d.hooks.installGlobalPlugin(provider.globalPlugin, env);
+  }
 
   // Create session directory
   await d.fs.ensureSessionDir(name, env);
 
   // Ask the provider how to launch. The provider encapsulates all
   // provider-specific arg building (settings JSON, model flag, etc.).
-  const provider = getProvider(providerName);
   const launchSpec = provider.buildLaunch({
     sessionId: name,
     cwd: opts.cwd,

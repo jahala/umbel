@@ -60,7 +60,7 @@ For multi-step, multi-worker pipelines. Schema is validated by WorkflowSpecSchem
   workers:
     <name>:
       cwd: string                   # required; must exist before \`rctrl run\`
-      provider: claude|codex|gemini # default: claude
+      provider: claude|codex|gemini|opencode # default: claude
       model: string                 # optional; provider validates at spawn
       allowedTools: string          # optional; comma-separated
 
@@ -121,7 +121,12 @@ Run: \`rctrl run pipeline.yaml\`.`;
 
 const PROVIDERS = `# rctrl providers
 
-Pluggable interface — same orchestration over three vendor CLIs.
+Pluggable interface — same orchestration over four vendor CLIs.
+
+## Subscription billing vs bring-your-own-model
+
+Claude, Codex, and Gemini are subscription-billed (rctrl drives their interactive TUI).
+OpenCode is NOT subscription-billed — it is: local (ollama/…, free), free-tier (opencode/big-pickle, keyless but limited), or API-billed (your own key for anthropic/… or openrouter/…). OpenCode is the bring-any-model lane, not a cheaper path to cloud models.
 
 ## Per-vendor specifics
 
@@ -140,19 +145,27 @@ Gemini (\`provider: gemini\`)
 - stopEventName: "AfterAgent" (not "Stop"). matcher: "*". Timeout in ms (Codex uses seconds).
 - Same overwrite hazard as Codex.
 
+OpenCode (\`provider: opencode\`)
+- Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config (~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation, crash-safe, reversible. Inert unless RCTRL_SESSION_ID is set.
+- No JSONL transcript (SQLite only). Output read via \`opencode export <sessionID>\`.
+- stopEventName: "session.status" idle (plugin-based).
+- Model flag: -m provider/model. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
+- API keys reach the worker via inherited env or --env KEY=VAL; rctrl does not manage keys.
+
 ## When to mix providers
 
 - Claude for orchestration/architecture, Codex for code completion in a tight loop, Gemini for analysis or summarization.
+- Use an opencode/ollama worker as a free local laborer alongside subscription workers.
 - Run the same task against two providers concurrently and have an arbitrator pick the better output.
-- Use Claude for sensitive paths (privacy/compliance) and Codex/Gemini for non-sensitive ones.
 
 ## Model names
 
-Free-form strings. Each provider validates at spawn time. rctrl does not enforce names — what's valid depends on your subscription tier.
+Free-form strings. Each provider validates at spawn time. rctrl does not enforce names.
 
   claude: "sonnet", "opus", "haiku"
   codex:  "o4-mini", "gpt-4.1", ...
-  gemini: "gemini-2.5-pro", "gemini-2.5-flash", ...`;
+  gemini: "gemini-2.5-pro", "gemini-2.5-flash", ...
+  opencode: "opencode/big-pickle", "ollama/qwen2.5-coder", "anthropic/claude-sonnet-4-5", "openrouter/deepseek/deepseek-v4-flash"`;
 
 const TOPIC_CONTENT: Record<HelpTopic, string> = {
   lifecycle: LIFECYCLE,
@@ -164,7 +177,7 @@ const INDEX = `rctrl_help topics:
 
   lifecycle  — spawn/send/wait/read/kill verb contracts and typical orchestration
   workflow   — YAML schema for multi-step pipelines (rctrl run)
-  providers  — per-vendor specifics for claude/codex/gemini
+  providers  — per-vendor specifics for claude/codex/gemini/opencode
 
 Call rctrl_help with { topic: "<name>" } for a topic. Omit topic for this index.`;
 

@@ -3,7 +3,7 @@ import { getProvider } from '../core/providers/registry.ts';
 import type { ActionManifest } from '../core/providers/types.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
-import { resolveJsonlPath } from './resolve-jsonl.ts';
+import { resolveTranscriptContent } from './resolve-transcript.ts';
 
 // ---------------------------------------------------------------------------
 // actions — read a session's transcript and return an agent-facing text
@@ -28,16 +28,13 @@ export async function actions(opts: ActionsOpts): Promise<string> {
     return `(actions extraction not implemented for provider: ${session.provider})`;
   }
 
-  // resolveJsonlPath handles the full fallback chain: meta.jsonlPath →
-  // events/transcript-path → dir-snapshot. Without this, freshly-stopped
-  // sessions (where the hook wrote transcript-path but meta.json still
-  // has jsonlPath: null) would always report "(no transcript yet)".
-  let jsonlPath: string;
+  let content: string;
   try {
-    jsonlPath = await resolveJsonlPath({
+    content = await resolveTranscriptContent({
       name: opts.name,
       cwd: session.cwd,
       sinceMs: session.createdAt,
+      provider,
       env,
       ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
     });
@@ -45,9 +42,7 @@ export async function actions(opts: ActionsOpts): Promise<string> {
     if (err instanceof SessionDeadError) return '(no transcript yet)';
     throw err;
   }
-  if (jsonlPath.length === 0) return '(no transcript yet)';
 
-  const content = await Bun.file(jsonlPath).text();
   const manifest = provider.extractActions(content);
   return formatManifest(manifest);
 }

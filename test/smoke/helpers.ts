@@ -7,18 +7,20 @@ import { killSession } from '../../src/adapters/tmux.ts';
 // Provider-aware gating
 // ---------------------------------------------------------------------------
 
-export type Provider = 'claude' | 'codex' | 'gemini';
+export type Provider = 'claude' | 'codex' | 'gemini' | 'opencode';
 
 const PROVIDER_BINS: Record<Provider, string[]> = {
   claude: ['/Users/jahala/.local/bin/claude'],
   codex: ['/Users/jahala/Library/Application Support/com.conductor.app/bin/codex'],
   gemini: [],
+  opencode: [],
 };
 
 const PROVIDER_WHICH: Record<Provider, string> = {
   claude: 'claude',
   codex: 'codex',
   gemini: 'gemini',
+  opencode: 'opencode',
 };
 
 export function smokeEnabledFor(provider: Provider): boolean {
