@@ -271,6 +271,58 @@ rctrl read reviewer > review.md
 
 ---
 
+### actions
+
+Write a structured digest of what a worker DID this session — tools used (with counts), files read/edited/written, bash commands, errors, and the final message — to stdout. Reads the transcript via the same resolution chain as `read`. Often the right shape for "what happened?" when you don't need the verbatim response.
+
+```
+rctrl actions <name>
+```
+
+**Positionals**
+
+| Position | Description |
+|----------|-------------|
+| `<name>` | Session name. |
+
+**Examples**
+
+```bash
+rctrl actions fixer
+```
+
+---
+
+### diff
+
+Write a unified text diff between two turns of a session to stdout. Default: the latest turn vs the one before it. Indices are zero-based; negative indices count from the end (`-1` = latest). Useful in review→fix loops to see only what changed since the previous turn.
+
+```
+rctrl diff <name> [--from N] [--to N]
+```
+
+**Positionals**
+
+| Position | Description |
+|----------|-------------|
+| `<name>` | Session name. |
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from N` | second-to-last turn | Base turn index (negative counts from end). |
+| `--to N` | last turn | Target turn index (negative counts from end). |
+
+**Examples**
+
+```bash
+rctrl diff reviewer                # latest vs previous
+rctrl diff reviewer --from 0 --to 2
+```
+
+---
+
 ### capture
 
 Write the last N lines of the tmux pane to stdout. Uses `tmux capture-pane`. For human watching only; do not parse this output for agent responses (use `rctrl read` instead).

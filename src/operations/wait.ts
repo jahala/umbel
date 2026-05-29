@@ -27,6 +27,11 @@ export interface WaitOpts {
 export interface WaitResult {
   stopped: boolean;
   reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted';
+  // On timeout, a best-effort snapshot of the tmux pane at the moment the wait
+  // gave up — so a stuck worker's cause (e.g. an unexpected provider dialog
+  // blocking the turn) is visible instead of a bare "timed out". Absent for
+  // non-timeout reasons and when capture fails.
+  paneSnapshot?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +235,23 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       if (settled) return;
       if (syncEvaluate(ctx)) {
         const reason = inspectReason(condition, ctx);
-        settle({ stopped: reason !== 'timeout', reason });
+        if (reason === 'timeout') {
+          // Best-effort pane snapshot for diagnostics before giving up.
+          let paneSnapshot: string | undefined;
+          try {
+            paneSnapshot = await d.tmux.capturePane(name, 30);
+          } catch {
+            // capture failed (session gone, tmux error) — settle without it.
+          }
+          if (settled) return;
+          settle({
+            stopped: false,
+            reason,
+            ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
+          });
+        } else {
+          settle({ stopped: true, reason });
+        }
       }
     }
 
