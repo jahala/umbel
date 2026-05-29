@@ -1,5 +1,7 @@
-import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { mergeOpencodePluginConfig } from '../core/providers/opencode.ts';
 import { stateDir } from './fs-state.ts';
 
 // ---------------------------------------------------------------------------
@@ -73,4 +75,38 @@ export async function ensureGlobalHooks(
   await chmod(stopScriptPath, 0o755);
 
   return { stopScriptPath };
+}
+
+// ---------------------------------------------------------------------------
+// installGlobalPlugin — write a provider's JS plugin and register it in the
+// provider's global config. Idempotent. Side effects at the edge.
+// ---------------------------------------------------------------------------
+
+export async function installGlobalPlugin(
+  spec: { fileName: string; content: string },
+  env: Record<string, string | undefined> = {},
+): Promise<void> {
+  const hooksDir = join(stateDir(env), 'hooks');
+  await mkdir(hooksDir, { recursive: true });
+
+  const pluginAbsPath = join(hooksDir, spec.fileName);
+  await writeFile(pluginAbsPath, spec.content, { encoding: 'utf8' });
+
+  // Resolve the opencode global config path, respecting XDG_CONFIG_HOME.
+  const xdgCfgHome =
+    env.XDG_CONFIG_HOME ??
+    process.env.XDG_CONFIG_HOME ??
+    join(env.HOME ?? process.env.HOME ?? homedir(), '.config');
+  const cfgPath = join(xdgCfgHome, 'opencode', 'opencode.jsonc');
+  await mkdir(join(xdgCfgHome, 'opencode'), { recursive: true });
+
+  let existing: string | null = null;
+  try {
+    existing = await readFile(cfgPath, 'utf8');
+  } catch {
+    // file doesn't exist yet — mergeOpencodePluginConfig handles null
+  }
+
+  const merged = mergeOpencodePluginConfig(existing, pluginAbsPath);
+  await writeFile(cfgPath, merged, { encoding: 'utf8' });
 }

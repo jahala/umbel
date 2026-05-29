@@ -1,3 +1,4 @@
+import * as exec from '../adapters/exec.ts';
 import * as fsState from '../adapters/fs-state.ts';
 import { watch } from '../adapters/fs-watch.ts';
 import * as hooks from '../adapters/hooks.ts';
@@ -13,6 +14,7 @@ export const defaultDeps = {
   fs: fsState,
   hooks,
   jsonl,
+  exec,
   watch,
 };
 

@@ -7,7 +7,7 @@ import { parseWorkflow, substitute, topoSort } from '../core/workflow.ts';
 import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
-import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
+import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { waitFor } from '../operations/wait.ts';
@@ -183,28 +183,31 @@ async function executeStep(
       throw new Error(`Step '${workerName}' timed out waiting for its wait condition`);
     }
 
-    // Capture outputs. JSONL is resolved lazily — spawn-time discovery is no
-    // longer reliable for real claude (the transcript only exists after the
-    // first message). resolveJsonlPath checks the hook-payload path first,
-    // then falls back to dir-snapshot discovery.
+    // Capture outputs. Transcript is resolved lazily via resolveTranscriptContent
+    // which handles both file-backed (claude/codex/gemini) and command-backed
+    // (future exportTranscript providers) in one call.
     const outputs: Record<string, string> = {};
     const d = { ...defaultDeps, ...deps };
-    let resolvedJsonl: string | undefined;
+    let resolvedContent: string | undefined;
     for (const [outputKey, outputSpec] of Object.entries(step.outputs ?? {})) {
       if (outputSpec === 'assistant_last_message') {
-        if (resolvedJsonl === undefined) {
-          resolvedJsonl = await resolveJsonlPath({
+        if (resolvedContent === undefined) {
+          const sessionMeta = await d.fs.readMeta(sessionName, env);
+          const provider = getProvider(sessionMeta.provider);
+          resolvedContent = await resolveTranscriptContent({
             name: sessionName,
             cwd: spawnResult.session.cwd,
             sinceMs: spawnResult.session.createdAt,
+            provider,
             env,
             ...(deps !== undefined ? { deps } : {}),
           });
+          outputs[outputKey] = provider.parseTranscript(resolvedContent);
+        } else {
+          const sessionMeta = await d.fs.readMeta(sessionName, env);
+          const provider = getProvider(sessionMeta.provider);
+          outputs[outputKey] = provider.parseTranscript(resolvedContent);
         }
-        const sessionMeta = await d.fs.readMeta(sessionName, env);
-        const provider = getProvider(sessionMeta.provider);
-        const content = await Bun.file(resolvedJsonl).text();
-        outputs[outputKey] = provider.parseTranscript(content);
       } else if (outputSpec.startsWith('file:')) {
         const filePath = outputSpec.slice('file:'.length);
         const resolved = filePath.startsWith('/') ? filePath : join(cwd, filePath);

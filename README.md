@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/jahala/rctrl/ci.yml?branch=master)](https://github.com/jahala/rctrl/actions)
 
-**Spawn other-provider agent workers from inside your agent session.** Drive `claude`, `codex`, or `gemini` interactively in tmux from a CLI, MCP server, or YAML workflow. One binary, one provider abstraction, three vendors — all subscription-billed.
+**Spawn other-provider agent workers from inside your agent session.** Drive `claude`, `codex`, `gemini`, or `opencode` interactively in tmux from a CLI, MCP server, or YAML workflow. One binary, one provider abstraction — subscription-billed for claude/codex/gemini, bring-any-model for opencode.
 
 ## Claude Code orchestrating Codex (and Gemini, in parallel)
 
@@ -83,6 +83,8 @@ Same flags as the vendor `-p` mode, with provider as a parameter:
 rctrl -p "summarise $FILE" --provider claude --model sonnet --allowedTools Read
 rctrl -p "summarise $FILE" --provider codex  --model o4-mini
 rctrl -p "summarise $FILE" --provider gemini --model gemini-2.5-pro
+rctrl -p "summarise $FILE" --provider opencode --model opencode/big-pickle   # free, keyless
+rctrl -p "summarise $FILE" --provider opencode --model ollama/qwen2.5-coder  # local
 ```
 
 `--provider` defaults to `claude` for backward compatibility. Cold-start ~3–5s on first call; use `--name` / `--resume` to keep a session warm:
@@ -104,20 +106,23 @@ Homebrew tap coming. For now, build from source.
 
 - `tmux` >= 3.0
 - macOS or Linux
-- At least one provider CLI installed and authenticated with an active subscription:
-  - `claude` (Claude Pro / Max)
-  - `codex` (ChatGPT Plus / Pro / Team / Enterprise)
-  - `gemini` (Google AI Pro / Ultra)
+- At least one provider CLI installed:
+  - `claude` (Claude Pro / Max — subscription-billed)
+  - `codex` (ChatGPT Plus / Pro / Team / Enterprise — subscription-billed)
+  - `gemini` (Google AI Pro / Ultra — subscription-billed)
+  - `opencode` (no subscription — local via `ollama/…`, free-tier via `opencode/big-pickle`, or API-billed via `anthropic/…` / `openrouter/…` with your own key)
 
 Providers without their binary installed simply can't be selected. `rctrl spawn --provider gemini` fails loudly when tmux can't exec `gemini`.
 
 ## Architecture
 
-No daemon. `tmux` is the daemon; `~/.rctrl/` is the state store. Every `rctrl` invocation is short-lived. Completion detection uses each provider's native lifecycle event (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`) — not terminal scraping. Agent output is read from each provider's transcript file, never from `capture-pane`. Providers are pluggable via a small interface (`src/core/providers/types.ts`) — adding a 4th CLI is a ~150 LOC implementation, not a rewrite. See [`docs/architecture-v3.md`](docs/architecture-v3.md) for the full design.
+No daemon. `tmux` is the daemon; `~/.rctrl/` is the state store. Every `rctrl` invocation is short-lived. Completion detection uses each provider's native lifecycle event (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`, OpenCode `session.status` idle) — not terminal scraping. Agent output is read from each provider's transcript (JSONL for claude/codex/gemini; `opencode export` JSON for opencode), never from `capture-pane`. Providers are pluggable via a small interface (`src/core/providers/types.ts`) — adding a new CLI is a ~150 LOC implementation, not a rewrite. See [`docs/architecture-v3.md`](docs/architecture-v3.md) for the full design.
 
 ## Why this exists
 
 Anthropic, OpenAI, and Google all priced their `-p` / `--print` modes at API rates while leaving the interactive TUI on subscription. `rctrl` gives you a programmatic surface over the *interactive* binary of whichever vendor you're paying — so the work you'd otherwise do by hand in the TUI runs against the subscription you already pay for, not per-token API billing on top.
+
+OpenCode has no subscription. It adds a different lane: **local** (your hardware, free, `ollama/…`), **free-tier** (OpenCode Zen, keyless, limited), or **API-billed** (your own key for `anthropic/…`, `openrouter/…`). Together, OpenCode makes rctrl a **unified orchestration layer over any agent CLI** — great for running free local workers alongside your subscription claude/codex/gemini without any cost trade-off.
 
 Aimed at solo developers automating their own work. Not for commercial resale or evasion at scale. See [`docs/tos.md`](docs/tos.md) for the defensibility spectrum across all three vendors.
 

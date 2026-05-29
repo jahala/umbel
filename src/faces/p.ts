@@ -5,7 +5,7 @@ import { SessionNameSchema } from '../core/types.ts';
 import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
-import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
+import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { waitFor } from '../operations/wait.ts';
@@ -159,25 +159,29 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
     // Real claude doesn't write the transcript until first message arrives, so
     // jsonlPath isn't known at spawn time. After Stop, the hook payload's
     // transcript_path landed in events/transcript-path (see stop.sh).
-    const resolvedJsonl = await resolveJsonlPath({
+    // For command-based providers (exportTranscript), there is no on-disk path.
+    const sessionMeta = await d.fs.readMeta(sessionName, env);
+    const provider = getProvider(sessionMeta.provider);
+    const content = await resolveTranscriptContent({
       name: sessionName,
       cwd: sessionCwd,
       sinceMs: spawnSinceMs,
+      provider,
       env,
       ...(deps !== undefined ? { deps } : {}),
     });
-
-    // Look up the provider for this session and extract the response text.
-    const sessionMeta = await d.fs.readMeta(sessionName, env);
-    const provider = getProvider(sessionMeta.provider);
-    const content = await Bun.file(resolvedJsonl).text();
     const text = provider.parseTranscript(content);
+    // resolveTranscriptContent (file branch) persists jsonlPath into meta on first
+    // resolve — re-read to get the updated value. Command-based providers have no
+    // on-disk path, so set '' in that case.
+    const updatedMeta = await d.fs.readMeta(sessionName, env);
+    const jsonlPath = provider.exportTranscript !== undefined ? '' : (updatedMeta.jsonlPath ?? '');
 
     if (anonymous) {
       await kill(killOpts).catch(() => undefined);
     }
 
-    return { text, jsonlPath: resolvedJsonl, sessionName };
+    return { text, jsonlPath, sessionName };
   } catch (err) {
     if (anonymous) {
       await kill(killOpts).catch(() => undefined);
