@@ -13,7 +13,9 @@ import {
 import { isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { SessionNameSchema } from '../core/types.ts';
+import { actions } from '../operations/actions.ts';
 import { defaultDeps } from '../operations/deps.ts';
+import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
 import { resolveJsonlPath } from '../operations/resolve-jsonl.ts';
 import { send } from '../operations/send.ts';
@@ -45,6 +47,8 @@ Verbs:
   kill    Kill a session
   attach  Attach to a session
   read    Read last assistant message
+  actions Digest of what a worker did (tools, files, errors)
+  diff    Text diff between two turns of a session
   capture Capture last N tmux pane lines
   logs    Tail session event log
   run     Run a workflow YAML file
@@ -226,6 +230,10 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         return await verbAttach(flags, rest);
       case 'read':
         return await verbRead(flags, rest);
+      case 'actions':
+        return await verbActions(flags, rest);
+      case 'diff':
+        return await verbDiff(flags, rest);
       case 'capture':
         return await verbCapture(flags, rest);
       case 'logs':
@@ -396,7 +404,12 @@ async function verbWait(
 
   const result = await waitFor(waitOpts);
 
-  if (result.reason === 'timeout') return 124;
+  if (result.reason === 'timeout') {
+    if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
+      process.stderr.write(`rctrl: wait timed out. Last tmux pane:\n${result.paneSnapshot}\n`);
+    }
+    return 124;
+  }
   if (result.reason === 'aborted') return 130;
   return 0;
 }
@@ -492,6 +505,43 @@ async function verbRead(
   const provider = getProvider(session.provider);
   const content = await Bun.file(jsonlPath).text();
   const text = provider.parseTranscript(content);
+  process.stdout.write(`${text}\n`);
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// actions — structured digest of what a worker did
+// ---------------------------------------------------------------------------
+
+async function verbActions(
+  flags: Map<string, string | boolean>,
+  positionals: string[],
+): Promise<number> {
+  const name = flagStr(flags, 'name') ?? positionals[0];
+  if (name === undefined) throw new RctrlUsageError('actions: <name> is required');
+  const text = await actions({ name, env: getCliEnv() });
+  process.stdout.write(`${text}\n`);
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// diff — unified text diff between two turns
+// ---------------------------------------------------------------------------
+
+async function verbDiff(
+  flags: Map<string, string | boolean>,
+  positionals: string[],
+): Promise<number> {
+  const name = flagStr(flags, 'name') ?? positionals[0];
+  if (name === undefined) throw new RctrlUsageError('diff: <name> is required');
+  const fromStr = flagStr(flags, 'from');
+  const toStr = flagStr(flags, 'to');
+  const text = await diff({
+    name,
+    env: getCliEnv(),
+    ...(fromStr !== undefined ? { from: Number.parseInt(fromStr, 10) } : {}),
+    ...(toStr !== undefined ? { to: Number.parseInt(toStr, 10) } : {}),
+  });
   process.stdout.write(`${text}\n`);
   return 0;
 }

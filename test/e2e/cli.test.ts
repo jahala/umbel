@@ -106,6 +106,30 @@ describe('cli', () => {
     expect(r.stdout).toContain('rctrl');
   });
 
+  // actions/diff are real verbs (route to their operations), NOT unknown.
+  // Missing <name> is a usage error (exit 2 with a verb-specific message),
+  // distinct from the "unknown verb" path.
+  test('actions is a known verb (requires <name>, not "unknown verb")', async () => {
+    const r = await runCli(['actions']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('actions: <name> is required');
+    expect(r.stderr).not.toContain('unknown verb');
+  });
+
+  test('diff is a known verb (requires <name>, not "unknown verb")', async () => {
+    const r = await runCli(['diff']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('diff: <name> is required');
+    expect(r.stderr).not.toContain('unknown verb');
+  });
+
+  test('--help lists the actions and diff verbs', async () => {
+    const r = await runCli(['--help']);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('actions');
+    expect(r.stdout).toContain('diff');
+  });
+
   test('-p "hi" with fake-claude outputs response and exits 0', async () => {
     const env = await setup();
     const encodedCwd = realpathSync(tmpDir).replace(/[^a-zA-Z0-9]/g, '-');

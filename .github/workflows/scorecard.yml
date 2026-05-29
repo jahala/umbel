@@ -45,6 +45,15 @@ jobs:
           path: results.sarif
           retention-days: 5
 
+      # Non-blocking: uploading SARIF to the Code Scanning view requires Code
+      # Scanning to be enabled at the repo level (Settings → Code security →
+      # Code scanning). It's off by default on new public repos and there's no
+      # API to flip it on, so until someone enables it this step would fail the
+      # whole workflow. continue-on-error keeps scorecard green; the analysis
+      # still runs + publishes to scorecard.dev, and the SARIF stays available
+      # as a workflow artifact. Once Code Scanning is enabled this silently
+      # starts populating the Security tab — no further workflow change needed.
       - uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # ratchet:github/codeql-action/upload-sarif@v4
+        continue-on-error: true
         with:
           sarif_file: results.sarif

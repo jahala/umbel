@@ -167,8 +167,12 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
       };
       const result = await waitFor(waitOpts);
+      // On timeout, include the pane snapshot so the orchestrator can SEE why
+      // the worker stalled (e.g. an unexpected dialog) instead of just "timeout".
+      const payload: { reason: string; paneSnapshot?: string } = { reason: result.reason };
+      if (result.paneSnapshot !== undefined) payload.paneSnapshot = result.paneSnapshot;
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ reason: result.reason }) }],
+        content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
       };
     },
 
