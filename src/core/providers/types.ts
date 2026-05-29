@@ -2,6 +2,10 @@
 // Provider abstraction — types.ts
 // ---------------------------------------------------------------------------
 
+import type { StartupDialog } from '../startup-dialogs.ts';
+
+export type { StartupDialog };
+
 export interface ProviderLaunchSpec {
   bin: string; // 'claude' | 'codex' | 'gemini' | absolute path
   args: string[]; // launch flags (model, allowedTools, hook config)
@@ -105,6 +109,24 @@ export interface AgentProvider {
   // its final assistant text. Pure — never throws; returns [] for malformed
   // or empty input. Used by operations/diff.ts to compute inter-turn deltas.
   extractTurns?(content: string): Turn[];
+
+  // Optional: interactive startup dialogs this provider's TUI shows on first
+  // launch in a fresh cwd (workspace-trust prompts, hook-review prompts).
+  // spawn auto-dismisses them by watching the pane and sending each dialog's
+  // keys. Declared in order; later dialogs only appear after earlier ones are
+  // dismissed. Omit/empty for providers with no startup dialogs.
+  readonly startupDialogs?: readonly StartupDialog[];
+
+  // Optional: a marker that the main UI has rendered (past all dialogs). Lets
+  // spawn stop polling early when the cwd is already trusted (no dialogs
+  // appear) instead of waiting out the full timeout.
+  readonly readyMatch?: RegExp;
+
+  // Optional: milliseconds to wait between pasting the prompt text and sending
+  // the submitting Enter. Codex's TUI drops an Enter that arrives too soon
+  // after the paste (the prompt sits in the box unsent); a short delay lets it
+  // ingest the text first. Claude submits fine with no delay (omit → 0).
+  readonly submitDelayMs?: number;
 
   // For providers without hook lifecycle (aider): anchor-string fallback.
   // Mutually exclusive with hook-based completion; the operations layer
