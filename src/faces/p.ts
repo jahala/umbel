@@ -22,6 +22,7 @@ export interface PModeOpts {
   provider?: string;
   model?: string;
   allowedTools?: string;
+  workerEnv?: Record<string, string>;
   outputFormat: 'text' | 'json';
   timeoutMs?: number;
   env?: Record<string, string | undefined>;
@@ -82,6 +83,7 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
         ...(opts.provider !== undefined ? { provider: opts.provider } : {}),
         ...(opts.model !== undefined ? { model: opts.model } : {}),
         ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
+        ...(opts.workerEnv !== undefined ? { workerEnv: opts.workerEnv } : {}),
         ...(opts.claudeBin !== undefined ? { claudeBin: opts.claudeBin } : {}),
         ...(deps !== undefined ? { deps } : {}),
       };
@@ -101,6 +103,7 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
       ...(opts.provider !== undefined ? { provider: opts.provider } : {}),
       ...(opts.model !== undefined ? { model: opts.model } : {}),
       ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
+      ...(opts.workerEnv !== undefined ? { workerEnv: opts.workerEnv } : {}),
       ...(opts.claudeBin !== undefined ? { claudeBin: opts.claudeBin } : {}),
       ...(deps !== undefined ? { deps } : {}),
     };

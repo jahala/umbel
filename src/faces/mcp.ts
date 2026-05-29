@@ -92,6 +92,7 @@ export interface McpToolHandlers {
     provider?: 'claude' | 'codex' | 'gemini' | undefined;
     model?: string | undefined;
     allowedTools?: string | undefined;
+    env?: Record<string, string> | undefined;
   }) => Promise<ToolResult>;
   rctrl_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
   rctrl_wait: (args: {
@@ -136,6 +137,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         ...(args.provider !== undefined ? { provider: args.provider } : {}),
         ...(args.model !== undefined ? { model: args.model } : {}),
         ...(args.allowedTools !== undefined ? { allowedTools: args.allowedTools } : {}),
+        ...(args.env !== undefined ? { workerEnv: args.env } : {}),
         ...(deps !== undefined ? { deps } : {}),
       };
       const result = await spawn(spawnOpts);

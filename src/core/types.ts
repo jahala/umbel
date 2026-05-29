@@ -100,6 +100,8 @@ export const WorkerSpecSchema = z.object({
   model: z.string().optional(),
   provider: ProviderNameSchema.optional(),
   allowedTools: z.string().optional(),
+  // Per-worker environment overrides, merged over the inherited environment.
+  env: z.record(z.string(), z.string()).optional(),
 });
 
 export type WorkerSpec = z.infer<typeof WorkerSpecSchema>;

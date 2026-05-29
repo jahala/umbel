@@ -152,6 +152,7 @@ async function executeStep(
       ...(workerSpec?.provider !== undefined ? { provider: workerSpec.provider } : {}),
       ...(workerSpec?.model !== undefined ? { model: workerSpec.model } : {}),
       ...(workerSpec?.allowedTools !== undefined ? { allowedTools: workerSpec.allowedTools } : {}),
+      ...(workerSpec?.env !== undefined ? { workerEnv: workerSpec.env } : {}),
       ...(opts.claudeBin !== undefined ? { claudeBin: opts.claudeBin } : {}),
       ...(deps !== undefined ? { deps } : {}),
     };

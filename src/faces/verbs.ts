@@ -38,6 +38,8 @@ export const VerbSchemas = {
     provider: ProviderNameSchema.optional(),
     model: z.string().optional(),
     allowedTools: z.string().optional(),
+    // Per-worker environment overrides, merged over the inherited environment.
+    env: z.record(z.string(), z.string()).optional(),
   }),
   send: z.object({
     name: z.string(),

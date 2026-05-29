@@ -61,6 +61,8 @@ workers:
     provider: claude             # optional: claude | codex | gemini (default: claude)
     model: sonnet                # optional: free-form; the provider validates at spawn time
     allowedTools: "Read,Bash"   # optional; forwarded to the provider's equivalent flag
+    env:                        # optional; per-worker vars, merged over inherited
+      HTTPS_PROXY: http://proxy:8080
 ```
 
 | Field | Required | Description |
@@ -69,6 +71,7 @@ workers:
 | `provider` | no | Which CLI to launch. One of `claude`, `codex`, `gemini`. Defaults to `claude` — existing v2 YAML files work without changes. |
 | `model` | no | Free-form model string. Each provider validates its own model names at spawn time; the YAML schema does not restrict values. |
 | `allowedTools` | no | Comma-separated tool list. Mirrors `rctrl spawn --allowed-tools`. |
+| `env` | no | Map of per-worker environment variables, merged over the inherited environment. Mirrors `rctrl spawn --env`. Not persisted to `meta.json`. |
 
 ---
 

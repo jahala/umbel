@@ -12,7 +12,7 @@
 | Claude Code only | Provider abstraction with `ClaudeProvider`, `CodexProvider`, `GeminiProvider` | Codex and Gemini have near-identical hook lifecycles to Claude; the four points of provider-specific behavior can be cleanly abstracted (see §4) |
 | Spawn-time JSONL discovery (`discoverSessionJsonl`) | Lazy resolution via `events/transcript-path` written by Stop hook from the payload | Real claude doesn't write the transcript until first message — discovery at spawn-time is impossible. The hook payload contains `transcript_path` for free. |
 | Argv parser: short flags consume next non-dash arg | Short flags are ALWAYS boolean | `rctrl -p "prompt"` was eating the prompt. Caught by smoke testing; saved by root-cause investigation. |
-| spawn passes full process.env to tmux | Curated allowlist: `PATH HOME USER LANG LC_ALL TZ TMPDIR FAKE_CLAUDE_*` | Passing `SHELL`/`PROMPT_COMMAND` triggers bash startup byte emission to the spawned process's stdin, racing the first send-keys. |
+| spawn passes full process.env to tmux | Inherit the environment MINUS a denylist (`SHELL PROMPT_COMMAND BASH_ENV ZDOTDIR ENV`), plus explicit `--env`/`env:` override | A worker should run with the user's environment (proxies, API keys, custom config dirs reach it) — like running the CLI yourself. The denylisted shell-init vars are excluded because they trigger a bash startup byte racing the first send-keys. (An earlier 7-var allowlist silently stripped everything else.) |
 | `lastAssistantMessage` walks backward stopping at first non-assistant | Finds last assistant index, then walks back from there | Real claude appends `system`/`last-prompt`/`ai-title`/`permission-mode` metadata AFTER the assistant response. |
 | `encodeCwd` literal slash replacement | `realpathSync` before encoding | macOS `/var/folders` resolves to `/private/var/folders`; claude encodes the resolved path. |
 | No trust-dialog handling | `dismissTrustDialog` polls capture-pane and sends Enter when the prompt appears | Real claude shows a workspace-trust dialog on first launch in every fresh cwd. Gated on `isRealClaudeBin` so non-claude binaries don't pay the polling cost. |
@@ -195,7 +195,25 @@ steps:
 
 ### MCP
 
-`rctrl_spawn` tool gains a `provider` field. Same MCP server, same engine.
+`rctrl_spawn` tool gains `provider` and `env` fields. Same MCP server, same engine.
+
+### Worker environment
+
+A spawned worker inherits the rctrl process's environment by default — it should
+behave like running the CLI yourself, so exported proxies, API keys, and custom
+config dirs reach it. A denylist (`SHELL`, `PROMPT_COMMAND`, `BASH_ENV`,
+`ZDOTDIR`, `ENV`) is excluded: those trigger a shell startup byte that races the
+first send-keys. Override or add per-worker vars with `--env KEY=VAL`
+(repeatable), the MCP `rctrl_spawn` `env` object, or a worker `env:` map in YAML.
+Overrides are spawn-time only — **never persisted to `meta.json`** (no secrets on
+disk).
+
+Caveats: (1) GUI MCP hosts (e.g. Conductor) start `rctrl mcp` with a resolved
+shell env, but a var exported *after* startup needs a server restart to appear;
+for host-independent injection set it in the MCP server's `env` config block.
+(2) Inheriting means a `*_API_KEY` in your shell reaches the worker — faithful to
+local behavior, but it can flip a provider from subscription to API billing, so
+don't export keys you don't want used.
 
 ## 9. State on disk (additions to v2)
 
