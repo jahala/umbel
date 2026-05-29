@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
+import { GeminiProvider } from '../../src/core/providers/gemini.ts';
 import { dismissStartupDialogs } from '../../src/operations/spawn.ts';
 
 // ---------------------------------------------------------------------------
@@ -104,4 +105,46 @@ describe('dismissStartupDialogs (CodexProvider specs)', () => {
     await dismissStartupDialogs({ tmux } as never, 'sess', [], undefined);
     expect(sent).toEqual([]);
   });
+});
+
+describe('dismissStartupDialogs (GeminiProvider specs)', () => {
+  test('dismisses the gemini folder-trust dialog with Enter', async () => {
+    // Real gemini 0.44 pane text (welcome banner co-renders above the dialog).
+    const { sent, tmux } = makeFakeTmux([
+      "Gemini CLI v0.44.0\nTips for getting started\n│ Do you trust the files in this folder? │\n● 1. Trust folder\n  2. Trust parent folder\n  3. Don't trust",
+      // After Enter, gemini advances (next prompt / main UI); single dialog →
+      // loop exits as soon as it fires regardless.
+      'Gemini CLI v0.44.0\n> Type your message',
+    ]);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      GeminiProvider.startupDialogs ?? [],
+      GeminiProvider.readyMatch,
+    );
+
+    expect(sent).toEqual([['Enter']]);
+  });
+
+  test('gemini banner alone (no trust dialog) sends nothing', async () => {
+    // Already-trusted: banner present but no trust prompt. Must NOT mistake
+    // the banner for a dialog (regression guard for the deliberately-dropped
+    // banner readyMatch). With no readyMatch + no matching dialog the loop
+    // polls to its internal timeout (~8s) before returning — hence the
+    // explicit per-test timeout below. (Follow-up: add a verified authed
+    // main-UI readyMatch to make this fast.)
+    const { sent, tmux } = makeFakeTmux([
+      'Gemini CLI v0.44.0\nTips for getting started\n> Type your message',
+    ]);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      GeminiProvider.startupDialogs ?? [],
+      GeminiProvider.readyMatch,
+    );
+
+    expect(sent).toEqual([]);
+  }, 12_000);
 });

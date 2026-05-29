@@ -227,6 +227,27 @@ const geminiProvider: AgentProvider = {
 
   stopEventName: 'AfterAgent',
 
+  // Gemini 0.44's TUI shows a folder-trust prompt on first launch in a fresh
+  // cwd (verified against the real binary): "Do you trust the files in this
+  // folder?" with options 1. Trust folder / 2. Trust parent / 3. Don't. Default
+  // ● is option 1 (trust this folder) — a single Enter accepts it, which also
+  // enables hook/MCP/settings loading for the dir. The "update available"
+  // notice is a non-interactive info box (no dismissal). Wording ("the files in
+  // this folder") differs from claude/codex, so it needs its own matcher.
+  //
+  // No readyMatch: gemini's welcome banner ("Gemini CLI v…", "Tips for getting
+  // started") renders ABOVE the trust dialog in the same frame, so a
+  // banner-based readyMatch could short-circuit before the dialog is dismissed.
+  // With a single dialog the loop already exits the instant it fires, so the
+  // fast-path optimization isn't needed; an already-trusted spawn just polls to
+  // the timeout (correct, only slightly slower).
+  //
+  // NOTE: gemini must already be authenticated (a one-time `gemini` → Sign in
+  // with Google). On an unauthenticated machine an auth-method prompt appears
+  // AFTER trust; rctrl does not auto-dismiss it (completing OAuth needs a
+  // browser, and silently picking an auth method is a poor default).
+  startupDialogs: [{ match: /trust the files in this folder/i, keys: ['Enter'] }],
+
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsPath = join(opts.cwd, '.gemini', 'settings.json');
 
