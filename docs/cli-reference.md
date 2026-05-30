@@ -19,6 +19,7 @@ rctrl --version                  Show version (0.0.1)
 | 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb) |
 | 124 | Wait timeout elapsed |
+| 125 | `wait` abandoned — the target worker died before completing its turn |
 | 130 | SIGINT — operation aborted by the user |
 
 The mapping lives in `errorExitCode` (`src/faces/cli.ts`).
@@ -114,7 +115,7 @@ EOF
 
 ### wait
 
-Block until a session reaches a condition. Default: wait for the Stop hook to fire (end of turn). Returns exit code 124 on timeout.
+Block until a session reaches a condition. Default: wait for the Stop hook to fire (end of turn). Returns exit code 124 on timeout, or 125 if the worker's session dies before the condition is met (e.g. the CLI crashed or exited non-zero).
 
 ```
 rctrl wait <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]

@@ -26,7 +26,7 @@ export interface WaitOpts {
 
 export interface WaitResult {
   stopped: boolean;
-  reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted';
+  reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted' | 'dead';
   // On timeout, a best-effort snapshot of the tmux pane at the moment the wait
   // gave up — so a stuck worker's cause (e.g. an unexpected provider dialog
   // blocking the turn) is visible instead of a bare "timed out". Absent for
@@ -231,27 +231,49 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
     // Central re-evaluate: build ctx snapshot async then check
     async function check(): Promise<void> {
       if (settled) return;
-      const ctx = await buildCtx();
+      let ctx = await buildCtx();
       if (settled) return;
-      if (syncEvaluate(ctx)) {
-        const reason = inspectReason(condition, ctx);
-        if (reason === 'timeout') {
-          // Best-effort pane snapshot for diagnostics before giving up.
-          let paneSnapshot: string | undefined;
-          try {
-            paneSnapshot = await d.tmux.capturePane(name, 30);
-          } catch {
-            // capture failed (session gone, tmux error) — settle without it.
-          }
-          if (settled) return;
-          settle({
-            stopped: false,
-            reason,
-            ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
-          });
-        } else {
-          settle({ stopped: true, reason });
+
+      if (!syncEvaluate(ctx)) {
+        // Condition not met yet. If the worker's tmux session has vanished it
+        // crashed or exited without ever firing the stop hook, so no future
+        // wake can satisfy the condition. Re-check the condition once AFTER
+        // confirming death (the worker may have fired stop in the instant
+        // before exiting); only then give up with 'dead'.
+        let alive = true;
+        try {
+          alive = await d.tmux.hasSession(name);
+        } catch {
+          // Liveness probe itself failed — assume alive; never report false-dead.
         }
+        if (settled) return;
+        if (alive) return;
+        ctx = await buildCtx();
+        if (settled) return;
+        if (!syncEvaluate(ctx)) {
+          settle({ stopped: false, reason: 'dead' });
+          return;
+        }
+        // Condition was satisfied in the race window — fall through to settle.
+      }
+
+      const reason = inspectReason(condition, ctx);
+      if (reason === 'timeout') {
+        // Best-effort pane snapshot for diagnostics before giving up.
+        let paneSnapshot: string | undefined;
+        try {
+          paneSnapshot = await d.tmux.capturePane(name, 30);
+        } catch {
+          // capture failed (session gone, tmux error) — settle without it.
+        }
+        if (settled) return;
+        settle({
+          stopped: false,
+          reason,
+          ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
+        });
+      } else {
+        settle({ stopped: true, reason });
       }
     }
 
@@ -295,6 +317,14 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         cleanupFns.push(() => clearInterval(handle));
       }
     }
+
+    // Liveness poll — a worker can die mid-wait without firing stop and without
+    // touching a watched file, so no fs.watch or timer wake would fire. Poll
+    // the session's existence (500ms) so a dead worker resolves promptly.
+    const livenessHandle = setInterval(() => {
+      void check();
+    }, 500);
+    cleanupFns.push(() => clearInterval(livenessHandle));
 
     // External signal handling is wired via internalAc. The internal-abort
     // listener settles with reason='aborted' when opts.signal triggers the

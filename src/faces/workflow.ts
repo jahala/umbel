@@ -182,6 +182,9 @@ async function executeStep(
     if (waitResult.reason === 'timeout') {
       throw new Error(`Step '${workerName}' timed out waiting for its wait condition`);
     }
+    if (waitResult.reason === 'dead') {
+      throw new Error(`Step '${workerName}' worker died before completing its turn`);
+    }
 
     // Capture outputs. Transcript is resolved lazily via resolveTranscriptContent
     // which handles both file-backed (claude/codex/gemini) and command-backed
