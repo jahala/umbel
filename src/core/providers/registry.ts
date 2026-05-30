@@ -19,7 +19,7 @@ export const PROVIDERS: Record<string, AgentProvider> = {
 export function getProvider(name: string): AgentProvider {
   const provider = PROVIDERS[name];
   if (provider === undefined) {
-    throw new ProviderUnknownError(name);
+    throw new ProviderUnknownError(name, Object.keys(PROVIDERS));
   }
   return provider;
 }
