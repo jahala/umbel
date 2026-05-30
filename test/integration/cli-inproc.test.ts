@@ -5,8 +5,8 @@
  * cli.ts. Captures stdout/stderr by monkey-patching process.stdout.write and
  * process.stderr.write; restores in afterEach.
  *
- * The CLI face deliberately uses ~/.rctrl (no env injection to operations).
- * Tests that create state write to ~/.rctrl and clean up via killSession.
+ * The CLI face reads RCTRL_STATE via getCliEnv; beforeAll points it at an
+ * isolated tmpdir so these in-proc runs never write to the real ~/.rctrl.
  *
  * Coverage targets:
  * - --help, --version, bare invocation (no state)
@@ -38,9 +38,11 @@ import { runCli } from '../../src/faces/cli.ts';
 // ---------------------------------------------------------------------------
 
 const RUN_ID = randomBytes(4).toString('hex');
-// tmpDir used only for JSONL/fake-claude dir; CLI state always goes to ~/.rctrl
+// tmpDir holds JSONL/fake-claude dirs AND (via RCTRL_STATE, set in beforeAll)
+// all CLI session state — so these in-proc runs never touch the real ~/.rctrl.
 let tmpDir = '';
 let projectsDir = '';
+let savedRctrlState: string | undefined;
 
 function sessionName(suffix: string): string {
   return `t${RUN_ID}${suffix}`;
@@ -51,6 +53,8 @@ const CREATED: string[] = [];
 beforeAll(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-cli-inproc-'));
   projectsDir = join(tmpDir, 'projects');
+  savedRctrlState = process.env.RCTRL_STATE;
+  process.env.RCTRL_STATE = tmpDir;
 });
 
 afterEach(async () => {
@@ -58,6 +62,8 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  if (savedRctrlState === undefined) delete process.env.RCTRL_STATE;
+  else process.env.RCTRL_STATE = savedRctrlState;
   if (tmpDir) {
     await rm(tmpDir, { recursive: true, force: true });
     tmpDir = '';
@@ -103,7 +109,7 @@ async function runWithCapture(fn: () => Promise<number>): Promise<{ code: number
 }
 
 // ---------------------------------------------------------------------------
-// Helper: spawn a session via the CLI itself (writes to ~/.rctrl)
+// Helper: spawn a session via the CLI itself (state isolated to tmpDir via RCTRL_STATE)
 // ---------------------------------------------------------------------------
 
 async function cliSpawnSession(name: string): Promise<void> {
@@ -119,7 +125,7 @@ async function cliSpawnSession(name: string): Promise<void> {
 
   process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
   process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
-  process.env.FAKE_CLAUDE_HOOK = join(homedir(), '.rctrl', 'hooks', 'stop.sh');
+  process.env.FAKE_CLAUDE_HOOK = join(tmpDir, 'hooks', 'stop.sh');
 
   try {
     await runWithCapture(() => runCli(['spawn', '--name', name, '--cwd', tmpDir]));
@@ -354,12 +360,12 @@ describe('cli — kill', () => {
 
     // State dir still exists (meta.json still there)
     const { stat } = await import('node:fs/promises');
-    const metaPath = join(homedir(), '.rctrl', 'sessions', name, 'meta.json');
+    const metaPath = join(tmpDir, 'sessions', name, 'meta.json');
     const s = await stat(metaPath);
     expect(s.isFile()).toBe(true);
 
     // Clean up state manually after test
-    await rm(join(homedir(), '.rctrl', 'sessions', name), { recursive: true, force: true });
+    await rm(join(tmpDir, 'sessions', name), { recursive: true, force: true });
     // Remove from CREATED since already killed
     const idx = CREATED.indexOf(name);
     if (idx !== -1) CREATED.splice(idx, 1);
@@ -400,14 +406,15 @@ describe('cli — read', () => {
     await mkdir(jsonlDir, { recursive: true });
 
     // Spawn with deps override so jsonl is discovered from our projectsDir.
-    // FAKE_CLAUDE_HOOK points to ~/.rctrl/hooks/stop.sh which spawn installs.
+    // RCTRL_STATE=tmpDir isolates all state; the hook is installed under tmpDir.
     await spawnOp({
       name,
       cwd: tmpDir,
       claudeBin: join(import.meta.dir, '../fixtures/fake-claude.sh'),
       env: {
+        RCTRL_STATE: tmpDir,
         FAKE_CLAUDE_JSONL_DIR: jsonlDir,
-        FAKE_CLAUDE_HOOK: join(homedir(), '.rctrl', 'hooks', 'stop.sh'),
+        FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
       },
       deps: {
         jsonl: {
@@ -419,14 +426,18 @@ describe('cli — read', () => {
       },
     });
 
-    // But writeMeta uses empty env (no RCTRL_STATE injection), so session meta
-    // goes to ~/.rctrl. Send+wait also use ~/.rctrl. So this chain should work.
-    const sendResult = await send({ name, prompt: 'hello read' });
+    // All operations use RCTRL_STATE=tmpDir, matching the CLI read below — the
+    // whole chain (spawn → send → wait → read) stays isolated to tmpDir.
+    const sendResult = await send({ name, prompt: 'hello read', env: { RCTRL_STATE: tmpDir } });
 
-    // Wait for the stop event with env pointing to ~/.rctrl (default)
-    await waitFor({ name, sinceMtime: sendResult.sinceMtime, defaultTimeoutMs: 15_000 });
+    await waitFor({
+      name,
+      sinceMtime: sendResult.sinceMtime,
+      defaultTimeoutMs: 15_000,
+      env: { RCTRL_STATE: tmpDir },
+    });
 
-    // Now verbRead reads meta from ~/.rctrl and uses the jsonlPath stored in meta
+    // verbRead reads meta from tmpDir (RCTRL_STATE) and uses its stored jsonlPath
     const { code, stdout } = await runWithCapture(() => runCli(['read', name]));
     expect(code).toBe(0);
     expect(stdout).toContain('Response to: hello read');
@@ -538,7 +549,7 @@ describe('cli — -p mode', () => {
     const savedHook = process.env.FAKE_CLAUDE_HOOK;
     process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
     process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
-    process.env.FAKE_CLAUDE_HOOK = join(homedir(), '.rctrl', 'hooks', 'stop.sh');
+    process.env.FAKE_CLAUDE_HOOK = join(tmpDir, 'hooks', 'stop.sh');
 
     try {
       const result = await runWithCapture(() => runCli(['-p', 'hello from test', '--cwd', tmpDir]));
