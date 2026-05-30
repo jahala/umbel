@@ -76,6 +76,8 @@ date +%s%N >> "$state/events/log"
 
 Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtime advance → done.** Handles "Stop fired before we started watching" and concurrent waiters correctly. The canonical source is `STOP_HOOK_SCRIPT` in `src/adapters/hooks.ts`; do not duplicate elsewhere.
 
+Liveness fallback: a worker can die mid-turn (crash / non-zero exit) without ever firing the hook, so `events/stop` would never advance. `waitFor` polls `tmux has-session` and, when the session vanishes with the condition still unmet, returns `reason: 'dead'` instead of blocking until the timeout (previously a 30-min hang). The real condition is always evaluated *before* the liveness probe, so a turn that fired stop and then exited still resolves as `stop`.
+
 ## Provider-specific surfaces
 
 Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLaunch`, a `stopEventName`, and a `parseTranscript`. Per-vendor specifics:

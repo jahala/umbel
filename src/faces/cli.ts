@@ -446,6 +446,12 @@ async function verbWait(
     }
     return 124;
   }
+  if (result.reason === 'dead') {
+    process.stderr.write(
+      `rctrl: wait failed — session '${name}' died before completing its turn.\n`,
+    );
+    return 125;
+  }
   if (result.reason === 'aborted') return 130;
   return 0;
 }

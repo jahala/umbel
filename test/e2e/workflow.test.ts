@@ -167,9 +167,10 @@ steps:
     const step1 = sessionTag('f1');
     const step2 = sessionTag('f2');
 
-    // Create a fake-claude that exits immediately with no JSONL file and no stop hook —
-    // this causes discoverSessionJsonl to time out, which the workflow treats as failure.
-    // We also shorten the JSONL discovery timeout via a dep override.
+    // The worker exits non-zero immediately: it dies without ever firing the
+    // stop hook. waitFor detects the vanished tmux session and returns
+    // reason='dead', which executeStep turns into a step failure — so step2
+    // (which needs step1) must never run.
     const failingClaude = join(tmpDir, 'fail-claude.sh');
     await writeFile(failingClaude, '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
 
@@ -190,22 +191,9 @@ steps:
     const yamlFile = join(tmpDir, 'fail.yaml');
     await writeFile(yamlFile, yaml, 'utf8');
 
-    // Override discoverSessionJsonl to time out very quickly
     const failOpts = {
       ...makeWorkflowOpts(env, yamlFile),
       claudeBin: failingClaude,
-      deps: {
-        ...makeWorkflowOpts(env, yamlFile).deps,
-        jsonl: {
-          ...jsonlAdapter,
-          discoverSessionJsonl: async (opts: Parameters<typeof sessionAwareDiscover>[0]) => {
-            // Wait briefly then give up
-            await Bun.sleep(200);
-            const { SessionDeadError: SDE } = await import('../../src/core/errors.ts');
-            throw new SDE(opts.sessionName, 'JSONL not found (failure test)');
-          },
-        },
-      },
     };
 
     const result = await runWorkflow(failOpts);
