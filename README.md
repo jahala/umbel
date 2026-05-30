@@ -118,6 +118,8 @@ Providers without their binary installed simply can't be selected. `rctrl spawn 
 
 No daemon. `tmux` is the daemon; `~/.rctrl/` is the state store. Every `rctrl` invocation is short-lived. Completion detection uses each provider's native lifecycle event (Claude `Stop`, Codex `Stop`, Gemini `AfterAgent`, OpenCode `session.status` idle) — not terminal scraping. Agent output is read from each provider's transcript (JSONL for claude/codex/gemini; `opencode export` JSON for opencode), never from `capture-pane`. Providers are pluggable via a small interface (`src/core/providers/types.ts`) — adding a new CLI is a ~150 LOC implementation, not a rewrite. See [`docs/architecture-v3.md`](docs/architecture-v3.md) for the full design.
 
+**What it is, and where it's headed:** rctrl is the reliable, neutral execution boundary for *one unit of agent work* — the worker an orchestrator (agent, workflow, or human) commands and reads structured results back from. The thesis, the contract, and the trust-layer roadmap (typed + verified results) live in [`docs/positioning.md`](docs/positioning.md).
+
 ## Why this exists
 
 Anthropic, OpenAI, and Google all priced their `-p` / `--print` modes at API rates while leaving the interactive TUI on subscription. `rctrl` gives you a programmatic surface over the *interactive* binary of whichever vendor you're paying — so the work you'd otherwise do by hand in the TUI runs against the subscription you already pay for, not per-token API billing on top.
