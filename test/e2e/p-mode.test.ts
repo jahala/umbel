@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
 import { killSession } from '../../src/adapters/tmux.ts';
-import { WaitTimeoutError } from '../../src/core/errors.ts';
+import { SessionDeadError, WaitTimeoutError } from '../../src/core/errors.ts';
 import { runP } from '../../src/faces/p.ts';
 
 // ---------------------------------------------------------------------------
@@ -188,6 +188,23 @@ describe('p-mode', () => {
 
     await expect(runP(opts)).rejects.toBeInstanceOf(WaitTimeoutError);
   });
+
+  test('worker that dies mid-turn throws SessionDeadError', async () => {
+    const env = await setup();
+    // Stays alive past the prompt send, then exits non-zero without ever firing
+    // the stop hook. waitFor must detect the vanished session and runP must
+    // surface it as SessionDeadError — not hang until the (generous) timeout.
+    const dyingClaude = join(tmpDir, 'dying-claude.sh');
+    await writeFile(dyingClaude, '#!/usr/bin/env bash\nsleep 3\nexit 1\n', { mode: 0o755 });
+
+    const opts = makeOpts(env, tmpDir, {
+      prompt: 'will crash',
+      claudeBin: dyingClaude,
+      timeoutMs: 30_000,
+    });
+
+    await expect(runP(opts)).rejects.toBeInstanceOf(SessionDeadError);
+  }, 15_000);
 
   test('AbortSignal cancels wait and throws AbortError', async () => {
     const env = await setup();

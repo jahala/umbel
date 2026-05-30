@@ -406,3 +406,56 @@ describe('waitFor — external abort mid-wait', () => {
     expect(result.stopped).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// waitFor — dead session (worker crashed / exited without firing the stop hook)
+// ---------------------------------------------------------------------------
+
+describe('waitFor — dead session', () => {
+  test('settles reason=dead when the session is gone, without waiting for the timeout', async () => {
+    const env = await setup();
+    const name = sessionName('dead');
+
+    // No tmux session exists for `name` — the worker crashed or exited
+    // non-zero before it could fire the stop hook. waitFor must notice the
+    // session is gone and settle promptly, NOT block until defaultTimeoutMs.
+    const start = Date.now();
+    const result = await waitFor({
+      name,
+      sinceMtime: Date.now(),
+      env,
+      defaultTimeoutMs: 3_000,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(result.reason).toBe('dead');
+    expect(result.stopped).toBe(false);
+    // Proves it returned via liveness detection, not the 3s timeout fallback.
+    expect(elapsed).toBeLessThan(1_500);
+  });
+
+  test('a satisfied stop wins over a dead session (real condition checked before liveness)', async () => {
+    const env = await setup();
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp'));
+    CREATED.push(session.name);
+
+    // fake-claude fires the stop hook for the turn; then we kill the session so
+    // it is dead by the time we wait. A completed turn is not a crash — waitFor
+    // must still report 'stop', because the real condition is evaluated before
+    // the liveness check.
+    await send({ name: session.name, prompt: 'hello', env });
+    const stopPath = join(tmpDir, 'sessions', session.name, 'events', 'stop');
+    expect(await waitForFile(stopPath)).toBe(true);
+    await killSession(session.name);
+
+    const result = await waitFor({
+      name: session.name,
+      sinceMtime: 0,
+      env,
+      defaultTimeoutMs: 3_000,
+    });
+
+    expect(result.reason).toBe('stop');
+    expect(result.stopped).toBe(true);
+  });
+});
