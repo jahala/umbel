@@ -67,7 +67,14 @@ export class RctrlUsageError extends Error {
 export class ProviderUnknownError extends Error {
   override name = 'ProviderUnknownError';
 
-  constructor(public providerName: string) {
-    super(`Unknown provider: ${providerName}`);
+  constructor(
+    public providerName: string,
+    validProviders?: readonly string[],
+  ) {
+    const valid =
+      validProviders !== undefined && validProviders.length > 0
+        ? `. Valid providers: ${validProviders.join(', ')}`
+        : '';
+    super(`Unknown provider: ${providerName}${valid}`);
   }
 }
