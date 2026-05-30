@@ -134,6 +134,7 @@ Claude (\`provider: claude\`)
 - Hook config delivered inline via \`--settings '<json>'\` (no file write).
 - stopEventName: "Stop". Trust dialog auto-dismissed on first launch in a fresh cwd.
 - Flags: --model <name>, --allowedTools "Read,Write,...".
+- Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by passing the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL via --env / env:. Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription.
 
 Codex (\`provider: codex\`)
 - Hook config delivered via <cwd>/.codex/hooks.json (written at spawn, removed at kill).

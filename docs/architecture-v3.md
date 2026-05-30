@@ -117,6 +117,7 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - `stopEventName: 'Stop'`
 - `parseTranscript`: walks backward from end of JSONL, finds last assistant index, joins consecutive assistant entries (handles thinking + text blocks; per real-claude trace findings)
 - Trust dialog auto-dismiss via `isRealClaudeBin` gate
+- Custom endpoints: pointing `ANTHROPIC_BASE_URL`/`AUTH_TOKEN`/`MODEL` (via the env passthrough) at any Anthropic-compatible API (DeepSeek, OpenRouter, local) runs that model under Claude Code's harness — the **second** model-agnostic lane alongside OpenCode, API-billed not subscription. Not a new provider: same binary, hooks, transcript.
 
 ### CodexProvider (`src/core/providers/codex.ts`)
 - `buildLaunch` → writes `<cwd>/.codex/hooks.json` referencing our stop.sh

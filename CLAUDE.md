@@ -88,6 +88,7 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 - `--allowedTools "Read,Write,..."` scopes permissions without prompts.
 - `stopEventName: 'Stop'`. Trust dialog is auto-dismissed for real-`claude` binaries only.
 - Do NOT use `--bare` (skips hooks). Do NOT use `--tmux` / `--worktree` (rctrl manages tmux itself).
+- Custom endpoints (DeepSeek, OpenRouter, local) are reached by the worker's `env` (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_MODEL`), not a new provider — same binary, same hooks. Don't add per-endpoint providers; it's an env concern. Recipe in `docs/cli-reference.md`.
 
 **Codex** (`codex`)
 - Hook config delivered via `<cwd>/.codex/hooks.json` (no inline-flag equivalent yet).
