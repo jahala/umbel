@@ -10,6 +10,8 @@
 
 **Read `docs/architecture-v3.md` before writing code.** It's the canonical multi-CLI design.
 
+**Positioning & design filter** (full thesis: [`docs/positioning.md`](docs/positioning.md)). rctrl runs *one unit of agent work* reliably and returns a result the caller can branch on; **orchestration belongs to the caller, not rctrl.** Apply this filter to every change: **invest in the noun (the worker), not the verb (the orchestration)** — a new capability must be a per-worker primitive on CLI *and* MCP, composable by the caller, not new workflow syntax; if it can't be that, it probably doesn't belong here. Guardrails must be **enforced + external + looped** (check → reject + feedback + retry → halt), never advisory. Anchor identity to the neutral worker **contract**, not the substrate (tmux/subscription) — per-provider adapters absorb the churn; the contract stays stable. Keep the YAML face thin.
+
 ## Non-negotiable principles
 
 1. **S.U.P.E.R.** — Side effects at the edge, Uncoupled logic, Pure & total functions, Explicit data flow, Replaceable by value. Lower layers know nothing about upper layers.
