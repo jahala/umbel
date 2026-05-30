@@ -498,6 +498,24 @@ rctrl -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
 
 ---
 
+## Custom model endpoints (Claude provider)
+
+The `claude` provider can target any Anthropic-compatible API — DeepSeek, OpenRouter, a local proxy — by passing the worker its endpoint env. It is the same Claude Code binary (same hooks, transcript, tools), just a different model behind it. **Billed per-token by that endpoint, not your Claude subscription.**
+
+```bash
+rctrl spawn --provider claude --name ds --cwd ./work \
+  --env ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
+  --env ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
+  --env 'ANTHROPIC_MODEL=deepseek-v4-pro[1m]'
+```
+
+- Quote model strings containing brackets (`'…[1m]'`) so the shell does not glob them.
+- Add `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` to route Claude Code's internal tiers (subagents, quick tasks) to the same endpoint.
+- If your shell exports `ANTHROPIC_API_KEY` it is inherited and can shadow the endpoint — launch rctrl from a shell without it (`--env` sets, but cannot unset, worker env).
+- Per-worker: a DeepSeek worker and a subscription Claude worker coexist in one pool. The same vars work as a workflow `env:` block.
+
+---
+
 ## Environment variables
 
 | Variable | Description |

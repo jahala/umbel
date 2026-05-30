@@ -124,6 +124,8 @@ Anthropic, OpenAI, and Google all priced their `-p` / `--print` modes at API rat
 
 OpenCode has no subscription. It adds a different lane: **local** (your hardware, free, `ollama/…`), **free-tier** (OpenCode Zen, keyless, limited), or **API-billed** (your own key for `anthropic/…`, `openrouter/…`). Together, OpenCode makes rctrl a **unified orchestration layer over any agent CLI** — great for running free local workers alongside your subscription claude/codex/gemini without any cost trade-off.
 
+The `claude` provider can also point at any Anthropic-compatible endpoint — DeepSeek, OpenRouter, a local proxy — via `--env` (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_MODEL`): Claude Code's harness, a different model, billed per-token. See [custom model endpoints](docs/cli-reference.md#custom-model-endpoints-claude-provider).
+
 Aimed at solo developers automating their own work. Not for commercial resale or evasion at scale. See [`docs/tos.md`](docs/tos.md) for the defensibility spectrum across all three vendors.
 
 ## Sister project
