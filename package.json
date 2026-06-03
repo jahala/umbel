@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
+    "install:bin": "bun run scripts/build.ts --install",
     "test": "bun test test/unit test/integration test/e2e",
     "test:unit": "bun test test/unit",
     "test:integration": "bun test test/integration",
