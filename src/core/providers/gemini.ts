@@ -253,23 +253,39 @@ const geminiProvider: AgentProvider = {
 
     // matcher: "*" is the only supported value for AfterAgent.
     // timeout is in milliseconds (Gemini, unlike Codex which uses seconds).
-    const settingsJson = JSON.stringify({
-      hooks: {
-        AfterAgent: [
-          {
-            matcher: '*',
-            hooks: [
-              {
-                type: 'command',
-                command: opts.hookScriptPath,
-                name: 'rctrl-stop',
-                timeout: 60000,
-              },
-            ],
-          },
-        ],
-      },
-    });
+    const hooks: Record<string, unknown> = {
+      AfterAgent: [
+        {
+          matcher: '*',
+          hooks: [
+            {
+              type: 'command',
+              command: opts.hookScriptPath,
+              name: 'rctrl-stop',
+              timeout: 60000,
+            },
+          ],
+        },
+      ],
+    };
+    // Notification (notification_type ToolPermission) fires when Gemini shows a
+    // tool-permission prompt — the worker is BLOCKED. Verified against gemini
+    // 0.44.0; matcher has no effect on Notification so it is omitted. timeout ms.
+    if (opts.notifyScriptPath !== undefined) {
+      hooks.Notification = [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: opts.notifyScriptPath,
+              name: 'rctrl-notify',
+              timeout: 60000,
+            },
+          ],
+        },
+      ];
+    }
+    const settingsJson = JSON.stringify({ hooks });
 
     const args: string[] = [];
     if (opts.model !== undefined) {

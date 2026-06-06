@@ -46,6 +46,20 @@ describe('GeminiProvider.buildLaunch', () => {
     expect(spec.args).not.toContain('--model');
   });
 
+  test('with notifyScriptPath, settings.json registers a Notification hook', () => {
+    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const spec = GeminiProvider.buildLaunch({
+      sessionId: 'test-session',
+      cwd: '/tmp/test-project',
+      hookScriptPath: '/tmp/stop.sh',
+      notifyScriptPath: notify,
+    });
+    const settingsFile = spec.files.find((f) => f.path.endsWith('.gemini/settings.json'));
+    const content = settingsFile?.content ?? '';
+    expect(content).toContain('Notification');
+    expect(content).toContain(notify);
+  });
+
   test('env is empty object (Gemini needs no extra env vars)', () => {
     const spec = GeminiProvider.buildLaunch({
       sessionId: 'test-session',

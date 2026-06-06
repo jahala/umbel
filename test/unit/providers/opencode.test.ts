@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   OpenCodeProvider,
   opencodePluginShouldFire,
+  opencodePluginShouldFireNotification,
+  PLUGIN_SOURCE,
 } from '../../../src/core/providers/opencode.ts';
 
 // ---------------------------------------------------------------------------
@@ -286,5 +288,35 @@ describe('opencodePluginShouldFire (plugin env-gating)', () => {
 
   test('does not throw on a malformed event', () => {
     expect(opencodePluginShouldFire({}, rctrlEnv)).toBe(false);
+  });
+});
+
+describe('opencodePluginShouldFireNotification (permission detection)', () => {
+  const rctrlEnv = { RCTRL_STATE: '/tmp/state', RCTRL_SESSION_ID: 'sess1' };
+
+  test('fires on permission.updated under rctrl (worker blocked on approval)', () => {
+    const ev = { type: 'permission.updated', properties: { sessionID: 's', title: 'Bash' } };
+    expect(opencodePluginShouldFireNotification(ev, rctrlEnv)).toBe(true);
+  });
+
+  test('does NOT fire on session.status idle (that is the stop signal, not input)', () => {
+    const idle = { type: 'session.status', properties: { status: { type: 'idle' } } };
+    expect(opencodePluginShouldFireNotification(idle, rctrlEnv)).toBe(false);
+  });
+
+  test('does NOT fire without the rctrl env vars', () => {
+    const ev = { type: 'permission.updated', properties: {} };
+    expect(opencodePluginShouldFireNotification(ev, { RCTRL_STATE: '/tmp' })).toBe(false);
+  });
+
+  test('does not throw on a malformed event', () => {
+    expect(opencodePluginShouldFireNotification({}, rctrlEnv)).toBe(false);
+  });
+});
+
+describe('PLUGIN_SOURCE notification handler', () => {
+  test('handles permission.updated and writes the notification event', () => {
+    expect(PLUGIN_SOURCE).toContain('permission.updated');
+    expect(PLUGIN_SOURCE).toContain('notification');
   });
 });

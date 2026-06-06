@@ -6,6 +6,7 @@ import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './
 // Runs inside opencode's JS runtime. Cannot import rctrl. All logic is inline.
 // No-ops unless RCTRL_STATE and RCTRL_SESSION_ID are set (inert in normal use).
 // On session.status {type:"idle"}: writes events/session-id and touches events/stop.
+// On permission.updated: touches events/notification (worker blocked on approval).
 // ---------------------------------------------------------------------------
 
 export const PLUGIN_SOURCE = `import { mkdir, writeFile } from "node:fs/promises";
@@ -25,6 +26,18 @@ async function fireStop(sessionID) {
   await appendFile(logPath, ts + "\\n", "utf8");
 }
 
+async function fireNotification(message) {
+  const state = process.env.RCTRL_STATE;
+  const rctrlSession = process.env.RCTRL_SESSION_ID;
+  if (!state || !rctrlSession) return;
+  const eventsDir = join(state, "sessions", rctrlSession, "events");
+  await mkdir(eventsDir, { recursive: true });
+  await writeFile(join(eventsDir, "notification"), String(message ?? ""), "utf8");
+  const ts = String(Date.now() * 1_000_000);
+  const { appendFile } = await import("node:fs/promises");
+  await appendFile(join(eventsDir, "log"), ts + "\\n", "utf8");
+}
+
 export const Plugin = async () => ({
   event: async ({ event }) => {
     if (
@@ -34,6 +47,13 @@ export const Plugin = async () => ({
       !!process.env.RCTRL_SESSION_ID
     ) {
       await fireStop(event?.properties?.sessionID ?? "");
+    }
+    if (
+      event?.type === "permission.updated" &&
+      !!process.env.RCTRL_STATE &&
+      !!process.env.RCTRL_SESSION_ID
+    ) {
+      await fireNotification(event?.properties?.title ?? event?.properties?.type ?? "permission");
     }
   },
 });
@@ -295,6 +315,20 @@ export function opencodePluginShouldFire(
   if (status === null || typeof status !== 'object') return false;
   const s = status as JsonObj;
   if (s.type !== 'idle') return false;
+  return !!env?.RCTRL_STATE && !!env?.RCTRL_SESSION_ID;
+}
+
+// A permission event means opencode is BLOCKED asking the user to approve a tool
+// call. The v1 plugin `event` stream delivers these as `permission.updated`
+// (verified against @opencode-ai/sdk 1.15.12 — `permission.asked` is v2-only).
+// Pure + total: never throws; env-gated like opencodePluginShouldFire.
+export function opencodePluginShouldFireNotification(
+  event: unknown,
+  env: Record<string, string | undefined>,
+): boolean {
+  if (event === null || typeof event !== 'object') return false;
+  const e = event as JsonObj;
+  if (e.type !== 'permission.updated') return false;
   return !!env?.RCTRL_STATE && !!env?.RCTRL_SESSION_ID;
 }
 
