@@ -80,6 +80,8 @@ Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtim
 
 Liveness fallback: a worker can die mid-turn (crash / non-zero exit) without ever firing the hook, so `events/stop` would never advance. `waitFor` polls `tmux has-session` and, when the session vanishes with the condition still unmet, returns `reason: 'dead'` instead of blocking until the timeout (previously a 30-min hang). The real condition is always evaluated *before* the liveness probe, so a turn that fired stop and then exited still resolves as `stop`.
 
+Needs-input detection (the inverse keystone): a worker blocked on a prompt (a permission ask, or idle) is *alive* and has *not* fired stop, so it would hang to the timeout. A second global hook `notify.sh` (`NOTIFY_HOOK_SCRIPT`) touches `events/notification` on those events; `waitFor` watches it and settles `reason: 'input'` with the prompt message, so the caller can `send` an answer and `wait` again — the ping. Claude registers it precisely via its `Notification` hook (`permission_prompt` + `idle_prompt` matchers in `buildSettingsJson`); other providers rely on the opt-in pane-activity idle net (`waitFor`'s `idleTimeoutMs` → `reason: 'idle'`) until their per-provider hooks land (codex `PermissionRequest`, gemini `ToolPermission`, opencode `permission.asked`). `rctrl_status` exposes `needsInput` (notification newer than stop) for poll-style controllers. A per-worker reliability primitive — orchestration stays with the caller.
+
 ## Provider-specific surfaces
 
 Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLaunch`, a `stopEventName`, and a `parseTranscript`. Per-vendor specifics:

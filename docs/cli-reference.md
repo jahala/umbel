@@ -135,6 +135,7 @@ rctrl wait <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [-
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
 | `--pattern REGEX` | — | Required when `--until=pattern`. Regex matched against tmux pane output. |
 | `--timeout DURATION` | 30 minutes | Maximum wait time. Format: `5m`, `30s`, `1h`, `500ms`. Exit code 124 on expiry. |
+| `--idle-timeout DURATION` | off | Idle net: settle `idle` if the tmux pane shows no change for this long. Off by default (a worker may run a long silent tool call). |
 
 **Wait condition kinds**
 
@@ -143,6 +144,18 @@ rctrl wait <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [-
 - `pattern` — waits for a line in the tmux pane matching the regex.
 
 The default timeout (30 minutes) is enforced even when `--timeout` is not specified. No wait runs forever.
+
+**Outcomes / exit codes**
+
+`wait` reports *why* it ended so a supervisor can act instead of hanging when a worker needs attention:
+
+| Reason | Exit | Meaning |
+|--------|------|---------|
+| stop | 0 | Turn completed — `rctrl read` the result. |
+| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `rctrl send`, then `wait` again. (Claude detects this precisely via its Notification hook; other providers surface it via `--idle-timeout`.) |
+| idle | 126 | No pane activity for `--idle-timeout`. Pane prints to stderr. |
+| dead | 125 | Worker exited before finishing its turn. |
+| timeout | 124 | Hard deadline hit; last pane prints to stderr. |
 
 **Examples**
 

@@ -10,6 +10,7 @@ import {
   SessionNotFoundError,
   TmuxError,
   WaitTimeoutError,
+  WorkerBlockedError,
 } from '../core/errors.ts';
 import { isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
@@ -190,6 +191,7 @@ function printStatusTable(entries: StatusEntry[]): void {
 
 function errorExitCode(err: unknown): number {
   if (err instanceof WaitTimeoutError) return 124;
+  if (err instanceof WorkerBlockedError) return 126;
   if (
     err instanceof RctrlUsageError ||
     err instanceof ProviderUnknownError ||
@@ -438,11 +440,15 @@ async function verbWait(
     condition = { kind: 'pattern', session: SessionNameSchema.parse(name), regex: pat };
   }
 
+  const rawIdle = flagStr(flags, 'idle-timeout');
+  const idleTimeoutMs = rawIdle !== undefined ? parseDuration(rawIdle) : undefined;
+
   const waitOpts = {
     name,
     env: getCliEnv(),
     ...(condition !== undefined ? { condition } : {}),
     ...(timeoutMs !== undefined ? { defaultTimeoutMs: timeoutMs } : {}),
+    ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
   };
 
   const result = await waitFor(waitOpts);
@@ -458,6 +464,22 @@ async function verbWait(
       `rctrl: wait failed — session '${name}' died before completing its turn.\n`,
     );
     return 125;
+  }
+  if (result.reason === 'input') {
+    const hasMsg = result.message !== undefined && result.message.length > 0;
+    const detail = hasMsg ? ` — ${result.message}` : '';
+    process.stderr.write(`rctrl: session '${name}' is waiting for input${detail}\n`);
+    if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
+      process.stderr.write(`${result.paneSnapshot}\n`);
+    }
+    return 126;
+  }
+  if (result.reason === 'idle') {
+    process.stderr.write(`rctrl: session '${name}' is idle — no pane activity.\n`);
+    if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
+      process.stderr.write(`${result.paneSnapshot}\n`);
+    }
+    return 126;
   }
   if (result.reason === 'aborted') return 130;
   return 0;

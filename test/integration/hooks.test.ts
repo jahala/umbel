@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   buildSettingsJson,
   ensureGlobalHooks,
+  NOTIFY_HOOK_SCRIPT,
   STOP_HOOK_SCRIPT,
 } from '../../src/adapters/hooks.ts';
 
@@ -62,6 +63,23 @@ describe('buildSettingsJson', () => {
     const obj = JSON.parse(json) as Record<string, unknown>;
     // Should not have allowedTools / permissions key if not specified
     expect(JSON.stringify(obj)).not.toContain('allowedTools');
+  });
+
+  test('with notifyScriptPath includes a Notification block for permission + idle prompts', () => {
+    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const json = buildSettingsJson({ hookScriptPath: '/stop.sh', notifyScriptPath: notify });
+    const obj = JSON.parse(json) as { hooks?: { Notification?: Array<{ matcher?: string }> } };
+    expect(Array.isArray(obj.hooks?.Notification)).toBe(true);
+    const matchers = (obj.hooks?.Notification ?? []).map((n) => n.matcher);
+    expect(matchers).toContain('permission_prompt');
+    expect(matchers).toContain('idle_prompt');
+    expect(json).toContain(notify);
+  });
+
+  test('without notifyScriptPath has no Notification block', () => {
+    const json = buildSettingsJson({ hookScriptPath: '/stop.sh' });
+    const obj = JSON.parse(json) as { hooks?: { Notification?: unknown } };
+    expect(obj.hooks?.Notification).toBeUndefined();
   });
 });
 
@@ -136,5 +154,51 @@ describe('ensureGlobalHooks', () => {
     // Should be a nanosecond timestamp (large integer)
     const ts = logContent.trim().split('\n')[0];
     expect(ts).toMatch(/^\d+$/);
+  });
+});
+
+describe('NOTIFY_HOOK_SCRIPT', () => {
+  test('is a string starting with shebang', () => {
+    expect(typeof NOTIFY_HOOK_SCRIPT).toBe('string');
+    expect(NOTIFY_HOOK_SCRIPT.startsWith('#!/usr/bin/env bash')).toBe(true);
+  });
+
+  test('writes the message to events/notification', () => {
+    expect(NOTIFY_HOOK_SCRIPT).toContain('events/notification');
+    expect(NOTIFY_HOOK_SCRIPT).toContain('RCTRL_SESSION_ID');
+  });
+});
+
+describe('ensureGlobalHooks — notify.sh', () => {
+  test('creates an executable notify.sh', async () => {
+    const env = await setup();
+    const { notifyScriptPath } = await ensureGlobalHooks(env);
+    expect(notifyScriptPath).toContain('hooks/notify.sh');
+    const s = await stat(notifyScriptPath);
+    expect(s.isFile()).toBe(true);
+    expect(s.mode & 0o111).toBeGreaterThan(0);
+  });
+
+  test('notify.sh writes the payload message to events/notification', async () => {
+    const env = await setup();
+    const { notifyScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'test-session-notify';
+    const sessionEventsDir = join(tmpDir, 'sessions', sessionId, 'events');
+    await mkdir(sessionEventsDir, { recursive: true });
+
+    const proc = Bun.spawn(['bash', notifyScriptPath], {
+      env: { RCTRL_STATE: tmpDir, RCTRL_SESSION_ID: sessionId },
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    proc.stdin.write(
+      JSON.stringify({ message: 'Allow Bash(rm)?', notification_type: 'permission_prompt' }),
+    );
+    await proc.stdin.end();
+    expect(await proc.exited).toBe(0);
+
+    const notif = await Bun.file(join(sessionEventsDir, 'notification')).text();
+    expect(notif).toContain('Allow Bash(rm)?');
   });
 });

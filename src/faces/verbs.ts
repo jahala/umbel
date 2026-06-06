@@ -52,6 +52,8 @@ export const VerbSchemas = {
     file: z.string().optional(),
     pattern: z.string().optional(),
     timeout: z.string().optional(),
+    // Opt-in idle net: settle 'idle' if the pane shows no change for this long.
+    idleTimeout: z.string().optional(),
   }),
   status: z.object({
     name: z.string().optional(),

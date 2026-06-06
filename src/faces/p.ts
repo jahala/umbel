@@ -1,4 +1,9 @@
-import { SessionDeadError, SessionNotFoundError, WaitTimeoutError } from '../core/errors.ts';
+import {
+  SessionDeadError,
+  SessionNotFoundError,
+  WaitTimeoutError,
+  WorkerBlockedError,
+} from '../core/errors.ts';
 import { generateSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { SessionNameSchema } from '../core/types.ts';
@@ -157,6 +162,12 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
     }
     if (waitResult.reason === 'dead') {
       throw new SessionDeadError(sessionName, 'worker exited before completing its turn');
+    }
+    if (waitResult.reason === 'input') {
+      throw new WorkerBlockedError(sessionName, waitResult.message ?? 'awaiting user input');
+    }
+    if (waitResult.reason === 'idle') {
+      throw new WorkerBlockedError(sessionName, 'idle — no pane activity');
     }
 
     // Real claude doesn't write the transcript until first message arrives, so

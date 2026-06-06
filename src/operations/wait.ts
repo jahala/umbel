@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
@@ -21,16 +21,24 @@ export interface WaitOpts {
   signal?: AbortSignal;
   env?: Record<string, string | undefined>;
   defaultTimeoutMs?: number;
+  // Opt-in universal idle net: if the worker's tmux pane shows no change for
+  // this many ms, settle reason:'idle' + paneSnapshot. Catches a worker blocked
+  // on a prompt (or hung) on providers without a Notification hook. Off when
+  // undefined — a worker may legitimately run a long silent tool call.
+  idleTimeoutMs?: number;
   deps?: Partial<Deps>;
 }
 
 export interface WaitResult {
   stopped: boolean;
-  reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted' | 'dead';
-  // On timeout, a best-effort snapshot of the tmux pane at the moment the wait
-  // gave up — so a stuck worker's cause (e.g. an unexpected provider dialog
-  // blocking the turn) is visible instead of a bare "timed out". Absent for
-  // non-timeout reasons and when capture fails.
+  reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted' | 'dead' | 'input' | 'idle';
+  // When reason is 'input', the worker is BLOCKED waiting on the user (a
+  // permission prompt / idle). `message` carries the Notification hook's prompt
+  // text so the caller can answer without screen-scraping the pane.
+  message?: string;
+  // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
+  // moment the wait settled — so a stuck worker's cause (e.g. an unexpected
+  // provider dialog) is visible. Absent for clean reasons and when capture fails.
   paneSnapshot?: string;
 }
 
@@ -188,6 +196,20 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
     // timer and pattern wake sources are handled differently (timer/interval)
   }
 
+  // Notification baseline: a touch of events/notification AFTER this point means
+  // the worker is blocked asking for input (permission prompt / idle). Captured
+  // at wait start — the send→wait gap is far shorter than the time a worker takes
+  // to reach a prompt. Orthogonal early-exit, like the 'dead' liveness check.
+  const notificationPath = join(stateRoot, 'sessions', name, 'events', 'notification');
+  const readNotificationMtime = async (): Promise<number> => {
+    try {
+      return (await stat(notificationPath)).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  const notificationSince = await readNotificationMtime();
+
   // Resolve promise that fires when the condition is met or aborted
   return new Promise<WaitResult>((resolve) => {
     let settled = false;
@@ -235,6 +257,36 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       if (settled) return;
 
       if (!syncEvaluate(ctx)) {
+        // Before treating "not stopped" as "still working", check whether the
+        // worker is BLOCKED asking for input (permission prompt / idle). The
+        // Notification hook touches events/notification; surface it promptly as
+        // 'input' (with the message) so the caller can answer instead of waiting
+        // out the timeout. Checked before liveness — a blocked worker is alive.
+        const notifMtime = await readNotificationMtime();
+        if (settled) return;
+        if (notifMtime > notificationSince) {
+          let message = '';
+          try {
+            message = (await readFile(notificationPath, 'utf8')).trim();
+          } catch {
+            // notification file vanished between stat and read — settle anyway.
+          }
+          let paneSnapshot: string | undefined;
+          try {
+            paneSnapshot = await d.tmux.capturePane(name, 30);
+          } catch {
+            // pane capture failed — settle without it.
+          }
+          if (settled) return;
+          settle({
+            stopped: false,
+            reason: 'input',
+            ...(message !== '' ? { message } : {}),
+            ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
+          });
+          return;
+        }
+
         // Condition not met yet. If the worker's tmux session has vanished it
         // crashed or exited without ever firing the stop hook, so no future
         // wake can satisfy the condition. Re-check the condition once AFTER
@@ -325,6 +377,41 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       void check();
     }, 500);
     cleanupFns.push(() => clearInterval(livenessHandle));
+
+    // Idle net (opt-in): settle 'idle' when the pane shows no change for
+    // idleTimeoutMs. A static pane means the worker is blocked on a prompt or
+    // hung; a changing pane (output / spinner) keeps resetting the timer.
+    const idleMs = opts.idleTimeoutMs;
+    if (idleMs !== undefined) {
+      let lastPane: string | null = null;
+      let lastChangeAt = Date.now();
+      const idlePollMs = Math.max(250, Math.min(2000, Math.floor(idleMs / 4)));
+      const idleHandle = setInterval(() => {
+        void (async () => {
+          if (settled) return;
+          let pane: string;
+          try {
+            pane = await d.tmux.capturePane(name, 50);
+          } catch {
+            return;
+          }
+          if (settled) return;
+          if (pane !== lastPane) {
+            lastPane = pane;
+            lastChangeAt = Date.now();
+            return;
+          }
+          if (Date.now() - lastChangeAt >= idleMs) {
+            settle({
+              stopped: false,
+              reason: 'idle',
+              ...(pane !== '' ? { paneSnapshot: pane } : {}),
+            });
+          }
+        })();
+      }, idlePollMs);
+      cleanupFns.push(() => clearInterval(idleHandle));
+    }
 
     // External signal handling is wired via internalAc. The internal-abort
     // listener settles with reason='aborted' when opts.signal triggers the

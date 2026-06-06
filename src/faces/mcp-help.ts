@@ -39,6 +39,20 @@ Verbs are short-lived. Per-session state lives in $RCTRL_STATE/sessions/<name>/ 
   until: "file"     → file appears at \`file\` path
   until: "pattern"  → regex matches a line in the tmux pane
 
+## Wait outcomes (the \`reason\` field in the result)
+
+rctrl_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
+  stop   → turn complete; rctrl_read the result.
+  input  → the worker is BLOCKED on a prompt (a permission ask, or idle). \`message\`
+           is the question — answer it with rctrl_send ("1", "yes", or a
+           clarification), then rctrl_wait again. This is the ping: you do NOT hang
+           to the timeout when a worker needs you.
+  idle   → no pane activity for idle_timeout. Pass idle_timeout: "3m" to enable this
+           net (off by default — a worker may run a long silent tool call). Inspect
+           paneSnapshot, then re-wait / nudge / kill.
+  dead   → the worker exited without finishing. Respawn or fail.
+  timeout→ hard deadline hit; paneSnapshot shows the stuck pane.
+
 ## Critical rule
 
 Pair every rctrl_send with a rctrl_wait. Sending without waiting causes your next rctrl_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.

@@ -185,6 +185,13 @@ async function executeStep(
     if (waitResult.reason === 'dead') {
       throw new Error(`Step '${workerName}' worker died before completing its turn`);
     }
+    if (waitResult.reason === 'input') {
+      const detail = waitResult.message !== undefined ? `: ${waitResult.message}` : '';
+      throw new Error(`Step '${workerName}' worker is blocked waiting for input${detail}`);
+    }
+    if (waitResult.reason === 'idle') {
+      throw new Error(`Step '${workerName}' worker is idle (no pane activity)`);
+    }
 
     // Capture outputs. Transcript is resolved lazily via resolveTranscriptContent
     // which handles both file-backed (claude/codex/gemini) and command-backed

@@ -26,11 +26,37 @@ date +%s%N >> "$state/events/log"
 `;
 
 // ---------------------------------------------------------------------------
+// NOTIFY_HOOK_SCRIPT — fired when the worker is BLOCKED waiting on the user
+// ---------------------------------------------------------------------------
+
+// The inverse of the Stop hook: the worker needs input (a permission prompt, or
+// it has gone idle). Writes the human-readable message to events/notification
+// (mtime advance = signal) so a waiter can return reason:'input' WITH the
+// question instead of hanging until the timeout. Best-effort message extraction
+// across providers (Claude: .message / .notification_type; Codex: .tool_name).
+export const NOTIFY_HOOK_SCRIPT: string = `#!/usr/bin/env bash
+set -euo pipefail
+state="\${RCTRL_STATE:?}/sessions/\${RCTRL_SESSION_ID:?}"
+mkdir -p "$state/events"
+payload=$(cat || true)
+msg=""
+if command -v jq >/dev/null 2>&1; then
+  msg=$(printf '%s' "$payload" | jq -r '.message // .notification_type // .tool_name // empty' 2>/dev/null || true)
+fi
+printf '%s' "$msg" > "$state/events/notification"
+date +%s%N >> "$state/events/log"
+`;
+
+// ---------------------------------------------------------------------------
 // buildSettingsJson — inline JSON for claude's --settings flag
 // ---------------------------------------------------------------------------
 
-export function buildSettingsJson(opts: { hookScriptPath: string; allowedTools?: string }): string {
-  const hooksBlock = {
+export function buildSettingsJson(opts: {
+  hookScriptPath: string;
+  notifyScriptPath?: string;
+  allowedTools?: string;
+}): string {
+  const hooksBlock: Record<string, unknown> = {
     Stop: [
       {
         matcher: '',
@@ -43,6 +69,22 @@ export function buildSettingsJson(opts: { hookScriptPath: string; allowedTools?:
       },
     ],
   };
+
+  // Notification hook: fired when Claude is BLOCKED waiting on the user — a tool
+  // permission prompt or an idle input wait. Lets a waiter return 'input'
+  // instead of hanging to the timeout. Both matchers point at the same script.
+  if (opts.notifyScriptPath !== undefined) {
+    hooksBlock.Notification = [
+      {
+        matcher: 'permission_prompt',
+        hooks: [{ type: 'command', command: opts.notifyScriptPath }],
+      },
+      {
+        matcher: 'idle_prompt',
+        hooks: [{ type: 'command', command: opts.notifyScriptPath }],
+      },
+    ];
+  }
 
   const settings: Record<string, unknown> = {
     hooks: hooksBlock,
@@ -66,7 +108,7 @@ export function buildSettingsJson(opts: { hookScriptPath: string; allowedTools?:
 
 export async function ensureGlobalHooks(
   env: Record<string, string | undefined> = {},
-): Promise<{ stopScriptPath: string }> {
+): Promise<{ stopScriptPath: string; notifyScriptPath: string }> {
   const hooksDir = join(stateDir(env), 'hooks');
   await mkdir(hooksDir, { recursive: true });
 
@@ -74,7 +116,11 @@ export async function ensureGlobalHooks(
   await writeFile(stopScriptPath, STOP_HOOK_SCRIPT, { encoding: 'utf8' });
   await chmod(stopScriptPath, 0o755);
 
-  return { stopScriptPath };
+  const notifyScriptPath = join(hooksDir, 'notify.sh');
+  await writeFile(notifyScriptPath, NOTIFY_HOOK_SCRIPT, { encoding: 'utf8' });
+  await chmod(notifyScriptPath, 0o755);
+
+  return { stopScriptPath, notifyScriptPath };
 }
 
 // ---------------------------------------------------------------------------

@@ -459,3 +459,130 @@ describe('waitFor — dead session', () => {
     expect(result.stopped).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// waitFor — input (worker blocked on a permission prompt / idle)
+// ---------------------------------------------------------------------------
+
+describe('waitFor — input (notification)', () => {
+  test('settles reason=input with the message when events/notification advances', async () => {
+    const env = await setup();
+    const name = sessionName('input');
+
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { newSession } = await import('../../src/adapters/tmux.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+
+    await ensureSessionDir(name, env);
+    await newSession({ name, cwd: '/tmp', cmd: ['bash'] }); // alive, never fires stop
+    CREATED.push(name);
+    await writeMeta(
+      name,
+      SessionSchema.parse({
+        name,
+        cwd: '/tmp',
+        anonymous: true,
+        createdAt: Date.now(),
+        jsonlPath: null,
+      }),
+      env,
+    );
+
+    // Mid-wait the worker asks for input — the Notification hook touches this file.
+    const notifPath = join(tmpDir, 'sessions', name, 'events', 'notification');
+    setTimeout(() => {
+      writeFile(notifPath, 'Allow Bash(rm -rf)? 1. Yes 2. No').catch(() => undefined);
+    }, 300);
+
+    const result = await waitFor({
+      name,
+      sinceMtime: Date.now(),
+      env,
+      defaultTimeoutMs: 5_000,
+    });
+
+    expect(result.reason).toBe('input');
+    expect(result.stopped).toBe(false);
+    expect(result.message ?? '').toContain('Allow Bash');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// waitFor — idle (universal net: no pane activity for idleTimeoutMs)
+// ---------------------------------------------------------------------------
+
+describe('waitFor — idle (no pane activity)', () => {
+  test('settles reason=idle when the pane is static for idleTimeoutMs', async () => {
+    const env = await setup();
+    const name = sessionName('idle');
+
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { newSession } = await import('../../src/adapters/tmux.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+
+    await ensureSessionDir(name, env);
+    await newSession({ name, cwd: '/tmp', cmd: ['bash'] }); // static prompt, never fires stop
+    CREATED.push(name);
+    await writeMeta(
+      name,
+      SessionSchema.parse({
+        name,
+        cwd: '/tmp',
+        anonymous: true,
+        createdAt: Date.now(),
+        jsonlPath: null,
+      }),
+      env,
+    );
+
+    const result = await waitFor({
+      name,
+      sinceMtime: Date.now(),
+      idleTimeoutMs: 800,
+      env,
+      defaultTimeoutMs: 10_000,
+    });
+
+    expect(result.reason).toBe('idle');
+    expect(result.stopped).toBe(false);
+  });
+
+  test('does NOT settle idle while the pane keeps changing', async () => {
+    const env = await setup();
+    const name = sessionName('active');
+
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { newSession } = await import('../../src/adapters/tmux.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+
+    await ensureSessionDir(name, env);
+    // A pane that keeps changing — idle detection must NOT fire on it.
+    await newSession({
+      name,
+      cwd: '/tmp',
+      cmd: ['bash', '-c', 'while true; do echo $RANDOM; sleep 0.1; done'],
+    });
+    CREATED.push(name);
+    await writeMeta(
+      name,
+      SessionSchema.parse({
+        name,
+        cwd: '/tmp',
+        anonymous: true,
+        createdAt: Date.now(),
+        jsonlPath: null,
+      }),
+      env,
+    );
+
+    const result = await waitFor({
+      name,
+      condition: { kind: 'timeout', ms: 2_500 },
+      idleTimeoutMs: 800,
+      env,
+      defaultTimeoutMs: 10_000,
+    });
+
+    expect(result.reason).toBe('timeout');
+  });
+});

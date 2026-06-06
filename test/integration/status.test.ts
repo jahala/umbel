@@ -257,3 +257,34 @@ describe('status — effective routing (baseUrl)', () => {
     expect(JSON.stringify(entries[0])).not.toContain(secret);
   });
 });
+
+// ---------------------------------------------------------------------------
+// status — needsInput (worker blocked on a prompt)
+// ---------------------------------------------------------------------------
+
+describe('status — needsInput', () => {
+  test('needsInput is true when events/notification is newer than events/stop', async () => {
+    const env = await setup();
+    const name = sessionName('needsinput');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    // Simulate the Notification hook firing (the worker is blocked on a prompt).
+    const { writeFile } = await import('node:fs/promises');
+    const notifPath = join(tmpDir, 'sessions', name, 'events', 'notification');
+    await writeFile(notifPath, 'Allow Bash?');
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.needsInput).toBe(true);
+  });
+
+  test('needsInput is false for a session with no pending notification', async () => {
+    const env = await setup();
+    const name = sessionName('noinput');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.needsInput).toBe(false);
+  });
+});

@@ -11,6 +11,9 @@ import { defaultDeps } from './deps.ts';
 export interface StatusEntry extends Session {
   alive: boolean;
   lastActivityAt?: number;
+  // True when the worker is BLOCKED waiting on the user: a Notification hook
+  // touched events/notification more recently than the turn-ending events/stop.
+  needsInput: boolean;
 }
 
 export interface StatusOpts {
@@ -23,27 +26,35 @@ export interface StatusOpts {
 // Internal: enrich a session with alive + lastActivityAt
 // ---------------------------------------------------------------------------
 
+async function fileMtime(path: string): Promise<number> {
+  try {
+    return (await stat(path)).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
 async function enrich(
   session: Session,
   d: Deps,
   env: Record<string, string | undefined>,
 ): Promise<StatusEntry> {
-  const [alive, lastActivityAt] = await Promise.all([
+  const eventsDir = d.fs.eventsDir(session.name, env);
+  const [alive, logMtime, notifMtime, stopMtime] = await Promise.all([
     d.tmux.hasSession(session.name),
-    (async () => {
-      const logPath = join(d.fs.eventsDir(session.name, env), 'log');
-      try {
-        const s = await stat(logPath);
-        return s.mtimeMs;
-      } catch {
-        return undefined;
-      }
-    })(),
+    fileMtime(join(eventsDir, 'log')),
+    fileMtime(join(eventsDir, 'notification')),
+    fileMtime(join(eventsDir, 'stop')),
   ]);
 
-  const entry: StatusEntry = { ...session, alive };
-  if (lastActivityAt !== undefined) {
-    entry.lastActivityAt = lastActivityAt;
+  const entry: StatusEntry = {
+    ...session,
+    alive,
+    // Blocked iff a notification arrived more recently than the last turn end.
+    needsInput: notifMtime > 0 && notifMtime > stopMtime,
+  };
+  if (logMtime > 0) {
+    entry.lastActivityAt = logMtime;
   }
   return entry;
 }
