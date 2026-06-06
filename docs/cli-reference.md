@@ -152,7 +152,7 @@ The default timeout (30 minutes) is enforced even when `--timeout` is not specif
 | Reason | Exit | Meaning |
 |--------|------|---------|
 | stop | 0 | Turn completed — `rctrl read` the result. |
-| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `rctrl send`, then `wait` again. (Claude detects this precisely via its Notification hook; other providers surface it via `--idle-timeout`.) |
+| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `rctrl send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
 | idle | 126 | No pane activity for `--idle-timeout`. Pane prints to stderr. |
 | dead | 125 | Worker exited before finishing its turn. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |

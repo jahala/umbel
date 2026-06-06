@@ -46,6 +46,20 @@ describe('CodexProvider.buildLaunch', () => {
     expect(spec.env).toEqual({});
   });
 
+  test('with notifyScriptPath, hooks.json registers a PermissionRequest hook', () => {
+    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const spec = CodexProvider.buildLaunch({
+      sessionId: 'test-session',
+      cwd: '/tmp',
+      hookScriptPath: '/tmp/stop.sh',
+      notifyScriptPath: notify,
+    });
+    const hooksFile = spec.files.find((f) => f.path.endsWith('.codex/hooks.json'));
+    const content = hooksFile?.content ?? '';
+    expect(content).toContain('PermissionRequest');
+    expect(content).toContain(notify);
+  });
+
   test('files has exactly one entry at <cwd>/.codex/hooks.json', () => {
     const cwd = '/home/user/project';
     const spec = CodexProvider.buildLaunch({

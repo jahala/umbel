@@ -226,21 +226,36 @@ const codexProvider: AgentProvider = {
     //
     // Schema: codex-rs/config/src/hook_config.rs — HooksFile, MatcherGroup,
     // HookHandlerConfig. timeout is in seconds (not ms). matcher is optional.
-    const hooksJson = JSON.stringify({
-      hooks: {
-        Stop: [
-          {
-            hooks: [
-              {
-                type: 'command',
-                command: opts.hookScriptPath,
-                timeout: 30,
-              },
-            ],
-          },
-        ],
-      },
-    });
+    const hooks: Record<string, unknown> = {
+      Stop: [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: opts.hookScriptPath,
+              timeout: 30,
+            },
+          ],
+        },
+      ],
+    };
+    // PermissionRequest fires when Codex needs approval for a tool call — the
+    // worker is BLOCKED. Lets a waiter return 'input' instead of hanging.
+    // Verified against codex 0.133.0 (HookEventNameWire enum); timeout in seconds.
+    if (opts.notifyScriptPath !== undefined) {
+      hooks.PermissionRequest = [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: opts.notifyScriptPath,
+              timeout: 30,
+            },
+          ],
+        },
+      ];
+    }
+    const hooksJson = JSON.stringify({ hooks });
 
     const args: string[] = [];
     if (opts.model !== undefined) {
