@@ -263,19 +263,64 @@ describe('status — effective routing (baseUrl)', () => {
 // ---------------------------------------------------------------------------
 
 describe('status — needsInput', () => {
-  test('needsInput is true when events/notification is newer than events/stop', async () => {
-    const env = await setup();
-    const name = sessionName('needsinput');
-    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
-    CREATED.push(session.name);
-
-    // Simulate the Notification hook firing (the worker is blocked on a prompt).
+  // The Notification hook appends a JSONL line; status classifies the latest one.
+  async function writeNotif(name: string, obj: object): Promise<void> {
     const { writeFile } = await import('node:fs/promises');
     const notifPath = join(tmpDir, 'sessions', name, 'events', 'notification');
-    await writeFile(notifPath, 'Allow Bash?');
+    await writeFile(notifPath, `${JSON.stringify(obj)}\n`);
+  }
+
+  test('needsInput + needsInputReason=permission for a pending permission prompt', async () => {
+    const env = await setup();
+    const name = sessionName('needperm');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+    await writeNotif(name, {
+      notification_type: 'permission_prompt',
+      message: 'Claude needs your permission',
+    });
 
     const entries = await status({ name, env });
     expect(entries[0]?.needsInput).toBe(true);
+    expect(entries[0]?.needsInputReason).toBe('permission');
+  });
+
+  test('needsInputReason=idle for a done-and-idle worker (NOT mislabeled blocked)', async () => {
+    const env = await setup();
+    const name = sessionName('needidle');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+    await writeNotif(name, {
+      notification_type: 'idle_prompt',
+      message: 'Claude is waiting for your input',
+    });
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.needsInput).toBe(true);
+    expect(entries[0]?.needsInputReason).toBe('idle');
+  });
+
+  test('pendingTool surfaced when the notification carries a tool', async () => {
+    const env = await setup();
+    const name = sessionName('needtool');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+    await writeNotif(name, { hook_event_name: 'PermissionRequest', tool_name: 'shell' });
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.needsInputReason).toBe('permission');
+    expect(entries[0]?.pendingTool).toBe('shell');
+  });
+
+  test('an informational notification (auth_success) is NOT needsInput', async () => {
+    const env = await setup();
+    const name = sessionName('authn');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+    await writeNotif(name, { notification_type: 'auth_success', message: 'login ok' });
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.needsInput).toBe(false);
   });
 
   test('needsInput is false for a session with no pending notification', async () => {

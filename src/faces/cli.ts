@@ -496,6 +496,12 @@ async function verbStatus(
   const name = flagStr(flags, 'name') ?? positionals[0];
   const statusOpts = name !== undefined ? { name, env: getCliEnv() } : { env: getCliEnv() };
   const entries = await status(statusOpts);
+  // --json: machine-readable for shell/CI watchers (no MCP needed). With no name
+  // it lists every session; each entry carries needsInput/needsInputReason/pendingTool.
+  if (flagBool(flags, 'json')) {
+    process.stdout.write(`${JSON.stringify(entries)}\n`);
+    return 0;
+  }
   if (entries.length === 0) {
     process.stdout.write('No sessions found.\n');
     return 0;

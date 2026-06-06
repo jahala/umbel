@@ -319,4 +319,9 @@ describe('PLUGIN_SOURCE notification handler', () => {
     expect(PLUGIN_SOURCE).toContain('permission.updated');
     expect(PLUGIN_SOURCE).toContain('notification');
   });
+
+  test('appends a structured JSON line (hook_event_name), not a clobbered string', () => {
+    expect(PLUGIN_SOURCE).toContain('appendFile');
+    expect(PLUGIN_SOURCE).toContain('hook_event_name');
+  });
 });

@@ -201,4 +201,41 @@ describe('ensureGlobalHooks — notify.sh', () => {
     const notif = await Bun.file(join(sessionEventsDir, 'notification')).text();
     expect(notif).toContain('Allow Bash(rm)?');
   });
+
+  test('appends one JSON line per event (no clobber)', async () => {
+    const env = await setup();
+    const { notifyScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'test-notify-jsonl';
+    const sessionEventsDir = join(tmpDir, 'sessions', sessionId, 'events');
+    await mkdir(sessionEventsDir, { recursive: true });
+
+    const fire = async (payload: object): Promise<void> => {
+      const proc = Bun.spawn(['bash', notifyScriptPath], {
+        env: { RCTRL_STATE: tmpDir, RCTRL_SESSION_ID: sessionId },
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      proc.stdin.write(JSON.stringify(payload));
+      await proc.stdin.end();
+      await proc.exited;
+    };
+
+    await fire({
+      hook_event_name: 'Notification',
+      notification_type: 'permission_prompt',
+      message: 'Claude needs your permission',
+    });
+    await fire({
+      hook_event_name: 'Notification',
+      notification_type: 'idle_prompt',
+      message: 'Claude is waiting for your input',
+    });
+
+    const content = await Bun.file(join(sessionEventsDir, 'notification')).text();
+    const lines = content.trim().split('\n');
+    expect(lines.length).toBe(2); // appended, not clobbered
+    expect(JSON.parse(lines[0] ?? '{}').notification_type).toBe('permission_prompt');
+    expect(JSON.parse(lines[1] ?? '{}').notification_type).toBe('idle_prompt');
+  });
 });

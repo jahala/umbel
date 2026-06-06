@@ -30,20 +30,20 @@ date +%s%N >> "$state/events/log"
 // ---------------------------------------------------------------------------
 
 // The inverse of the Stop hook: the worker needs input (a permission prompt, or
-// it has gone idle). Writes the human-readable message to events/notification
-// (mtime advance = signal) so a waiter can return reason:'input' WITH the
-// question instead of hanging until the timeout. Best-effort message extraction
-// across providers (Claude: .message / .notification_type; Codex: .tool_name).
+// it has gone idle). APPENDS one JSON line per event to events/notification
+// ({ts, hook_event_name, notification_type, message, tool_name}) — append, not
+// overwrite, so a transient permission prompt is never clobbered by a later idle
+// ping. mtime advance = signal; core/notification.ts classifies the latest line.
 export const NOTIFY_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
 state="\${RCTRL_STATE:?}/sessions/\${RCTRL_SESSION_ID:?}"
 mkdir -p "$state/events"
 payload=$(cat || true)
-msg=""
 if command -v jq >/dev/null 2>&1; then
-  msg=$(printf '%s' "$payload" | jq -r '.message // .notification_type // .tool_name // empty' 2>/dev/null || true)
+  printf '%s' "$payload" | jq -c '{ts: (now*1000|floor), hook_event_name: (.hook_event_name // null), notification_type: (.notification_type // null), message: (.message // null), tool_name: (.tool_name // null)}' >> "$state/events/notification" 2>/dev/null || true
+else
+  printf '{"ts":%s}\\n' "$(( $(date +%s) * 1000 ))" >> "$state/events/notification"
 fi
-printf '%s' "$msg" > "$state/events/notification"
 date +%s%N >> "$state/events/log"
 `;
 

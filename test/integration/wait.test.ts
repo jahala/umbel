@@ -488,10 +488,11 @@ describe('waitFor — input (notification)', () => {
       env,
     );
 
-    // Mid-wait the worker asks for input — the Notification hook touches this file.
+    // Mid-wait the worker asks for input — the Notification hook appends a JSONL line.
     const notifPath = join(tmpDir, 'sessions', name, 'events', 'notification');
     setTimeout(() => {
-      writeFile(notifPath, 'Allow Bash(rm -rf)? 1. Yes 2. No').catch(() => undefined);
+      const ln = `${JSON.stringify({ notification_type: 'permission_prompt', message: 'Allow Bash(rm -rf)?' })}\n`;
+      writeFile(notifPath, ln).catch(() => undefined);
     }, 300);
 
     const result = await waitFor({
@@ -503,7 +504,50 @@ describe('waitFor — input (notification)', () => {
 
     expect(result.reason).toBe('input');
     expect(result.stopped).toBe(false);
+    expect(result.inputReason).toBe('permission');
     expect(result.message ?? '').toContain('Allow Bash');
+  });
+
+  // An informational notification (auth_success) is NOT the worker awaiting input —
+  // waitFor must NOT settle 'input' on it (the classifier returns reason:null).
+  test('does not settle input on an informational (auth_success) notification', async () => {
+    const env = await setup();
+    const name = sessionName('authok');
+
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { newSession } = await import('../../src/adapters/tmux.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+
+    await ensureSessionDir(name, env);
+    await newSession({ name, cwd: '/tmp', cmd: ['bash'] });
+    CREATED.push(name);
+    await writeMeta(
+      name,
+      SessionSchema.parse({
+        name,
+        cwd: '/tmp',
+        anonymous: true,
+        createdAt: Date.now(),
+        jsonlPath: null,
+      }),
+      env,
+    );
+
+    const notifPath = join(tmpDir, 'sessions', name, 'events', 'notification');
+    setTimeout(() => {
+      const ln = `${JSON.stringify({ notification_type: 'auth_success', message: 'login ok' })}\n`;
+      writeFile(notifPath, ln).catch(() => undefined);
+    }, 300);
+
+    const result = await waitFor({
+      name,
+      sinceMtime: Date.now(),
+      condition: { kind: 'timeout', ms: 1_500 },
+      env,
+      defaultTimeoutMs: 5_000,
+    });
+
+    expect(result.reason).toBe('timeout'); // auth_success ignored, not 'input'
   });
 });
 

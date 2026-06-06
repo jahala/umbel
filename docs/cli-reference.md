@@ -180,7 +180,7 @@ rctrl wait reviewer --until pattern --pattern "All tests passed"
 Show the status table for one or all sessions. Columns: NAME, STATUS (alive/dead), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
 
 ```
-rctrl status [name]
+rctrl status [name] [--json]
 ```
 
 **Positionals**
@@ -189,11 +189,24 @@ rctrl status [name]
 |----------|-------------|
 | `<name>` | Optional. Omit to show all sessions. |
 
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Emit the entries as one JSON array instead of the table — for shell/CI watchers that can't call MCP. With no `<name>` it lists every session. |
+
+Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields. `needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
+
+A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInputReason: permission` instead of hanging silently. Avoid it by allowlisting your project's MCP (read-only) tools at spawn — and note that **`Write` does not imply `Edit`** (appending to a file uses `Edit`).
+
 **Examples**
 
 ```bash
 # All sessions
 rctrl status
+
+# Machine-readable, for a fleet watcher
+rctrl status --json | jq '.[] | select(.needsInputReason == "permission")'
 
 # One session
 rctrl status reviewer
