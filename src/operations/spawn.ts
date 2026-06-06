@@ -1,10 +1,11 @@
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { resolveEnvRefs } from '../core/env.ts';
 import { RctrlUsageError } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
-import type { Session } from '../core/types.ts';
+import type { EnvValue, Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -85,8 +86,9 @@ export interface SpawnOpts {
   claudeBin?: string;
   env?: Record<string, string | undefined>;
   // Explicit per-worker environment overrides (e.g. from `--env KEY=VAL`).
-  // Merged OVER the inherited environment; never persisted to meta.json.
-  workerEnv?: Record<string, string>;
+  // Values may be literals or {fromEnv} references; merged OVER the inherited
+  // environment after resolution. Never persisted to meta.json.
+  workerEnv?: Record<string, EnvValue>;
   deps?: Partial<Deps>;
 }
 
@@ -111,6 +113,11 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   }
 
   const anonymous = opts.anonymous ?? opts.name === undefined;
+
+  // Resolve {fromEnv} references against the rctrl server's env BEFORE any I/O,
+  // so an unresolved reference fails fast (no session dir / hooks to clean up).
+  const resolvedWorkerEnv =
+    opts.workerEnv !== undefined ? resolveEnvRefs(opts.workerEnv, process.env) : undefined;
 
   // Resolve provider first — fails fast on unknown provider before any I/O.
   const provider = getProvider(providerName);
@@ -185,20 +192,25 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     if (v !== undefined) tmuxEnv[k] = v;
   }
   // Explicit per-worker overrides win over everything except reserved vars.
-  if (opts.workerEnv !== undefined) {
-    for (const [k, v] of Object.entries(opts.workerEnv)) {
+  if (resolvedWorkerEnv !== undefined) {
+    for (const [k, v] of Object.entries(resolvedWorkerEnv)) {
       tmuxEnv[k] = v;
     }
   }
   tmuxEnv.RCTRL_STATE = stateRoot;
   tmuxEnv.RCTRL_SESSION_ID = name;
 
+  // Let the provider reconcile mutually-exclusive credentials in the final env
+  // (claude drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is
+  // set — it would otherwise wedge the worker on the "use this key?" prompt).
+  const workerEnvFinal = provider.reconcileEnv?.(tmuxEnv) ?? tmuxEnv;
+
   try {
     await d.tmux.newSession({
       name,
       cwd: opts.cwd,
       cmd,
-      env: tmuxEnv,
+      env: workerEnvFinal,
     });
   } catch (err) {
     await d.tmux.killSession(name).catch(() => undefined);
@@ -234,6 +246,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     anonymous,
     createdAt: sinceMs,
     jsonlPath: null,
+    baseUrl: workerEnvFinal.ANTHROPIC_BASE_URL ?? null,
   });
 
   try {

@@ -89,6 +89,14 @@ export interface AgentProvider {
     allowedTools?: string;
   }): ProviderLaunchSpec;
 
+  // Optional: reconcile the fully-assembled worker env immediately before
+  // launch. PURE — returns a new env (or the input unchanged); never mutates
+  // or throws. Lets a provider resolve mutually-exclusive credential vars:
+  // claude drops an inherited ANTHROPIC_API_KEY when a custom ANTHROPIC_AUTH_TOKEN
+  // is set, so the worker neither mis-bills nor wedges on the "use this key?"
+  // prompt. Omit for providers with no such conflict.
+  reconcileEnv?(env: Record<string, string>): Record<string, string>;
+
   // Which lifecycle event name marks end-of-turn in this provider's hook
   // payload? rctrl's stop.sh is generic — it captures transcript_path from
   // whatever payload it gets. This field is informational + tests.

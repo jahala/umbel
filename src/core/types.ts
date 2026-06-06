@@ -36,9 +36,24 @@ export const SessionSchema = z.object({
   anonymous: z.boolean(),
   createdAt: z.number().int().nonnegative(),
   jsonlPath: z.string().nullable(),
+  // Effective custom Anthropic-compatible endpoint (ANTHROPIC_BASE_URL) the
+  // worker was launched with, or null. Non-secret routing info surfaced by
+  // status so callers can confirm routing without a printenv round-trip.
+  baseUrl: z.string().nullable().default(null),
 });
 
 export type Session = z.infer<typeof SessionSchema>;
+
+// ---------------------------------------------------------------------------
+// Worker env value — literal or {fromEnv} reference
+// ---------------------------------------------------------------------------
+
+// A worker env value is either a literal string or a reference to a variable in
+// the rctrl server's own environment ({fromEnv}). References are resolved at
+// spawn time (see core/env.ts), so a secret can be passed by reference and never
+// appears in the caller's tool-call transcript.
+export const EnvValueSchema = z.union([z.string(), z.object({ fromEnv: z.string() }).strict()]);
+export type EnvValue = z.infer<typeof EnvValueSchema>;
 
 // ---------------------------------------------------------------------------
 // WaitCondition — discriminated union with recursive all/any
@@ -101,7 +116,8 @@ export const WorkerSpecSchema = z.object({
   provider: ProviderNameSchema.optional(),
   allowedTools: z.string().optional(),
   // Per-worker environment overrides, merged over the inherited environment.
-  env: z.record(z.string(), z.string()).optional(),
+  // Values may be literals or {fromEnv} references (resolved at spawn time).
+  env: z.record(z.string(), EnvValueSchema).optional(),
 });
 
 export type WorkerSpec = z.infer<typeof WorkerSpecSchema>;

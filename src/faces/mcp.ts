@@ -92,7 +92,7 @@ export interface McpToolHandlers {
     provider?: 'claude' | 'codex' | 'gemini' | 'opencode' | undefined;
     model?: string | undefined;
     allowedTools?: string | undefined;
-    env?: Record<string, string> | undefined;
+    env?: Record<string, string | { fromEnv: string }> | undefined;
   }) => Promise<ToolResult>;
   rctrl_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
   rctrl_wait: (args: {

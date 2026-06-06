@@ -105,6 +105,41 @@ describe('ClaudeProvider.buildLaunch', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ClaudeProvider.reconcileEnv — drop a conflicting inherited ANTHROPIC_API_KEY
+// ---------------------------------------------------------------------------
+
+describe('ClaudeProvider.reconcileEnv', () => {
+  test('drops ANTHROPIC_API_KEY when ANTHROPIC_AUTH_TOKEN is set', () => {
+    const reconcile = ClaudeProvider.reconcileEnv;
+    expect(reconcile).toBeDefined();
+    const out = reconcile?.({
+      ANTHROPIC_AUTH_TOKEN: 'bearer-xyz',
+      ANTHROPIC_API_KEY: 'sk-should-be-dropped',
+      ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
+      PATH: '/usr/bin',
+    });
+    expect(out?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(out?.ANTHROPIC_AUTH_TOKEN).toBe('bearer-xyz');
+    expect(out?.ANTHROPIC_BASE_URL).toBe('https://api.deepseek.com/anthropic');
+    expect(out?.PATH).toBe('/usr/bin');
+  });
+
+  test('keeps ANTHROPIC_API_KEY when no AUTH_TOKEN (normal API worker untouched)', () => {
+    const reconcile = ClaudeProvider.reconcileEnv;
+    expect(reconcile).toBeDefined();
+    const out = reconcile?.({ ANTHROPIC_API_KEY: 'sk-legit', PATH: '/usr/bin' });
+    expect(out?.ANTHROPIC_API_KEY).toBe('sk-legit');
+  });
+
+  test('is a no-op when neither credential var is set', () => {
+    const reconcile = ClaudeProvider.reconcileEnv;
+    expect(reconcile).toBeDefined();
+    const input = { PATH: '/usr/bin', HOME: '/home/x' };
+    expect(reconcile?.(input)).toEqual(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ClaudeProvider.stopEventName
 // ---------------------------------------------------------------------------
 

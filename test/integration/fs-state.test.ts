@@ -39,6 +39,7 @@ function makeSession(name: string): Session {
     anonymous: false,
     createdAt: Date.now(),
     jsonlPath: null,
+    baseUrl: null,
   };
 }
 
