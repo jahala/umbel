@@ -41,7 +41,7 @@ export const TOOL_DESCRIPTIONS = {
   rctrl_wait:
     'Block until the worker finishes (reason:stop), is BLOCKED needing input (reason:input + message — answer via rctrl_send, then wait again), goes idle (set idle_timeout), dies (dead), or times out. Call after rctrl_send; branch on reason.',
   rctrl_status:
-    'Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity.',
+    "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, and needsInput + needsInputReason (permission/idle/question) — tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
   rctrl_ls: 'List all sessions. Same as rctrl_status with no name.',
   rctrl_kill: 'Kill a session and its tmux process. Removes state unless `keepState=true`.',
   rctrl_read:
@@ -176,9 +176,13 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       // Surface WHY the wait ended so the orchestrator can branch: 'input' (the
       // worker is blocked on a prompt — `message` carries the question), 'idle',
       // or 'timeout' (paneSnapshot shows the stuck pane).
-      const payload: { reason: string; message?: string; paneSnapshot?: string } = {
-        reason: result.reason,
-      };
+      const payload: {
+        reason: string;
+        inputReason?: string;
+        message?: string;
+        paneSnapshot?: string;
+      } = { reason: result.reason };
+      if (result.inputReason !== undefined) payload.inputReason = result.inputReason;
       if (result.message !== undefined) payload.message = result.message;
       if (result.paneSnapshot !== undefined) payload.paneSnapshot = result.paneSnapshot;
       return {

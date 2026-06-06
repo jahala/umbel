@@ -26,15 +26,22 @@ async function fireStop(sessionID) {
   await appendFile(logPath, ts + "\\n", "utf8");
 }
 
-async function fireNotification(message) {
+async function fireNotification(tool, message) {
   const state = process.env.RCTRL_STATE;
   const rctrlSession = process.env.RCTRL_SESSION_ID;
   if (!state || !rctrlSession) return;
   const eventsDir = join(state, "sessions", rctrlSession, "events");
   await mkdir(eventsDir, { recursive: true });
-  await writeFile(join(eventsDir, "notification"), String(message ?? ""), "utf8");
-  const ts = String(Date.now() * 1_000_000);
   const { appendFile } = await import("node:fs/promises");
+  const line = JSON.stringify({
+    ts: Date.now(),
+    hook_event_name: "permission.updated",
+    notification_type: "permission",
+    message: message ?? null,
+    tool_name: tool ?? null,
+  });
+  await appendFile(join(eventsDir, "notification"), line + "\\n", "utf8");
+  const ts = String(Date.now() * 1_000_000);
   await appendFile(join(eventsDir, "log"), ts + "\\n", "utf8");
 }
 
@@ -53,7 +60,7 @@ export const Plugin = async () => ({
       !!process.env.RCTRL_STATE &&
       !!process.env.RCTRL_SESSION_ID
     ) {
-      await fireNotification(event?.properties?.title ?? event?.properties?.type ?? "permission");
+      await fireNotification(event?.properties?.type, event?.properties?.title);
     }
   },
 });

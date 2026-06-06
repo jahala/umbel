@@ -53,6 +53,8 @@ rctrl_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
   dead   → the worker exited without finishing. Respawn or fail.
   timeout→ hard deadline hit; paneSnapshot shows the stuck pane.
 
+For poll-style control of a fleet, rctrl_status carries needsInput + needsInputReason (permission/idle/question) per worker — the same disambiguation without a blocking wait. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
+
 ## Critical rule
 
 Pair every rctrl_send with a rctrl_wait. Sending without waiting causes your next rctrl_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.

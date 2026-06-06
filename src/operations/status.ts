@@ -1,5 +1,6 @@
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import type { Session } from '../core/types.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -11,9 +12,16 @@ import { defaultDeps } from './deps.ts';
 export interface StatusEntry extends Session {
   alive: boolean;
   lastActivityAt?: number;
-  // True when the worker is BLOCKED waiting on the user: a Notification hook
-  // touched events/notification more recently than the turn-ending events/stop.
+  // True when the worker is awaiting the user — the latest notification (newer
+  // than the last turn-end) classifies as a real awaiting event, not an
+  // informational one (auth_success / elicitation completion).
   needsInput: boolean;
+  // Why it's awaiting, when needsInput: permission (blocked on a tool prompt),
+  // idle (done + idle), or question (elicitation). Absent when not awaiting.
+  needsInputReason?: NeedsInputReason;
+  // Best-effort pending tool, when the notification carries one. Absent for
+  // Claude's main permission prompt (it omits the tool from the hook payload).
+  pendingTool?: string;
 }
 
 export interface StatusOpts {
@@ -47,16 +55,31 @@ async function enrich(
     fileMtime(join(eventsDir, 'stop')),
   ]);
 
-  const entry: StatusEntry = {
-    ...session,
-    alive,
-    // Blocked iff a notification arrived more recently than the last turn end.
-    needsInput: notifMtime > 0 && notifMtime > stopMtime,
-  };
+  const entry: StatusEntry = { ...session, alive, needsInput: false };
   if (logMtime > 0) {
     entry.lastActivityAt = logMtime;
   }
+
+  // A notification newer than the last turn-end may mean the worker is awaiting
+  // input. Classify the latest line to tell permission / idle / question from an
+  // informational ping (auth_success, elicitation completion → not awaiting).
+  if (notifMtime > 0 && notifMtime > stopMtime) {
+    const cls = classifyNotification(await readFileSafe(join(eventsDir, 'notification')));
+    if (cls.reason !== null) {
+      entry.needsInput = true;
+      entry.needsInputReason = cls.reason;
+      if (cls.tool !== undefined) entry.pendingTool = cls.tool;
+    }
+  }
   return entry;
+}
+
+async function readFileSafe(path: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 // ---------------------------------------------------------------------------

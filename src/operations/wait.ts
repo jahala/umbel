@@ -1,5 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import type { WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
@@ -32,9 +33,11 @@ export interface WaitOpts {
 export interface WaitResult {
   stopped: boolean;
   reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted' | 'dead' | 'input' | 'idle';
-  // When reason is 'input', the worker is BLOCKED waiting on the user (a
-  // permission prompt / idle). `message` carries the Notification hook's prompt
-  // text so the caller can answer without screen-scraping the pane.
+  // When reason is 'input', the worker is awaiting the user. `inputReason` is the
+  // classified sub-reason (permission = blocked on a tool prompt, idle = done +
+  // idle, question = elicitation); `message` carries the prompt text — so the
+  // caller can branch without screen-scraping the pane.
+  inputReason?: NeedsInputReason;
   message?: string;
   // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
   // moment the wait settled — so a stuck worker's cause (e.g. an unexpected
@@ -208,7 +211,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       return 0;
     }
   };
-  const notificationSince = await readNotificationMtime();
+  let notificationSince = await readNotificationMtime();
 
   // Resolve promise that fires when the condition is met or aborted
   return new Promise<WaitResult>((resolve) => {
@@ -265,26 +268,33 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         const notifMtime = await readNotificationMtime();
         if (settled) return;
         if (notifMtime > notificationSince) {
-          let message = '';
+          let content = '';
           try {
-            message = (await readFile(notificationPath, 'utf8')).trim();
+            content = await readFile(notificationPath, 'utf8');
           } catch {
-            // notification file vanished between stat and read — settle anyway.
+            // notification file vanished between stat and read — treat as empty.
           }
-          let paneSnapshot: string | undefined;
-          try {
-            paneSnapshot = await d.tmux.capturePane(name, 30);
-          } catch {
-            // pane capture failed — settle without it.
+          const cls = classifyNotification(content);
+          if (cls.reason !== null) {
+            let paneSnapshot: string | undefined;
+            try {
+              paneSnapshot = await d.tmux.capturePane(name, 30);
+            } catch {
+              // pane capture failed — settle without it.
+            }
+            if (settled) return;
+            settle({
+              stopped: false,
+              reason: 'input',
+              inputReason: cls.reason,
+              ...(cls.message !== undefined ? { message: cls.message } : {}),
+              ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
+            });
+            return;
           }
-          if (settled) return;
-          settle({
-            stopped: false,
-            reason: 'input',
-            ...(message !== '' ? { message } : {}),
-            ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
-          });
-          return;
+          // Informational notification (auth_success / elicitation completion) —
+          // advance the baseline so it isn't re-evaluated, and keep waiting.
+          notificationSince = notifMtime;
         }
 
         // Condition not met yet. If the worker's tmux session has vanished it

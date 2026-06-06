@@ -309,6 +309,18 @@ describe('cli — status', () => {
     expect(stdout).toContain(name);
   });
 
+  test('status --json prints a parseable JSON array with needsInput', async () => {
+    const name = sessionName('statjson');
+    await cliSpawnSession(name);
+
+    const { code, stdout } = await runWithCapture(() => runCli(['status', name, '--json']));
+    expect(code).toBe(0);
+    const parsed = JSON.parse(stdout) as Array<{ name: string; needsInput: boolean }>;
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed[0]?.name).toBe(name);
+    expect(typeof parsed[0]?.needsInput).toBe('boolean');
+  });
+
   test('status missing-session exits 1', async () => {
     const { code } = await runWithCapture(() => runCli(['status', `nonexistent-${RUN_ID}`]));
     expect(code).toBe(1);
