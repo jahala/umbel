@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { RctrlUsageError } from '../core/errors.ts';
-import { ProviderNameSchema } from '../core/types.ts';
+import { EnvValueSchema, ProviderNameSchema } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------
 // parseDuration — e.g. '5m', '30s', '1h', '500ms' → milliseconds
@@ -39,7 +39,8 @@ export const VerbSchemas = {
     model: z.string().optional(),
     allowedTools: z.string().optional(),
     // Per-worker environment overrides, merged over the inherited environment.
-    env: z.record(z.string(), z.string()).optional(),
+    // Values may be literals or {fromEnv} references (resolved at spawn time).
+    env: z.record(z.string(), EnvValueSchema).optional(),
   }),
   send: z.object({
     name: z.string(),

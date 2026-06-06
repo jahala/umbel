@@ -204,3 +204,56 @@ describe('status — lastActivityAt', () => {
     expect(entries[0]?.lastActivityAt ?? 0).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// status — effective routing (baseUrl)
+// ---------------------------------------------------------------------------
+
+describe('status — effective routing (baseUrl)', () => {
+  test('surfaces the effective ANTHROPIC_BASE_URL as baseUrl', async () => {
+    const env = await setup();
+    const name = sessionName('routed');
+    const url = 'https://api.deepseek.com/anthropic';
+    const { session } = await spawn(
+      makeSpawnOpts(env, '/tmp', { name, workerEnv: { ANTHROPIC_BASE_URL: url } }),
+    );
+    CREATED.push(session.name);
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.baseUrl).toBe(url);
+  });
+
+  test('baseUrl is null for a worker with no custom endpoint', async () => {
+    const env = await setup();
+    const name = sessionName('unrouted');
+    const prev = process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_BASE_URL;
+    try {
+      const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+      CREATED.push(session.name);
+
+      const entries = await status({ name, env });
+      expect(entries[0]?.baseUrl).toBeNull();
+    } finally {
+      if (prev !== undefined) process.env.ANTHROPIC_BASE_URL = prev;
+    }
+  });
+
+  test('surfaces routing without leaking the auth token', async () => {
+    const env = await setup();
+    const name = sessionName('noleak');
+    const url = 'https://api.deepseek.com/anthropic';
+    const secret = 'sk-must-not-appear-in-status';
+    const { session } = await spawn(
+      makeSpawnOpts(env, '/tmp', {
+        name,
+        workerEnv: { ANTHROPIC_BASE_URL: url, ANTHROPIC_AUTH_TOKEN: secret },
+      }),
+    );
+    CREATED.push(session.name);
+
+    const entries = await status({ name, env });
+    expect(entries[0]?.baseUrl).toBe(url);
+    expect(JSON.stringify(entries[0])).not.toContain(secret);
+  });
+});

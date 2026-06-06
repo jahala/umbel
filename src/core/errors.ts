@@ -78,3 +78,14 @@ export class ProviderUnknownError extends Error {
     super(`Unknown provider: ${providerName}${valid}`);
   }
 }
+
+export class EnvRefUnresolvedError extends Error {
+  override name = 'EnvRefUnresolvedError';
+
+  constructor(
+    public key: string,
+    public sourceVar: string,
+  ) {
+    super(`env ${key}: {fromEnv: "${sourceVar}"} — source variable ${sourceVar} is not set`);
+  }
+}

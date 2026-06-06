@@ -500,7 +500,18 @@ rctrl -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
 
 ## Custom model endpoints (Claude provider)
 
-The `claude` provider can target any Anthropic-compatible API — DeepSeek, OpenRouter, a local proxy — by passing the worker its endpoint env. It is the same Claude Code binary (same hooks, transcript, tools), just a different model behind it. **Billed per-token by that endpoint, not your Claude subscription.**
+The `claude` provider can target any Anthropic-compatible API — DeepSeek, OpenRouter, a local proxy — by giving the worker its endpoint env. Same Claude Code binary (same hooks, transcript, tools), different model behind it. **Billed per-token by that endpoint, not your Claude subscription.**
+
+Cleanest is **inheritance**: export the vars in the shell (or process) that launches rctrl and they reach the worker automatically — no secret in any spawn call.
+
+```bash
+export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
+export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
+rctrl spawn --provider claude --name ds --cwd ./work
+```
+
+Or set them per-worker with `--env` (CLI) / `env:` (workflow):
 
 ```bash
 rctrl spawn --provider claude --name ds --cwd ./work \
@@ -509,10 +520,12 @@ rctrl spawn --provider claude --name ds --cwd ./work \
   --env 'ANTHROPIC_MODEL=deepseek-v4-pro[1m]'
 ```
 
-- Quote model strings containing brackets (`'…[1m]'`) so the shell does not glob them.
-- Add `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` to route Claude Code's internal tiers (subagents, quick tasks) to the same endpoint.
-- If your shell exports `ANTHROPIC_API_KEY` it is inherited and can shadow the endpoint — launch rctrl from a shell without it (`--env` sets, but cannot unset, worker env).
-- Per-worker: a DeepSeek worker and a subscription Claude worker coexist in one pool. The same vars work as a workflow `env:` block.
+- Use **`ANTHROPIC_AUTH_TOKEN`**, not `ANTHROPIC_API_KEY`. rctrl drops an inherited `ANTHROPIC_API_KEY` when a custom `AUTH_TOKEN` is set — it would otherwise shadow the endpoint and wedge the worker on Claude Code's "Detected a custom API key… use this key?" prompt.
+- Set **`ANTHROPIC_SMALL_FAST_MODEL`** (and/or `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`) to an endpoint-valid model, or Claude Code's background/subagent calls 404 against a model the endpoint lacks.
+- Over MCP or in a workflow (no shell to expand `$VARS`), pass a secret **by reference** instead of inlining it: `"ANTHROPIC_AUTH_TOKEN": {"fromEnv": "DEEPSEEK_API_KEY"}` — rctrl resolves it from its own env, so the literal never lands in the caller's transcript.
+- Quote model strings with brackets (`'…[1m]'`) so the shell does not glob them.
+- `rctrl status` reports each worker's effective `baseUrl` — confirm routing without a `printenv` round-trip.
+- Per-worker: a DeepSeek worker and a subscription Claude worker coexist in one pool.
 
 ---
 

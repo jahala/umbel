@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  EnvRefUnresolvedError,
   HookTimeoutError,
   JsonlMalformedError,
   ProviderUnknownError,
@@ -189,7 +190,13 @@ function printStatusTable(entries: StatusEntry[]): void {
 
 function errorExitCode(err: unknown): number {
   if (err instanceof WaitTimeoutError) return 124;
-  if (err instanceof RctrlUsageError || err instanceof ProviderUnknownError) return 2;
+  if (
+    err instanceof RctrlUsageError ||
+    err instanceof ProviderUnknownError ||
+    err instanceof EnvRefUnresolvedError
+  ) {
+    return 2;
+  }
   if (
     err instanceof SessionDeadError ||
     err instanceof TmuxError ||

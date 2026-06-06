@@ -304,6 +304,19 @@ const claudeProvider: AgentProvider = {
     };
   },
 
+  // The interactive Claude TUI auths via subscription, or via
+  // ANTHROPIC_AUTH_TOKEN for a custom Anthropic-compatible endpoint. An
+  // ANTHROPIC_API_KEY the worker merely INHERITED then both contradicts that
+  // token and trips Claude Code's "Detected a custom API key… use this key?"
+  // prompt — wedging the worker. The two are mutually exclusive, so when a
+  // custom AUTH_TOKEN is present we drop the API key.
+  reconcileEnv(env: Record<string, string>): Record<string, string> {
+    if (!env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY === undefined) return env;
+    const reconciled = { ...env };
+    delete reconciled.ANTHROPIC_API_KEY;
+    return reconciled;
+  },
+
   parseTranscript(content: string): string {
     return extractLastAssistantGroup(content);
   },
