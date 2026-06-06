@@ -15,7 +15,7 @@ import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
 import { waitFor } from '../operations/wait.ts';
 import { HELP_TOPICS, type HelpTopic, helpForTopic } from './mcp-help.ts';
-import { VerbSchemas } from './verbs.ts';
+import { parseDuration, VerbSchemas } from './verbs.ts';
 
 // ---------------------------------------------------------------------------
 // Agent-facing copy. Exported so tests can snapshot the strings.
@@ -39,7 +39,7 @@ export const TOOL_DESCRIPTIONS = {
     'Spawn a worker. `provider` selects claude/codex/gemini. Returns the session name to pass to other verbs.',
   rctrl_send: 'Send a prompt to a session. Returns immediately — pair with rctrl_wait.',
   rctrl_wait:
-    'Block until the session finishes a turn, or a file/regex condition is met. Call after rctrl_send.',
+    'Block until the worker finishes (reason:stop), is BLOCKED needing input (reason:input + message — answer via rctrl_send, then wait again), goes idle (set idle_timeout), dies (dead), or times out. Call after rctrl_send; branch on reason.',
   rctrl_status:
     'Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity.',
   rctrl_ls: 'List all sessions. Same as rctrl_status with no name.',
@@ -101,6 +101,7 @@ export interface McpToolHandlers {
     file?: string | undefined;
     pattern?: string | undefined;
     timeout?: string | undefined;
+    idleTimeout?: string | undefined;
   }) => Promise<ToolResult>;
   rctrl_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
   rctrl_ls: (args: Record<string, never>) => Promise<ToolResult>;
@@ -162,16 +163,23 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     },
 
     rctrl_wait: async (args) => {
+      const idleTimeoutMs =
+        args.idleTimeout !== undefined ? parseDuration(args.idleTimeout) : undefined;
       const waitOpts = {
         name: args.name,
         env,
+        ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
         ...(deps !== undefined ? { deps } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
       };
       const result = await waitFor(waitOpts);
-      // On timeout, include the pane snapshot so the orchestrator can SEE why
-      // the worker stalled (e.g. an unexpected dialog) instead of just "timeout".
-      const payload: { reason: string; paneSnapshot?: string } = { reason: result.reason };
+      // Surface WHY the wait ended so the orchestrator can branch: 'input' (the
+      // worker is blocked on a prompt — `message` carries the question), 'idle',
+      // or 'timeout' (paneSnapshot shows the stuck pane).
+      const payload: { reason: string; message?: string; paneSnapshot?: string } = {
+        reason: result.reason,
+      };
+      if (result.message !== undefined) payload.message = result.message;
       if (result.paneSnapshot !== undefined) payload.paneSnapshot = result.paneSnapshot;
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],

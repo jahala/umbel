@@ -89,3 +89,14 @@ export class EnvRefUnresolvedError extends Error {
     super(`env ${key}: {fromEnv: "${sourceVar}"} — source variable ${sourceVar} is not set`);
   }
 }
+
+export class WorkerBlockedError extends Error {
+  override name = 'WorkerBlockedError';
+
+  constructor(
+    public sessionName: string,
+    public detail: string,
+  ) {
+    super(`Worker blocked waiting for input: ${sessionName} — ${detail}`);
+  }
+}

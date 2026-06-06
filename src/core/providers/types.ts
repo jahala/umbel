@@ -85,6 +85,7 @@ export interface AgentProvider {
     sessionId: string; // rctrl session name (= tmux session suffix)
     cwd: string;
     hookScriptPath: string; // absolute path to our stop.sh
+    notifyScriptPath?: string; // absolute path to our notify.sh (needs-input hook)
     model?: string;
     allowedTools?: string;
   }): ProviderLaunchSpec;

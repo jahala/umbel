@@ -285,11 +285,11 @@ const claudeProvider: AgentProvider = {
   readyMatch: /Try |for shortcuts|│/,
 
   buildLaunch(opts): ProviderLaunchSpec {
-    const settingsJson = buildSettingsJson(
-      opts.allowedTools !== undefined
-        ? { hookScriptPath: opts.hookScriptPath, allowedTools: opts.allowedTools }
-        : { hookScriptPath: opts.hookScriptPath },
-    );
+    const settingsJson = buildSettingsJson({
+      hookScriptPath: opts.hookScriptPath,
+      ...(opts.notifyScriptPath !== undefined ? { notifyScriptPath: opts.notifyScriptPath } : {}),
+      ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
+    });
 
     const args: string[] = ['--settings', settingsJson];
     if (opts.model !== undefined) {

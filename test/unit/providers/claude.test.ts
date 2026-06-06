@@ -102,6 +102,20 @@ describe('ClaudeProvider.buildLaunch', () => {
     });
     expect(spec.env).toEqual({});
   });
+
+  test('with notifyScriptPath, settings JSON registers a Notification hook', () => {
+    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const spec = ClaudeProvider.buildLaunch({
+      sessionId: 'test-session',
+      cwd: '/tmp',
+      hookScriptPath: '/tmp/stop.sh',
+      notifyScriptPath: notify,
+    });
+    const settingsIdx = spec.args.indexOf('--settings');
+    const settingsJson = spec.args[settingsIdx + 1] ?? '';
+    expect(settingsJson).toContain('Notification');
+    expect(settingsJson).toContain(notify);
+  });
 });
 
 // ---------------------------------------------------------------------------
