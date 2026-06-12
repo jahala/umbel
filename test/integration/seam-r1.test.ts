@@ -123,9 +123,9 @@ describe('rctrl send --json + wait --json integration', () => {
     expect(spawnR.code).toBe(0);
 
     try {
-      // send --json (--json must come after name+prompt so the parser does not
-      // consume 'name' as the flag value, since our argv parser is greedy)
-      const sendR = await spawnCli(['send', name, 'hello', '--json'], baseEnv);
+      // send --json in natural flag-first order — the parser knows --json is
+      // boolean and must not consume 'name' as its value
+      const sendR = await spawnCli(['send', '--json', name, 'hello'], baseEnv);
       expect(sendR.code).toBe(0);
       // stdout must be ONLY valid JSON with sinceMtime
       const sendJson = JSON.parse(sendR.stdout.trim());
@@ -254,4 +254,47 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
       await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// R1 review fixes — boolean flags must not consume positionals; --since validates
+// ---------------------------------------------------------------------------
+
+describe('parser: boolean flags do not consume positionals', () => {
+  test('status --json <name> targets the named session, not the whole list', async () => {
+    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-bf-'));
+    try {
+      const r = await spawnCli(['status', '--json', 'noexist-bf'], { RCTRL_STATE: tmpDir });
+      // If --json swallowed the name, this would list all sessions and exit 0.
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('noexist-bf');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
+  test('send --json <name> <prompt> resolves the name positionally', async () => {
+    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-bs-'));
+    try {
+      const r = await spawnCli(['send', '--json', 'noexist-bs', 'hello'], { RCTRL_STATE: tmpDir });
+      // Pre-fix the parser ate 'noexist-bs' as --json's value, making 'hello'
+      // the name and the prompt missing. The error must name the session.
+      expect(r.stderr).toContain('noexist-bs');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+});
+
+describe('wait --since validation', () => {
+  test('non-numeric --since is a usage error, not a silent NaN baseline', async () => {
+    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-sn-'));
+    try {
+      const r = await spawnCli(['wait', '--since', 'abc', 'whatever'], { RCTRL_STATE: tmpDir });
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain('--since');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
 });
