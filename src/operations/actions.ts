@@ -1,4 +1,4 @@
-import { SessionDeadError } from '../core/errors.ts';
+import { RctrlUsageError, SessionDeadError } from '../core/errors.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { ActionManifest } from '../core/providers/types.ts';
 import type { Deps } from './deps.ts';
@@ -18,32 +18,42 @@ export interface ActionsOpts {
   deps?: Partial<Deps>;
 }
 
-export async function actions(opts: ActionsOpts): Promise<string> {
+// Machine-readable path: the raw manifest, for code callers (`actions --json`).
+// Throws SessionDeadError when there is no transcript yet and RctrlUsageError
+// when the provider has no extractor — callers that want prose use actions().
+export async function actionsManifest(opts: ActionsOpts): Promise<ActionManifest> {
   const d = { ...defaultDeps, ...opts.deps };
   const env = opts.env ?? {};
 
   const session = await d.fs.readMeta(opts.name, env);
   const provider = getProvider(session.provider);
   if (provider.extractActions === undefined) {
-    return `(actions extraction not implemented for provider: ${session.provider})`;
+    throw new RctrlUsageError(
+      `actions extraction not implemented for provider: ${session.provider}`,
+    );
   }
 
-  let content: string;
+  const content = await resolveTranscriptContent({
+    name: opts.name,
+    cwd: session.cwd,
+    sinceMs: session.createdAt,
+    provider,
+    env,
+    ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
+  });
+
+  return provider.extractActions(content);
+}
+
+export async function actions(opts: ActionsOpts): Promise<string> {
+  let manifest: ActionManifest;
   try {
-    content = await resolveTranscriptContent({
-      name: opts.name,
-      cwd: session.cwd,
-      sinceMs: session.createdAt,
-      provider,
-      env,
-      ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
-    });
+    manifest = await actionsManifest(opts);
   } catch (err) {
     if (err instanceof SessionDeadError) return '(no transcript yet)';
+    if (err instanceof RctrlUsageError) return `(${err.message})`;
     throw err;
   }
-
-  const manifest = provider.extractActions(content);
   return formatManifest(manifest);
 }
 

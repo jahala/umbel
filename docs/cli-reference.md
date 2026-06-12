@@ -332,8 +332,12 @@ rctrl read reviewer > review.md
 Write a structured digest of what a worker DID this session — tools used (with counts), files read/edited/written, bash commands, errors, and the final message — to stdout. Reads the transcript via the same resolution chain as `read`. Often the right shape for "what happened?" when you don't need the verbatim response.
 
 ```
-rctrl actions <name>
+rctrl actions [--json] <name>
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | off | Emit the raw `ActionManifest` as a single JSON object on stdout (`toolsUsed`, `filesRead/Edited/Written`, `bashCommands`, `errors`, `finalMessage`, `turnCount`) — for code callers like the pleach conductor. Without it, a human/LLM-readable text digest. |
 
 **Positionals**
 

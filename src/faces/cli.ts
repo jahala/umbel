@@ -16,7 +16,7 @@ import {
 import { isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { SessionNameSchema } from '../core/types.ts';
-import { actions } from '../operations/actions.ts';
+import { actions, actionsManifest } from '../operations/actions.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
@@ -645,6 +645,11 @@ async function verbActions(
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new RctrlUsageError('actions: <name> is required');
+  if (flagBool(flags, 'json')) {
+    const manifest = await actionsManifest({ name, env: getCliEnv() });
+    process.stdout.write(`${JSON.stringify(manifest)}\n`);
+    return 0;
+  }
   const text = await actions({ name, env: getCliEnv() });
   process.stdout.write(`${text}\n`);
   return 0;
