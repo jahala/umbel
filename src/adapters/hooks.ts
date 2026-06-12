@@ -55,6 +55,7 @@ export function buildSettingsJson(opts: {
   hookScriptPath: string;
   notifyScriptPath?: string;
   allowedTools?: string;
+  permissionMode?: string;
 }): string {
   const hooksBlock: Record<string, unknown> = {
     Stop: [
@@ -90,13 +91,18 @@ export function buildSettingsJson(opts: {
     hooks: hooksBlock,
   };
 
-  if (opts.allowedTools !== undefined) {
-    settings.permissions = {
-      allow: opts.allowedTools
+  if (opts.allowedTools !== undefined || opts.permissionMode !== undefined) {
+    const permissions: Record<string, unknown> = {};
+    if (opts.allowedTools !== undefined) {
+      permissions.allow = opts.allowedTools
         .split(',')
         .map((t) => t.trim())
-        .filter(Boolean),
-    };
+        .filter(Boolean);
+    }
+    if (opts.permissionMode !== undefined) {
+      permissions.defaultMode = opts.permissionMode;
+    }
+    settings.permissions = permissions;
   }
 
   return JSON.stringify(settings);

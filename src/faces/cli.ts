@@ -348,6 +348,7 @@ async function runPMode(
   const name = flagStr(flags, 'name');
   const resume = flagStr(flags, 'resume');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
+  const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
   const timeoutMs = rawTimeout !== undefined ? parseDuration(rawTimeout) : undefined;
   // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
   const claudeBin = process.env.RCTRL_CLAUDE_BIN;
@@ -365,6 +366,8 @@ async function runPMode(
       ...(provider !== undefined ? { provider } : {}),
       ...(model !== undefined ? { model } : {}),
       ...(allowedTools !== undefined ? { allowedTools } : {}),
+      ...(permissionMode !== undefined ? { permissionMode } : {}),
+      ...(permissionMode !== undefined ? { permissionMode } : {}),
       ...(workerEnv !== undefined ? { workerEnv } : {}),
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       ...(claudeBin !== undefined ? { claudeBin } : {}),
@@ -402,6 +405,7 @@ async function verbSpawn(
   const provider = flagStr(flags, 'provider');
   const model = flagStr(flags, 'model');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
+  const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
   // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
   const claudeBin = process.env.RCTRL_CLAUDE_BIN;
   const envEntries = repeated.get('env') ?? [];
@@ -414,6 +418,7 @@ async function verbSpawn(
     ...(provider !== undefined ? { provider } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
+    ...(permissionMode !== undefined ? { permissionMode } : {}),
     ...(workerEnv !== undefined ? { workerEnv } : {}),
     ...(claudeBin !== undefined ? { claudeBin } : {}),
   };
