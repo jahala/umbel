@@ -115,6 +115,7 @@ export const WorkerSpecSchema = z.object({
   model: z.string().optional(),
   provider: ProviderNameSchema.optional(),
   allowedTools: z.string().optional(),
+  permissionMode: z.string().optional(),
   // Per-worker environment overrides, merged over the inherited environment.
   // Values may be literals or {fromEnv} references (resolved at spawn time).
   env: z.record(z.string(), EnvValueSchema).optional(),

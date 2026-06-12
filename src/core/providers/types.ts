@@ -88,6 +88,7 @@ export interface AgentProvider {
     notifyScriptPath?: string; // absolute path to our notify.sh (needs-input hook)
     model?: string;
     allowedTools?: string;
+    permissionMode?: string;
   }): ProviderLaunchSpec;
 
   // Optional: reconcile the fully-assembled worker env immediately before

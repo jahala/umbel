@@ -82,6 +82,7 @@ export interface SpawnOpts {
   model?: string;
   provider?: string;
   allowedTools?: string;
+  permissionMode?: string;
   anonymous?: boolean;
   claudeBin?: string;
   env?: Record<string, string | undefined>;
@@ -128,6 +129,9 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   if (opts.allowedTools !== undefined && providerName !== 'claude') {
     throw new AllowedToolsUnsupportedError(providerName);
   }
+  if (opts.permissionMode !== undefined && providerName !== 'claude') {
+    throw new AllowedToolsUnsupportedError(providerName);
+  }
 
   // Install global stop hook
   const { stopScriptPath, notifyScriptPath } = await d.hooks.ensureGlobalHooks(env);
@@ -149,6 +153,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     notifyScriptPath,
     ...(opts.model !== undefined ? { model: opts.model } : {}),
     ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
+    ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
   });
 
   // Write any provider-required files before tmux launch. If a later write

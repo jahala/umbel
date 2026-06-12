@@ -92,6 +92,7 @@ export interface McpToolHandlers {
     provider?: 'claude' | 'codex' | 'gemini' | 'opencode' | undefined;
     model?: string | undefined;
     allowedTools?: string | undefined;
+    permissionMode?: string | undefined;
     env?: Record<string, string | { fromEnv: string }> | undefined;
   }) => Promise<ToolResult>;
   rctrl_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
@@ -139,6 +140,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         ...(args.provider !== undefined ? { provider: args.provider } : {}),
         ...(args.model !== undefined ? { model: args.model } : {}),
         ...(args.allowedTools !== undefined ? { allowedTools: args.allowedTools } : {}),
+        ...(args.permissionMode !== undefined ? { permissionMode: args.permissionMode } : {}),
         ...(args.env !== undefined ? { workerEnv: args.env } : {}),
         ...(deps !== undefined ? { deps } : {}),
       };
