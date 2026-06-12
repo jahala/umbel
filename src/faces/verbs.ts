@@ -54,6 +54,11 @@ export const VerbSchemas = {
     timeout: z.string().optional(),
     // Opt-in idle net: settle 'idle' if the pane shows no change for this long.
     idleTimeout: z.string().optional(),
+    // Stop-mtime baseline from a prior rctrl_send call. Thread this from
+    // rctrl_send's sinceMtime return value so send-in-one-process and
+    // wait-in-another are race-free (without it the baseline defaults to 0,
+    // which falsely resolves if the stop file pre-dates the send).
+    sinceMtime: z.number().optional(),
   }),
   status: z.object({
     name: z.string().optional(),

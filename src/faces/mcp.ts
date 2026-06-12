@@ -39,7 +39,7 @@ export const TOOL_DESCRIPTIONS = {
     'Spawn a worker. `provider` selects claude/codex/gemini. Returns the session name to pass to other verbs.',
   rctrl_send: 'Send a prompt to a session. Returns immediately — pair with rctrl_wait.',
   rctrl_wait:
-    'Block until the worker finishes (reason:stop), is BLOCKED needing input (reason:input + message — answer via rctrl_send, then wait again), goes idle (set idle_timeout), dies (dead), or times out. Call after rctrl_send; branch on reason.',
+    "Block until stop/input/idle/dead/timeout. Call after rctrl_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from rctrl_send's result for race-free stop detection across processes.",
   rctrl_status:
     "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, and needsInput + needsInputReason (permission/idle/question) — tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
   rctrl_ls: 'List all sessions. Same as rctrl_status with no name.',
@@ -102,6 +102,7 @@ export interface McpToolHandlers {
     pattern?: string | undefined;
     timeout?: string | undefined;
     idleTimeout?: string | undefined;
+    sinceMtime?: number | undefined;
   }) => Promise<ToolResult>;
   rctrl_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
   rctrl_ls: (args: Record<string, never>) => Promise<ToolResult>;
@@ -169,6 +170,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         name: args.name,
         env,
         ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
+        ...(args.sinceMtime !== undefined ? { sinceMtime: args.sinceMtime } : {}),
         ...(deps !== undefined ? { deps } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
       };
