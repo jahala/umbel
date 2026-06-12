@@ -77,6 +77,19 @@ interface ParsedArgs {
   repeated: Map<string, string[]>;
 }
 
+// Flags that never take a value. Without this the `--flag value` form would
+// greedily consume the following positional (e.g. `send --json <name>` eating
+// the session name as --json's value).
+const BOOLEAN_FLAGS = new Set([
+  'help',
+  'h',
+  'version',
+  'json',
+  'follow',
+  'keep-state',
+  'keepState',
+]);
+
 function parseArgv(argv: readonly string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
   const repeated = new Map<string, string[]>();
@@ -105,7 +118,7 @@ function parseArgv(argv: readonly string[]): ParsedArgs {
       } else {
         const key = arg.slice(2);
         const next = argv[i + 1];
-        if (next !== undefined && !next.startsWith('-')) {
+        if (!BOOLEAN_FLAGS.has(key) && next !== undefined && !next.startsWith('-')) {
           flags.set(key, next);
           addRepeated(key, next);
           i++;
@@ -447,7 +460,13 @@ async function verbWait(
   // --since provides the stop-mtime baseline captured before send, making
   // send-in-one-process and wait-in-another race-free.
   const rawSince = flagStr(flags, 'since');
-  const sinceMtime = rawSince !== undefined ? Number(rawSince) : undefined;
+  let sinceMtime: number | undefined;
+  if (rawSince !== undefined) {
+    sinceMtime = Number(rawSince);
+    if (!Number.isFinite(sinceMtime)) {
+      throw new RctrlUsageError(`wait: --since must be a numeric mtime, got '${rawSince}'`);
+    }
+  }
 
   let condition: WaitCondition | undefined;
   if (until === 'file') {
