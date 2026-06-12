@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  AllowedToolsUnsupportedError,
   EnvRefUnresolvedError,
   HookTimeoutError,
   JsonlMalformedError,
@@ -55,6 +56,16 @@ Verbs:
   logs    Tail session event log
   run     Run a workflow YAML file
   mcp     Start MCP server
+
+Exit codes:
+  0    Success
+  1    Generic error (session dead, tmux failure, JSONL malformed, hook timeout)
+  2    Usage error (bad flags, missing required argument, unknown verb, unsupported option)
+  123  wait idle — no pane activity for --idle-timeout
+  124  wait timeout — hard deadline hit
+  125  wait dead — worker exited before finishing its turn
+  126  wait input — worker is blocked waiting for input (permission / prompt)
+  130  Aborted (SIGINT)
 `;
 
 interface ParsedArgs {
@@ -195,7 +206,8 @@ function errorExitCode(err: unknown): number {
   if (
     err instanceof RctrlUsageError ||
     err instanceof ProviderUnknownError ||
-    err instanceof EnvRefUnresolvedError
+    err instanceof EnvRefUnresolvedError ||
+    err instanceof AllowedToolsUnsupportedError
   ) {
     return 2;
   }
@@ -409,7 +421,10 @@ async function verbSend(
   const prompt = flagStr(flags, 'prompt') ?? positionals[1];
   if (name === undefined) throw new RctrlUsageError('send: <name> is required');
   if (prompt === undefined) throw new RctrlUsageError('send: <prompt> is required');
-  await send({ name, prompt, env: getCliEnv() });
+  const result = await send({ name, prompt, env: getCliEnv() });
+  if (flagBool(flags, 'json')) {
+    process.stdout.write(`${JSON.stringify({ sinceMtime: result.sinceMtime })}\n`);
+  }
   return 0;
 }
 
@@ -424,9 +439,15 @@ async function verbWait(
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new RctrlUsageError('wait: <name> is required');
 
+  const jsonMode = flagBool(flags, 'json');
   const until = (flagStr(flags, 'until') ?? 'stop') as 'stop' | 'file' | 'pattern';
   const rawTimeout = flagStr(flags, 'timeout');
   const timeoutMs = rawTimeout !== undefined ? parseDuration(rawTimeout) : undefined;
+
+  // --since provides the stop-mtime baseline captured before send, making
+  // send-in-one-process and wait-in-another race-free.
+  const rawSince = flagStr(flags, 'since');
+  const sinceMtime = rawSince !== undefined ? Number(rawSince) : undefined;
 
   let condition: WaitCondition | undefined;
   if (until === 'file') {
@@ -449,9 +470,21 @@ async function verbWait(
     ...(condition !== undefined ? { condition } : {}),
     ...(timeoutMs !== undefined ? { defaultTimeoutMs: timeoutMs } : {}),
     ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
+    ...(sinceMtime !== undefined ? { sinceMtime } : {}),
   };
 
   const result = await waitFor(waitOpts);
+
+  // JSON mode: emit a single JSON object on stdout and exit 0 regardless of
+  // reason — the JSON is the signal. No human-readable output on stderr.
+  if (jsonMode) {
+    const payload: { reason: string; message?: string } = { reason: result.reason };
+    if (result.message !== undefined && result.message.length > 0) {
+      payload.message = result.message;
+    }
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return 0;
+  }
 
   if (result.reason === 'timeout') {
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
@@ -479,7 +512,7 @@ async function verbWait(
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
       process.stderr.write(`${result.paneSnapshot}\n`);
     }
-    return 126;
+    return 123;
   }
   if (result.reason === 'aborted') return 130;
   return 0;
