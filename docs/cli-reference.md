@@ -17,9 +17,11 @@ rctrl --version                  Show version (0.0.1)
 |------|---------|
 | 0 | Success |
 | 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout) |
-| 2 | Usage error (bad flags, missing required argument, unknown verb) |
-| 124 | Wait timeout elapsed |
+| 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
+| 123 | `wait` idle — no pane activity for `--idle-timeout` |
+| 124 | `wait` timeout — hard deadline hit |
 | 125 | `wait` abandoned — the target worker died before completing its turn |
+| 126 | `wait` input — worker is blocked waiting for input (permission prompt / elicitation) |
 | 130 | SIGINT — operation aborted by the user |
 
 The mapping lives in `errorExitCode` (`src/faces/cli.ts`).
@@ -44,7 +46,7 @@ rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist. |
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; rctrl does not restrict the values. |
-| `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. |
+| `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
 | `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. Use for per-worker proxies, API keys, or custom config dirs. Not persisted to `meta.json`. |
 
 **Output:** `spawned: <name>` on stdout.
@@ -86,7 +88,7 @@ rctrl spawn --cwd /tmp/scratch
 Send a prompt to an existing session. The session must be alive. This only dispatches the text; it does not wait for a response. Use `rctrl wait` after.
 
 ```
-rctrl send <name> <prompt>
+rctrl send [--json] <name> <prompt>
 ```
 
 **Positionals**
@@ -96,12 +98,22 @@ rctrl send <name> <prompt>
 | `<name>` | Session name (first positional). |
 | `<prompt>` | Prompt text (second positional). Also accepted as `--prompt`. |
 
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `rctrl wait --since N` to make stop-detection race-free when send and wait run in separate processes. |
+
 Multi-line prompts are handled automatically via `tmux load-buffer` + `paste-buffer` (see `src/adapters/tmux.ts`).
 
 **Examples**
 
 ```bash
 rctrl send reviewer "Review the diff in review.md and list issues."
+
+# Capture sinceMtime for race-free wait
+SINCE=$(rctrl send --json reviewer "Fix the bug" | jq -r .sinceMtime)
+rctrl wait --since "$SINCE" reviewer
 
 # Multi-line via shell heredoc
 rctrl send fixer "$(cat <<'EOF'
@@ -118,7 +130,7 @@ EOF
 Block until a session reaches a condition. Default: wait for the Stop hook to fire (end of turn). Returns exit code 124 on timeout, or 125 if the worker's session dies before the condition is met (e.g. the CLI crashed or exited non-zero).
 
 ```
-rctrl wait <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]
+rctrl wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]
 ```
 
 **Positionals**
@@ -131,6 +143,8 @@ rctrl wait <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [-
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout and **exit 0 regardless of reason**. The JSON is the signal; non-zero exit codes are only emitted in non-JSON mode. `message` is included when `reason` is `input`. |
+| `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `rctrl send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
 | `--pattern REGEX` | — | Required when `--until=pattern`. Regex matched against tmux pane output. |
@@ -149,13 +163,15 @@ The default timeout (30 minutes) is enforced even when `--timeout` is not specif
 
 `wait` reports *why* it ended so a supervisor can act instead of hanging when a worker needs attention:
 
-| Reason | Exit | Meaning |
-|--------|------|---------|
+| Reason | Exit (non-JSON) | Meaning |
+|--------|-----------------|---------|
 | stop | 0 | Turn completed — `rctrl read` the result. |
 | input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `rctrl send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
-| idle | 126 | No pane activity for `--idle-timeout`. Pane prints to stderr. |
+| idle | 123 | No pane activity for `--idle-timeout`. Pane prints to stderr. |
 | dead | 125 | Worker exited before finishing its turn. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |
+
+With `--json`, exit code is **always 0** — the `reason` field in the JSON object is the signal.
 
 **Examples**
 
