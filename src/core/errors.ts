@@ -100,3 +100,13 @@ export class WorkerBlockedError extends Error {
     super(`Worker blocked waiting for input: ${sessionName} — ${detail}`);
   }
 }
+
+export class AllowedToolsUnsupportedError extends Error {
+  override name = 'AllowedToolsUnsupportedError';
+
+  constructor(public providerName: string) {
+    super(
+      `--allowed-tools is not supported by provider '${providerName}'. Only 'claude' supports it.`,
+    );
+  }
+}

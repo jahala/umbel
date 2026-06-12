@@ -1,7 +1,7 @@
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { resolveEnvRefs } from '../core/env.ts';
-import { RctrlUsageError } from '../core/errors.ts';
+import { AllowedToolsUnsupportedError, RctrlUsageError } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
@@ -121,6 +121,13 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   // Resolve provider first — fails fast on unknown provider before any I/O.
   const provider = getProvider(providerName);
+
+  // Guard: allowedTools is only wired in the Claude buildLaunch. Passing it to
+  // any other provider silently does nothing — confusing and misleading. Throw
+  // before any tmux/file side effects so the caller gets an honest error.
+  if (opts.allowedTools !== undefined && providerName !== 'claude') {
+    throw new AllowedToolsUnsupportedError(providerName);
+  }
 
   // Install global stop hook
   const { stopScriptPath, notifyScriptPath } = await d.hooks.ensureGlobalHooks(env);
