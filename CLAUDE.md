@@ -98,6 +98,7 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 - Hooks delivered via a global `$CODEX_HOME/hooks.json` in an rctrl-managed home (`$RCTRL_STATE/codex-home`), NOT `<cwd>/.codex/hooks.json` — codex silently ignores project hooks inside linked git worktrees (root cause + proof: `docs/codex-worktree-hooks.md`). The worker's `CODEX_HOME` is set to that home (reserved launch env — wins over `--env`); `auth.json` is symlinked from the user's real CODEX_HOME (no secret copy) and `config.toml` copied once (carries model/endpoint/MCP, isolated from the user's global trust). Shared across workers, set up idempotently, never written into the user's cwd or cleaned on kill.
 - `stopEventName: 'Stop'`. Transcript may be `null` per Codex docs; rctrl falls back to dir-snapshot.
 - rctrl's startup dialogs trust the global hooks on first use (codex's "Hooks need review" → "Trust all and continue").
+- `--permission-mode bypassPermissions` maps to codex's `--dangerously-bypass-approvals-and-sandbox` — the unattended equivalent of claude's `bypassPermissions`, for conductor-driven workers (e.g. a cross-provider audit) that must run commands with no human present; safety is external (disposable worktree + audit). Any other mode value is rejected for codex.
 
 **Gemini** (`gemini`)
 - Hook config delivered via `<cwd>/.gemini/settings.json`.

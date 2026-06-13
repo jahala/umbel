@@ -264,6 +264,13 @@ const codexProvider: AgentProvider = {
     const hooksJson = JSON.stringify({ hooks });
 
     const args: string[] = [];
+    if (opts.permissionMode === 'bypassPermissions') {
+      // Unattended equivalent of claude's bypassPermissions: skip approval prompts
+      // + the sandbox so a conductor-driven worker (e.g. the cross-provider audit)
+      // can run commands with no human present. Safety is external — the worker
+      // runs in a disposable worktree, gated by the audit.
+      args.push('--dangerously-bypass-approvals-and-sandbox');
+    }
     if (opts.model !== undefined) {
       args.push('--model', opts.model);
     }
