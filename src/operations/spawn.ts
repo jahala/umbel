@@ -1,9 +1,11 @@
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { access, copyFile, mkdir, symlink, unlink, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { resolveEnvRefs } from '../core/env.ts';
 import { AllowedToolsUnsupportedError, RctrlUsageError } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
+import type { ProviderLaunchSpec } from '../core/providers/types.ts';
 import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
 import type { EnvValue, Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
@@ -69,6 +71,34 @@ export async function dismissStartupDialogs(
     }
 
     await Bun.sleep(DIALOG_POLL_INTERVAL_MS);
+  }
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Materialize one provider launch file at the I/O edge: write its content, create
+// a symlink (symlinkTo), or copy a source (copyFrom; ifAbsent skips when the dest
+// exists, and a missing source is skipped silently). Symlink/copy are idempotent
+// so a shared provider home (CODEX_HOME) can be re-materialized by every worker.
+async function materializeFile(f: ProviderLaunchSpec['files'][number]): Promise<void> {
+  await mkdir(dirname(f.path), { recursive: true });
+  if ('symlinkTo' in f) {
+    await symlink(f.symlinkTo, f.path).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== 'EEXIST') throw e;
+    });
+  } else if ('copyFrom' in f) {
+    if (f.ifAbsent === true && (await pathExists(f.path))) return;
+    if (!(await pathExists(f.copyFrom))) return;
+    await copyFile(f.copyFrom, f.path);
+  } else {
+    await writeFile(f.path, f.content, { mode: f.mode ?? 0o644 });
   }
 }
 
@@ -144,6 +174,14 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // Create session directory
   await d.fs.ensureSessionDir(name, env);
 
+  // codex needs an isolated CODEX_HOME — a project .codex/hooks.json is ignored
+  // inside linked git worktrees, so the Stop hook is delivered via a global
+  // <stateDir>/codex-home/hooks.json instead. Resolve the rctrl state root and
+  // the user's real codex home (auth/config source) for the provider to declare
+  // that home; other providers ignore both opts.
+  const stateRoot = d.fs.stateDir(env);
+  const userCodexHome = env.CODEX_HOME ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+
   // Ask the provider how to launch. The provider encapsulates all
   // provider-specific arg building (settings JSON, model flag, etc.).
   const launchSpec = provider.buildLaunch({
@@ -151,6 +189,8 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     cwd: opts.cwd,
     hookScriptPath: stopScriptPath,
     notifyScriptPath,
+    stateDir: stateRoot,
+    userCodexHome,
     ...(opts.model !== undefined ? { model: opts.model } : {}),
     ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
     ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
@@ -162,9 +202,10 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const providerFilePaths: string[] = [];
   try {
     for (const f of launchSpec.files) {
-      await mkdir(dirname(f.path), { recursive: true });
-      await writeFile(f.path, f.content, { mode: f.mode ?? 0o644 });
-      providerFilePaths.push(f.path);
+      await materializeFile(f);
+      // Shared infra (a provider's CODEX_HOME) is set up idempotently and reused
+      // across workers — never tracked for per-session cleanup.
+      if (f.shared !== true) providerFilePaths.push(f.path);
     }
   } catch (err) {
     for (const written of providerFilePaths) {
@@ -186,29 +227,31 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // so an exported proxy / API key / config-dir reaches it — MINUS the
   // shell-init vars below: passing them makes the pane's login shell emit a
   // startup byte to stdin that races the first send-keys and gets consumed as
-  // an empty prompt. Precedence (low→high): inherited < provider launch env <
-  // operational env < explicit workerEnv override. RCTRL_STATE/RCTRL_SESSION_ID
-  // are forced last so the stop hook can always locate the session dir.
-  const stateRoot = d.fs.stateDir(env);
+  // an empty prompt. Precedence (low→high): inherited < operational env <
+  // explicit workerEnv override < provider launch env (RESERVED) <
+  // RCTRL_STATE/RCTRL_SESSION_ID — the last two forced so the stop hook can
+  // always locate the session dir.
   const SHELL_INIT_DENYLIST = new Set(['SHELL', 'PROMPT_COMMAND', 'BASH_ENV', 'ZDOTDIR', 'ENV']);
   const tmuxEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined || SHELL_INIT_DENYLIST.has(k)) continue;
     tmuxEnv[k] = v;
   }
-  // Provider-required env (over the inherited base).
-  for (const [k, v] of Object.entries(launchSpec.env)) {
-    tmuxEnv[k] = v;
-  }
   // Operational env (RCTRL_STATE, test-injected vars).
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) tmuxEnv[k] = v;
   }
-  // Explicit per-worker overrides win over everything except reserved vars.
+  // Explicit per-worker overrides (--env) win over inherited + operational.
   if (resolvedWorkerEnv !== undefined) {
     for (const [k, v] of Object.entries(resolvedWorkerEnv)) {
       tmuxEnv[k] = v;
     }
+  }
+  // Provider launch env is RESERVED — rctrl controls it, so it wins even over an
+  // explicit --env: codex's CODEX_HOME must point at rctrl's isolated home or the
+  // Stop hook never fires. Every provider but codex declares an empty launch env.
+  for (const [k, v] of Object.entries(launchSpec.env)) {
+    tmuxEnv[k] = v;
   }
   tmuxEnv.RCTRL_STATE = stateRoot;
   tmuxEnv.RCTRL_SESSION_ID = name;

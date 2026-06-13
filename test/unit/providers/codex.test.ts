@@ -7,138 +7,99 @@ import { getProvider, PROVIDERS } from '../../../src/core/providers/registry.ts'
 // CodexProvider.buildLaunch
 // ---------------------------------------------------------------------------
 
+// codex delivers hooks via a global <stateDir>/codex-home/hooks.json because a
+// project .codex/hooks.json is silently ignored inside linked git worktrees
+// (see docs/codex-worktree-hooks.md). spawn injects stateDir (rctrl state root)
+// and userCodexHome (the user's real CODEX_HOME — auth/config source).
+const STATE_DIR = '/state';
+const USER_CODEX_HOME = '/home/user/.codex';
+const CODEX_HOME = join(STATE_DIR, 'codex-home');
+
+type CodexLaunchOpts = Parameters<typeof CodexProvider.buildLaunch>[0];
+
+function launch(extra?: Partial<CodexLaunchOpts>): ReturnType<typeof CodexProvider.buildLaunch> {
+  return CodexProvider.buildLaunch({
+    sessionId: 'test-session',
+    cwd: '/home/user/project',
+    hookScriptPath: '/rctrl/hooks/stop.sh',
+    stateDir: STATE_DIR,
+    userCodexHome: USER_CODEX_HOME,
+    ...extra,
+  });
+}
+
+function hooksContent(spec: ReturnType<typeof CodexProvider.buildLaunch>): string {
+  const f = spec.files.find((x) => x.path.endsWith('hooks.json'));
+  return f !== undefined && 'content' in f ? f.content : '';
+}
+
 describe('CodexProvider.buildLaunch', () => {
   test('returns bin=codex', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-    });
-    expect(spec.bin).toBe('codex');
+    expect(launch().bin).toBe('codex');
   });
 
   test('without model, --model flag is absent', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-    });
-    expect(spec.args).not.toContain('--model');
+    expect(launch().args).not.toContain('--model');
   });
 
   test('with model, args contain --model flag and value', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-      model: 'o4-mini',
-    });
+    const spec = launch({ model: 'o4-mini' });
     expect(spec.args).toContain('--model');
     expect(spec.args).toContain('o4-mini');
   });
 
-  test('env is empty object (Codex reads its own env; inherited via tmuxEnv)', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
+  test('env.CODEX_HOME points at the rctrl-managed codex-home under stateDir', () => {
+    expect(launch().env.CODEX_HOME).toBe(CODEX_HOME);
+  });
+
+  test('hooks.json is written into CODEX_HOME (shared), never the worker cwd', () => {
+    const spec = launch();
+    const hooks = spec.files.find((f) => f.path === join(CODEX_HOME, 'hooks.json'));
+    expect(hooks).toBeDefined();
+    expect(hooks?.shared).toBe(true);
+    expect(spec.files.some((f) => f.path.startsWith('/home/user/project'))).toBe(false);
+  });
+
+  test('auth.json is symlinked from the user CODEX_HOME (shared, no secret copy)', () => {
+    const auth = launch().files.find((f) => f.path === join(CODEX_HOME, 'auth.json'));
+    expect(auth).toMatchObject({ symlinkTo: join(USER_CODEX_HOME, 'auth.json'), shared: true });
+  });
+
+  test('config.toml is copied from the user CODEX_HOME if absent (model/endpoint/MCP)', () => {
+    const cfg = launch().files.find((f) => f.path === join(CODEX_HOME, 'config.toml'));
+    expect(cfg).toMatchObject({
+      copyFrom: join(USER_CODEX_HOME, 'config.toml'),
+      ifAbsent: true,
+      shared: true,
     });
-    expect(spec.env).toEqual({});
   });
 
   test('with notifyScriptPath, hooks.json registers a PermissionRequest hook', () => {
-    const notify = '/home/user/.rctrl/hooks/notify.sh';
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-      notifyScriptPath: notify,
-    });
-    const hooksFile = spec.files.find((f) => f.path.endsWith('.codex/hooks.json'));
-    const content = hooksFile?.content ?? '';
+    const notify = '/rctrl/hooks/notify.sh';
+    const content = hooksContent(launch({ notifyScriptPath: notify }));
     expect(content).toContain('PermissionRequest');
     expect(content).toContain(notify);
   });
 
-  test('files has exactly one entry at <cwd>/.codex/hooks.json', () => {
-    const cwd = '/home/user/project';
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd,
-      hookScriptPath: '/tmp/stop.sh',
-    });
-    expect(spec.files).toHaveLength(1);
-    const file = spec.files[0];
-    expect(file).toBeDefined();
-    expect(file?.path).toBe(join(cwd, '.codex', 'hooks.json'));
-  });
-
-  test('hooks.json content is valid JSON', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-    });
-    const file = spec.files[0];
-    expect(file).toBeDefined();
-    expect(() => JSON.parse(file?.content ?? '')).not.toThrow();
-  });
-
-  test('hooks.json contains Stop event with hookScriptPath as command', () => {
-    const hookScriptPath = '/home/user/.rctrl/hooks/stop.sh';
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath,
-    });
-    const file = spec.files[0];
-    expect(file).toBeDefined();
-    const parsed = JSON.parse(file?.content ?? '{}') as unknown;
-    // Structure: { hooks: { Stop: [{ hooks: [{ type: 'command', command: '...' }] }] } }
+  test('hooks.json content is valid JSON with Stop → hookScriptPath', () => {
+    const parsed = JSON.parse(hooksContent(launch())) as unknown;
     expect(parsed).toMatchObject({
-      hooks: {
-        Stop: [
-          {
-            hooks: [
-              {
-                type: 'command',
-                command: hookScriptPath,
-              },
-            ],
-          },
-        ],
-      },
+      hooks: { Stop: [{ hooks: [{ type: 'command', command: '/rctrl/hooks/stop.sh' }] }] },
     });
   });
 
   test('hooks.json timeout is in seconds (Codex convention, not ms)', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-    });
-    const file = spec.files[0];
-    expect(file).toBeDefined();
-    const parsed = JSON.parse(file?.content ?? '{}') as {
+    const parsed = JSON.parse(hooksContent(launch())) as {
       hooks: { Stop: Array<{ hooks: Array<{ timeout: number }> }> };
     };
-    const stopGroup = parsed.hooks.Stop[0];
-    const handler = stopGroup?.hooks[0];
-    const timeout = handler?.timeout;
-    // A reasonable seconds-based timeout is < 300; ms-based would be >> 1000
+    const timeout = parsed.hooks.Stop[0]?.hooks[0]?.timeout;
     expect(typeof timeout).toBe('number');
     expect(timeout).toBeLessThan(300);
   });
 
-  test('files[0].mode is 0o644', () => {
-    const spec = CodexProvider.buildLaunch({
-      sessionId: 'test-session',
-      cwd: '/tmp',
-      hookScriptPath: '/tmp/stop.sh',
-    });
-    const file = spec.files[0];
-    expect(file).toBeDefined();
-    expect(file?.mode).toBe(0o644);
+  test('the hooks.json entry is mode 0o644', () => {
+    const hooks = launch().files.find((f) => f.path === join(CODEX_HOME, 'hooks.json'));
+    expect(hooks !== undefined && 'mode' in hooks ? hooks.mode : undefined).toBe(0o644);
   });
 });
 

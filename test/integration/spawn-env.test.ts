@@ -216,3 +216,21 @@ describe('spawn — env-by-reference ({fromEnv})', () => {
     await expect(captureWorkerEnv(opts)).rejects.toThrow(EnvRefUnresolvedError);
   });
 });
+
+describe('spawn — reserved provider launch env', () => {
+  // codex's CODEX_HOME is rctrl-controlled: a project .codex/hooks.json is ignored
+  // in linked worktrees, so the Stop hook only fires in rctrl's isolated
+  // <stateDir>/codex-home. The provider launch env must therefore win even over an
+  // explicit --env and the operational env, or a worktree worker hangs forever.
+  test('codex CODEX_HOME (provider launch env) overrides workerEnv and operational env', async () => {
+    const env = await setup();
+    const opts = {
+      ...makeOpts(env, '/tmp', { name: sessionName('codexhome'), provider: 'codex' }),
+      // Both lower-precedence channels try to point CODEX_HOME elsewhere:
+      env: { RCTRL_STATE: tmpDir, CODEX_HOME: '/operational/override' },
+      workerEnv: { CODEX_HOME: '/explicit/override' },
+    } as Parameters<typeof spawn>[0];
+    const captured = await captureWorkerEnv(opts);
+    expect(captured.CODEX_HOME).toBe(join(tmpDir, 'codex-home'));
+  });
+});
