@@ -1,4 +1,6 @@
-node_modules/
+# no trailing slash: also ignores a stray `node_modules` *symlink* (a dir pattern
+# does not, which let a build symlink get committed in #33 and broke CI on checkout)
+node_modules
 dist/
 .rctrl-state/
 *.log
