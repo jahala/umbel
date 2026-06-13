@@ -8,7 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const MAIN = join(import.meta.dir, '../../src/main.ts');
@@ -37,7 +37,7 @@ async function spawnCli(args: string[], env: Record<string, string> = {}): Promi
 
 describe('actions --json', () => {
   test('emits the ActionManifest as a single JSON object on stdout', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-aj-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-aj-'));
     const name = `aj${randomBytes(4).toString('hex')}`;
     const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
     const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
@@ -83,7 +83,7 @@ describe('actions --json', () => {
   }, 60_000);
 
   test('missing session exits non-zero (no JSON error envelope)', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-aj2-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-aj2-'));
     try {
       const r = await spawnCli(['actions', '--json', 'noexist-aj'], { RCTRL_STATE: tmpDir });
       expect(r.code).not.toBe(0);

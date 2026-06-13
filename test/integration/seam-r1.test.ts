@@ -10,7 +10,7 @@
 import { describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AllowedToolsUnsupportedError } from '../../src/core/errors.ts';
 import { VerbSchemas } from '../../src/faces/verbs.ts';
@@ -105,7 +105,7 @@ async function spawnCli(args: string[], env: Record<string, string> = {}): Promi
 
 describe('rctrl send --json + wait --json integration', () => {
   test('send --json prints {"sinceMtime": N} and wait --json exits 0 with JSON reason', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-sw-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-sw-'));
     const name = `r1sw${randomBytes(4).toString('hex')}`;
     const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
     const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
@@ -168,7 +168,7 @@ describe('exit-code split: idle=123, HELP lists exit codes', () => {
 
 describe('D4: allowedTools with unsupported providers exits 2', () => {
   test('spawn codex --allowed-tools exits 2 before side effects', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-at-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-at-'));
     try {
       const r = await spawnCli(
         [
@@ -196,7 +196,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
 
   test('spawn gemini --allowed-tools exits 2 before side effects', async () => {
     const FAKE_GEMINI = join(import.meta.dir, '../fixtures/fake-gemini.sh');
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-atg-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-atg-'));
     try {
       const r = await spawnCli(
         [
@@ -223,7 +223,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
   });
 
   test('spawn claude --allowed-tools succeeds (still supported)', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-atc-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-atc-'));
     const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
     const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
     await mkdir(jsonlDir, { recursive: true });
@@ -262,7 +262,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
 
 describe('parser: boolean flags do not consume positionals', () => {
   test('status --json <name> targets the named session, not the whole list', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-bf-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-bf-'));
     try {
       const r = await spawnCli(['status', '--json', 'noexist-bf'], { RCTRL_STATE: tmpDir });
       // If --json swallowed the name, this would list all sessions and exit 0.
@@ -274,7 +274,7 @@ describe('parser: boolean flags do not consume positionals', () => {
   });
 
   test('send --json <name> <prompt> resolves the name positionally', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-bs-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-bs-'));
     try {
       const r = await spawnCli(['send', '--json', 'noexist-bs', 'hello'], { RCTRL_STATE: tmpDir });
       // Pre-fix the parser ate 'noexist-bs' as --json's value, making 'hello'
@@ -288,7 +288,7 @@ describe('parser: boolean flags do not consume positionals', () => {
 
 describe('wait --since validation', () => {
   test('non-numeric --since is a usage error, not a silent NaN baseline', async () => {
-    const tmpDir = await mkdtemp(join(import.meta.dir, '../../.tmp/rctrl-r1-sn-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-sn-'));
     try {
       const r = await spawnCli(['wait', '--since', 'abc', 'whatever'], { RCTRL_STATE: tmpDir });
       expect(r.code).toBe(2);
