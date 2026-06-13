@@ -18,6 +18,9 @@ jobs:
         with:
           # Pinned: `latest` is non-reproducible and silently drifted CI into a break.
           bun-version: "1.3.14"
+          # Disabled: setup-bun's cache restored a stale node_modules on ubuntu-latest
+          # that bun couldn't open ("could not open node_modules" / mkdir "File exists").
+          no-cache: true
 
       - name: Verify version matches tag
         run: |
@@ -41,11 +44,11 @@ jobs:
         with:
           # Pinned: `latest` is non-reproducible and silently drifted CI into a break.
           bun-version: "1.3.14"
+          # Disabled: setup-bun's cache restored a stale node_modules on ubuntu-latest
+          # that bun couldn't open ("could not open node_modules" / mkdir "File exists").
+          no-cache: true
 
-      # bun 1.3.14 errors "could not open node_modules" on a fresh ubuntu-latest
-      # checkout — a runner-image regression: even plain `bun install` fails. Pre-
-      # create the dir so install can open it; --frozen-lockfile keeps integrity.
-      - run: mkdir -p node_modules && bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
       - name: Build all targets
         run: bun run scripts/build.ts --all
