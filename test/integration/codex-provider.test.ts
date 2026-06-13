@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { killSession } from '../../src/adapters/tmux.ts';
@@ -14,15 +14,29 @@ import { waitFor } from '../../src/operations/wait.ts';
 
 // ---------------------------------------------------------------------------
 // Test isolation
+//
+// codex delivers hooks via a global $CODEX_HOME/hooks.json — a project
+// .codex/hooks.json is silently ignored inside linked git worktrees. rctrl
+// points the worker at <stateDir>/codex-home and populates it from the user's
+// real CODEX_HOME (auth.json symlink + config.toml copy). Both the state dir and
+// a fake "user" CODEX_HOME are temp dirs, so nothing touches the real ~/.codex.
 // ---------------------------------------------------------------------------
 
 const RUN_ID = randomBytes(4).toString('hex');
 
 let tmpDir = '';
+let fakeUserCodex = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
   tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-codex-test-'));
-  return { RCTRL_STATE: tmpDir };
+  fakeUserCodex = await mkdtemp(join(tmpdir(), 'rctrl-codex-userhome-'));
+  await writeFile(join(fakeUserCodex, 'auth.json'), '{"OPENAI_API_KEY":"fake"}');
+  await writeFile(join(fakeUserCodex, 'config.toml'), 'model = "fake-model"\n');
+  return { RCTRL_STATE: tmpDir, CODEX_HOME: fakeUserCodex };
+}
+
+function codexHome(): string {
+  return join(tmpDir, 'codex-home');
 }
 
 function sessionName(suffix: string): string {
@@ -34,10 +48,11 @@ const CREATED: string[] = [];
 
 afterEach(async () => {
   await Promise.all(CREATED.splice(0).map((n) => killSession(n).catch(() => undefined)));
-  if (tmpDir) {
-    await rm(tmpDir, { recursive: true, force: true });
-    tmpDir = '';
+  for (const dir of [tmpDir, fakeUserCodex]) {
+    if (dir) await rm(dir, { recursive: true, force: true });
   }
+  tmpDir = '';
+  fakeUserCodex = '';
 });
 
 // ---------------------------------------------------------------------------
@@ -66,19 +81,19 @@ function makeSpawnOpts(
 }
 
 // ---------------------------------------------------------------------------
-// hooks.json written at spawn time
+// CODEX_HOME hook delivery (written at spawn time, isolated from user cwd)
 // ---------------------------------------------------------------------------
 
-describe('codex-provider — hooks.json lifecycle', () => {
-  test('spawn writes <cwd>/.codex/hooks.json before launch', async () => {
+describe('codex-provider — CODEX_HOME hook delivery', () => {
+  test('spawn writes hooks.json into the codex-home, never the worker cwd', async () => {
     const env = await setup();
     const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
 
-      const hooksPath = join(cwd, '.codex', 'hooks.json');
-      expect(existsSync(hooksPath)).toBe(true);
+      expect(existsSync(join(codexHome(), 'hooks.json'))).toBe(true);
+      expect(existsSync(join(cwd, '.codex', 'hooks.json'))).toBe(false);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -91,15 +106,41 @@ describe('codex-provider — hooks.json lifecycle', () => {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
 
-      const hooksPath = join(cwd, '.codex', 'hooks.json');
-      const raw = await readFile(hooksPath, 'utf8');
-      const parsed = JSON.parse(raw) as unknown;
-      // The command in the Stop hook must be our stop.sh path
+      const raw = await readFile(join(codexHome(), 'hooks.json'), 'utf8');
       const stopSh = join(tmpDir, 'hooks', 'stop.sh');
       expect(raw).toContain(stopSh);
-      expect(parsed).toMatchObject({
+      expect(JSON.parse(raw)).toMatchObject({
         hooks: { Stop: [{ hooks: [{ type: 'command', command: stopSh }] }] },
       });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test('auth.json is symlinked from the user CODEX_HOME (no secret copy)', async () => {
+    const env = await setup();
+    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    try {
+      const { session } = await spawn(makeSpawnOpts(env, cwd));
+      CREATED.push(session.name);
+
+      const authLink = join(codexHome(), 'auth.json');
+      expect((await lstat(authLink)).isSymbolicLink()).toBe(true);
+      expect(await readlink(authLink)).toBe(join(fakeUserCodex, 'auth.json'));
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test('config.toml is copied from the user CODEX_HOME (carries model/endpoint)', async () => {
+    const env = await setup();
+    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    try {
+      const { session } = await spawn(makeSpawnOpts(env, cwd));
+      CREATED.push(session.name);
+
+      const copied = await readFile(join(codexHome(), 'config.toml'), 'utf8');
+      expect(copied).toContain('fake-model');
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -108,6 +149,7 @@ describe('codex-provider — hooks.json lifecycle', () => {
 
 // ---------------------------------------------------------------------------
 // End-to-end turn: send → stop fires → transcript readable
+// (fake-codex.sh fires the hook directly, so this is agnostic to CODEX_HOME)
 // ---------------------------------------------------------------------------
 
 describe('codex-provider — end-to-end turn', () => {
@@ -159,47 +201,38 @@ describe('codex-provider — end-to-end turn', () => {
 });
 
 // ---------------------------------------------------------------------------
-// kill removes hooks.json (providerFiles cleanup)
+// The codex-home is SHARED infra: not per-session, survives kill
 // ---------------------------------------------------------------------------
 
-describe('codex-provider — kill cleans up hooks.json', () => {
-  test('kill removes <cwd>/.codex/hooks.json written at spawn', async () => {
+describe('codex-provider — shared codex-home lifecycle', () => {
+  test('meta.providerFiles excludes the shared codex-home files', async () => {
     const env = await setup();
     const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
-    const name = sessionName('kill');
     try {
-      const { session } = await spawn(makeSpawnOpts(env, cwd, { name }));
-      // Do NOT push to CREATED — kill under test handles cleanup
-
-      const hooksPath = join(cwd, '.codex', 'hooks.json');
-      expect(existsSync(hooksPath)).toBe(true);
-
-      await kill({ name: session.name, env });
-
-      expect(existsSync(hooksPath)).toBe(false);
+      const { session } = await spawn(makeSpawnOpts(env, cwd));
+      CREATED.push(session.name);
+      // codex's hooks/auth/config are shared across workers — never tracked.
+      expect(session.providerFiles).toEqual([]);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
-  test('kill with removeState=false leaves hooks.json in place', async () => {
+  test('kill leaves the shared codex-home in place (other workers depend on it)', async () => {
     const env = await setup();
     const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
-    const name = sessionName('killnorm');
+    const name = sessionName('kill');
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd, { name }));
-      CREATED.push(session.name);
-
-      const hooksPath = join(cwd, '.codex', 'hooks.json');
+      // Do NOT push to CREATED — kill under test handles the session.
+      const hooksPath = join(codexHome(), 'hooks.json');
       expect(existsSync(hooksPath)).toBe(true);
 
-      // removeState=false skips providerFiles cleanup
-      await kill({ name: session.name, removeState: false, env });
+      await kill({ name: session.name, env });
 
+      // The session dir is gone, but the shared codex-home survives.
+      expect(existsSync(join(tmpDir, 'sessions', session.name))).toBe(false);
       expect(existsSync(hooksPath)).toBe(true);
-
-      // Manual cleanup to avoid leaking state dir
-      await rm(join(tmpDir, 'sessions', session.name), { recursive: true, force: true });
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -230,19 +263,6 @@ describe('codex-provider — session meta', () => {
       const { session } = await spawn(makeSpawnOpts(env, cwd, { model: 'o4-mini' }));
       CREATED.push(session.name);
       expect(session.model).toBe('o4-mini');
-    } finally {
-      await rm(cwd, { recursive: true, force: true });
-    }
-  });
-
-  test('meta.json providerFiles contains absolute path to hooks.json', async () => {
-    const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
-    try {
-      const { session } = await spawn(makeSpawnOpts(env, cwd));
-      CREATED.push(session.name);
-      const expectedPath = join(cwd, '.codex', 'hooks.json');
-      expect(session.providerFiles).toContain(expectedPath);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

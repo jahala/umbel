@@ -120,8 +120,8 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - Custom endpoints: pointing `ANTHROPIC_BASE_URL`/`AUTH_TOKEN`/`MODEL` (via the env passthrough) at any Anthropic-compatible API (DeepSeek, OpenRouter, local) runs that model under Claude Code's harness — the **second** model-agnostic lane alongside OpenCode, API-billed not subscription. Not a new provider: same binary, hooks, transcript.
 
 ### CodexProvider (`src/core/providers/codex.ts`)
-- `buildLaunch` → writes `<cwd>/.codex/hooks.json` referencing our stop.sh
-- `files: [{ path: '.codex/hooks.json', content: hooksJsonStr }]` — operations layer cleans up on kill
+- `buildLaunch` → declares a global `$CODEX_HOME/hooks.json` (referencing our stop.sh) in an rctrl-managed home (`$RCTRL_STATE/codex-home`); a project `<cwd>/.codex/hooks.json` is ignored inside linked git worktrees (see `docs/codex-worktree-hooks.md`)
+- `files: [{ path: '<codexHome>/hooks.json', content, shared: true }, { symlinkTo auth.json }, { copyFrom config.toml }]` — `shared` infra, set up idempotently, NOT recorded in `providerFiles` or cleaned on kill
 - `stopEventName: 'Stop'`
 - `parseTranscript`: Codex JSONL envelope (`event_msg` items, last `agent_message` is the response)
 - No equivalent of `--session-id` for transcript filename — hook payload's `transcript_path` is the source of truth (may be `null` per Codex docs; rctrl falls back to dir-snapshot)

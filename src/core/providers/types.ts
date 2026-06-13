@@ -10,11 +10,22 @@ export interface ProviderLaunchSpec {
   bin: string; // 'claude' | 'codex' | 'gemini' | absolute path
   args: string[]; // launch flags (model, allowedTools, hook config)
   env: Record<string, string>; // env vars to merge into tmux env (provider-specific)
-  files: Array<{ path: string; content: string; mode?: number }>;
-  //   ↑ ephemeral files to write into the cwd before launch (e.g.
-  //   .codex/hooks.json, .gemini/settings.json). Operations layer writes them
-  //   and removes them on session kill. Empty for providers that support
-  //   inline-config flags (Claude's --settings).
+  // Files to materialize before launch. Exactly one of content/symlinkTo/copyFrom
+  // per entry:
+  //   • { content }   — write the bytes (provider config: .gemini/settings.json).
+  //   • { symlinkTo } — symlink path → symlinkTo (share a credential, no copy).
+  //   • { copyFrom }  — copy copyFrom → path; ifAbsent skips if path already exists,
+  //                     and the copy is skipped silently when copyFrom is missing.
+  // `shared: true` marks rctrl-managed infra OUTSIDE the worker's cwd (e.g. a
+  // per-provider CODEX_HOME): NOT recorded in meta.providerFiles and NOT removed on
+  // kill (other live workers depend on it). Default (ephemeral) files ARE tracked
+  // and cleaned on session kill. Empty for providers with inline-config flags
+  // (Claude's --settings).
+  files: Array<
+    | { path: string; content: string; mode?: number; shared?: boolean }
+    | { path: string; symlinkTo: string; shared?: boolean }
+    | { path: string; copyFrom: string; ifAbsent?: boolean; shared?: boolean }
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +100,12 @@ export interface AgentProvider {
     model?: string;
     allowedTools?: string;
     permissionMode?: string;
+    // rctrl state root ($RCTRL_STATE). Providers needing an isolated config home
+    // derive it from here (codex: <stateDir>/codex-home). Injected by spawn.
+    stateDir?: string;
+    // codex: the user's real CODEX_HOME — source for the auth.json symlink and
+    // config.toml copy. Injected by spawn; falls back to ~/.codex.
+    userCodexHome?: string;
   }): ProviderLaunchSpec;
 
   // Optional: reconcile the fully-assembled worker env immediately before

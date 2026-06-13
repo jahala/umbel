@@ -3,6 +3,13 @@ import { ProviderUnknownError } from '../../../src/core/errors.ts';
 import { GeminiProvider } from '../../../src/core/providers/gemini.ts';
 import { getProvider, PROVIDERS } from '../../../src/core/providers/registry.ts';
 
+// launchSpec.files is a union (content | symlinkTo | copyFrom); Gemini only ever
+// emits content entries, so narrow before reading .content.
+type LaunchFile = ReturnType<typeof GeminiProvider.buildLaunch>['files'][number];
+function fileContent(f: LaunchFile | undefined): string {
+  return f !== undefined && 'content' in f ? f.content : '';
+}
+
 // ---------------------------------------------------------------------------
 // GeminiProvider.buildLaunch
 // ---------------------------------------------------------------------------
@@ -55,7 +62,7 @@ describe('GeminiProvider.buildLaunch', () => {
       notifyScriptPath: notify,
     });
     const settingsFile = spec.files.find((f) => f.path.endsWith('.gemini/settings.json'));
-    const content = settingsFile?.content ?? '';
+    const content = fileContent(settingsFile);
     expect(content).toContain('Notification');
     expect(content).toContain(notify);
   });
@@ -86,7 +93,7 @@ describe('GeminiProvider.buildLaunch', () => {
       cwd: '/tmp/test-project',
       hookScriptPath: '/tmp/stop.sh',
     });
-    expect(() => JSON.parse(spec.files[0]!.content)).not.toThrow();
+    expect(() => JSON.parse(fileContent(spec.files[0]))).not.toThrow();
   });
 
   test('settings.json has AfterAgent hook block with hookScriptPath', () => {
@@ -96,7 +103,7 @@ describe('GeminiProvider.buildLaunch', () => {
       cwd: '/tmp/test-project',
       hookScriptPath,
     });
-    const settings = JSON.parse(spec.files[0]!.content) as Record<string, unknown>;
+    const settings = JSON.parse(fileContent(spec.files[0])) as Record<string, unknown>;
     // Top-level hooks key
     expect(settings.hooks).toBeDefined();
     const hooks = settings.hooks as Record<string, unknown>;
@@ -104,7 +111,7 @@ describe('GeminiProvider.buildLaunch', () => {
     expect(hooks.AfterAgent).toBeDefined();
     expect(Array.isArray(hooks.AfterAgent)).toBe(true);
     // The command must reference our stop.sh
-    const content = spec.files[0]!.content;
+    const content = fileContent(spec.files[0]);
     expect(content).toContain(hookScriptPath);
     expect(content).toContain('AfterAgent');
   });
@@ -115,7 +122,7 @@ describe('GeminiProvider.buildLaunch', () => {
       cwd: '/tmp/test-project',
       hookScriptPath: '/tmp/stop.sh',
     });
-    const settings = JSON.parse(spec.files[0]!.content) as {
+    const settings = JSON.parse(fileContent(spec.files[0])) as {
       hooks: {
         AfterAgent: Array<{
           matcher: string;
@@ -133,7 +140,7 @@ describe('GeminiProvider.buildLaunch', () => {
       cwd: '/tmp/test-project',
       hookScriptPath: '/tmp/stop.sh',
     });
-    const settings = JSON.parse(spec.files[0]!.content) as {
+    const settings = JSON.parse(fileContent(spec.files[0])) as {
       hooks: {
         AfterAgent: Array<{
           matcher: string;
