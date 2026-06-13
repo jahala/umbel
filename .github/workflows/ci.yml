@@ -22,11 +22,10 @@ jobs:
       - name: Install tmux
         run: sudo apt-get install -y tmux
 
-      # `bun install --frozen-lockfile` regressed on ubuntu-latest (errors "could not
-      # open node_modules" on a fresh checkout). Install normally, then enforce the
-      # same lockfile-integrity guarantee with an explicit drift check.
-      - run: bun install
-      - run: git diff --exit-code bun.lock
+      # bun 1.3.14 errors "could not open node_modules" on a fresh ubuntu-latest
+      # checkout — a runner-image regression: even plain `bun install` fails. Pre-
+      # create the dir so install can open it; --frozen-lockfile keeps integrity.
+      - run: mkdir -p node_modules && bun install --frozen-lockfile
 
       - run: bun run typecheck
 
