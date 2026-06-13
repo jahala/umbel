@@ -159,8 +159,19 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   if (opts.allowedTools !== undefined && providerName !== 'claude') {
     throw new AllowedToolsUnsupportedError(providerName);
   }
-  if (opts.permissionMode !== undefined && providerName !== 'claude') {
-    throw new AllowedToolsUnsupportedError(providerName);
+  // permissionMode: claude embeds it in --settings; codex maps the unattended
+  // `bypassPermissions` intent to its approvals+sandbox bypass. Other providers
+  // don't support it; codex rejects any other mode value.
+  if (opts.permissionMode !== undefined) {
+    if (providerName === 'codex') {
+      if (opts.permissionMode !== 'bypassPermissions') {
+        throw new RctrlUsageError(
+          `codex --permission-mode supports only 'bypassPermissions' (maps to --dangerously-bypass-approvals-and-sandbox); got '${opts.permissionMode}'`,
+        );
+      }
+    } else if (providerName !== 'claude') {
+      throw new AllowedToolsUnsupportedError(providerName);
+    }
   }
 
   // Install global stop hook

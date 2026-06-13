@@ -48,6 +48,19 @@ describe('CodexProvider.buildLaunch', () => {
     expect(spec.args).toContain('o4-mini');
   });
 
+  // permissionMode: codex's unattended equivalent of claude's bypassPermissions.
+  // An auditor runs commands in a disposable worktree with no human present, so
+  // codex must skip its approval prompts (+ sandbox) or it blocks on the prompt.
+  test('with permissionMode bypassPermissions, args include codex approvals+sandbox bypass', () => {
+    expect(launch({ permissionMode: 'bypassPermissions' }).args).toContain(
+      '--dangerously-bypass-approvals-and-sandbox',
+    );
+  });
+
+  test('without permissionMode, no approvals bypass flag', () => {
+    expect(launch().args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+  });
+
   test('env.CODEX_HOME points at the rctrl-managed codex-home under stateDir', () => {
     expect(launch().env.CODEX_HOME).toBe(CODEX_HOME);
   });

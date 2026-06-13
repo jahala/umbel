@@ -58,12 +58,22 @@ describe('ClaudeProvider.buildLaunch — permissionMode', () => {
   });
 });
 
-describe('spawn guard — permissionMode is claude-only', () => {
-  test('non-claude provider with permissionMode throws (mirrors allowedTools)', async () => {
+describe('spawn guard — permissionMode (claude + codex)', () => {
+  test('a provider without permissionMode support (gemini) throws', async () => {
     const { spawn } = await import('../../src/operations/spawn.ts');
     const { AllowedToolsUnsupportedError } = await import('../../src/core/errors.ts');
     await expect(
-      spawn({ name: 'x', cwd: '/tmp', provider: 'codex', permissionMode: 'bypassPermissions' }),
+      spawn({ name: 'x', cwd: '/tmp', provider: 'gemini', permissionMode: 'bypassPermissions' }),
     ).rejects.toBeInstanceOf(AllowedToolsUnsupportedError);
+  });
+
+  test('codex rejects a permission mode other than bypassPermissions', async () => {
+    // codex maps only the unattended `bypassPermissions` intent (→ its
+    // approvals+sandbox bypass); claude's other named modes are meaningless there.
+    const { spawn } = await import('../../src/operations/spawn.ts');
+    const { RctrlUsageError } = await import('../../src/core/errors.ts');
+    await expect(
+      spawn({ name: 'x', cwd: '/tmp', provider: 'codex', permissionMode: 'acceptEdits' }),
+    ).rejects.toBeInstanceOf(RctrlUsageError);
   });
 });
