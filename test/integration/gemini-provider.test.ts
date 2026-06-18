@@ -19,8 +19,8 @@ const RUN_ID = randomBytes(4).toString('hex');
 let tmpDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-gemini-test-'));
-  return { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-gemini-test-'));
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionName(suffix: string): string {
@@ -63,7 +63,7 @@ function makeOpts(
       ...env,
       FAKE_GEMINI_TRANSCRIPT_DIR: transcriptDir,
       FAKE_GEMINI_HOOK: hookPath,
-      // RCTRL_SESSION_ID is set by spawn via tmuxEnv, but fake-gemini also
+      // UMBEL_SESSION_ID is set by spawn via tmuxEnv, but fake-gemini also
       // reads it. It arrives via the tmux session env — no extra action needed.
     },
     ...extra,
@@ -110,7 +110,7 @@ describe('gemini provider — settings.json written at spawn', () => {
 
     expect(parsed.hooks).toBeDefined();
     expect(parsed.hooks.AfterAgent).toBeDefined();
-    // Verify the hook command references rctrl's stop.sh
+    // Verify the hook command references umbel's stop.sh
     const hookCmd = parsed.hooks.AfterAgent[0]!.hooks[0]!.command;
     expect(hookCmd).toContain('stop.sh');
   });

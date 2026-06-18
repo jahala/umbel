@@ -1,4 +1,4 @@
-# Contributing to rctrl
+# Contributing to umbel
 
 ## Setup
 
@@ -10,13 +10,13 @@ bun test
 
 ## Architecture
 
-See [docs/architecture-v3.md](docs/architecture-v3.md) for a full walkthrough of how rctrl is structured and how the pieces fit together.
+See [docs/architecture-v3.md](docs/architecture-v3.md) for a full walkthrough of how umbel is structured and how the pieces fit together.
 
 ## Test-first discipline
 
 Every bug fix and new feature starts with a failing test. If you can't write a test that fails, the bug or feature isn't understood well enough yet.
 
-For end-to-end tests, rctrl uses a fake-claude fixture — a lightweight stand-in that exercises the CLI without burning real Claude API budget. **Never call the real Claude API in CI.**
+For end-to-end tests, umbel uses a fake-claude fixture — a lightweight stand-in that exercises the CLI without burning real Claude API budget. **Never call the real Claude API in CI.**
 
 ## Smoke tests (real providers, local only)
 
@@ -41,15 +41,15 @@ Each provider's tests auto-skip if its binary is not found on `$PATH` (or the we
 **How to run:**
 
 ```sh
-RCTRL_SMOKE=1 bun run test:smoke
+UMBEL_SMOKE=1 bun run test:smoke
 ```
 
 Run a single provider's suite only:
 
 ```sh
-RCTRL_SMOKE=1 bun run test:smoke:claude
-RCTRL_SMOKE=1 bun run test:smoke:codex
-RCTRL_SMOKE=1 bun run test:smoke:gemini
+UMBEL_SMOKE=1 bun run test:smoke:claude
+UMBEL_SMOKE=1 bun run test:smoke:codex
+UMBEL_SMOKE=1 bun run test:smoke:gemini
 ```
 
 Smoke files are organised by provider under `test/smoke/{claude,codex,gemini}/` and gated by `smokeDescribeFor(provider, …)` in `test/smoke/helpers.ts`.
@@ -58,11 +58,11 @@ Smoke files are organised by provider under `test/smoke/{claude,codex,gemini}/` 
 
 - The provider binary installed and authenticated with an active subscription (not API key billing).
 - `tmux` installed and available on `$PATH`.
-- `RCTRL_SMOKE=1` set in the shell environment. Without this variable the smoke suite auto-skips every test.
+- `UMBEL_SMOKE=1` set in the shell environment. Without this variable the smoke suite auto-skips every test.
 
 **Cost:** Keep an eye on usage — each full run exercises real provider subscriptions. Claude runs at Haiku rates (~$0.01/run); Codex and Gemini costs depend on the model the provider defaults to.
 
-**Why local-only:** rctrl exists precisely to route through the interactive TUI rather than the API. Running smoke tests in CI against an API key would defeat the entire purpose of the tool and incur per-token billing. Smoke tests are a human-triggered gate, not a CI gate.
+**Why local-only:** umbel exists precisely to route through the interactive TUI rather than the API. Running smoke tests in CI against an API key would defeat the entire purpose of the tool and incur per-token billing. Smoke tests are a human-triggered gate, not a CI gate.
 
 ## Style
 

@@ -9,14 +9,14 @@ import { makeCleanupGuard, runCli, smokeDescribeFor, smokeName } from '../helper
 //
 // Regression: codex inside a LINKED git worktree reads its .codex/ hook config
 // from the MAIN repo (an anti-escalation redirect), NOT the worktree itself. So
-// rctrl's worktree workers never fired Stop and `wait` hung to the timeout. The
+// umbel's worktree workers never fired Stop and `wait` hung to the timeout. The
 // fix writes hooks to the main-repo .codex/ for worktree workers — proven here
 // against the real binary: a codex worker in a `git worktree add --detach` dir
 // must complete (wait → exit 0), not time out (124).
 // ---------------------------------------------------------------------------
 
 async function git(args: string[]): Promise<void> {
-  const proc = Bun.spawn(['git', '-c', 'user.email=rctrl@test', '-c', 'user.name=rctrl', ...args], {
+  const proc = Bun.spawn(['git', '-c', 'user.email=umbel@test', '-c', 'user.name=umbel', ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -29,7 +29,7 @@ smokeDescribeFor('codex', 'codex Stop hook fires inside a linked git worktree', 
   afterEach(() => guard.cleanup());
 
   test('a codex worker in a detached worktree completes (wait → stop, not timeout)', async () => {
-    const base = await mkdtemp(join(tmpdir(), 'rctrl-smoke-cdx-wt-'));
+    const base = await mkdtemp(join(tmpdir(), 'umbel-smoke-cdx-wt-'));
     const main = join(base, 'main');
     const wt = join(base, 'wt');
     await git(['init', main]);

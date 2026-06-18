@@ -222,13 +222,13 @@ const codexProvider: AgentProvider = {
   buildLaunch(opts): ProviderLaunchSpec {
     // Hook delivery via a global $CODEX_HOME/hooks.json — NOT <cwd>/.codex/hooks.json,
     // which codex silently ignores inside linked git worktrees (verified against
-    // 0.133.0; see docs/codex-worktree-hooks.md). rctrl points the worker at an
+    // 0.133.0; see docs/codex-worktree-hooks.md). umbel points the worker at an
     // isolated, shared CODEX_HOME under the state dir: auth.json is symlinked from
     // the user's real CODEX_HOME (no secret copy; token refresh shared) and
     // config.toml is copied once (carries model/endpoint/MCP, kept isolated so
     // codex's trust writes don't touch the user's global config). These three files
     // are `shared` — set up idempotently, never recorded per-session or cleaned on
-    // kill. rctrl's startup dialogs trust the hooks on first use.
+    // kill. umbel's startup dialogs trust the hooks on first use.
     //
     // Schema: codex-rs/config/src/hook_config.rs — HooksFile, MatcherGroup,
     // HookHandlerConfig. timeout is in seconds (not ms). matcher is optional.
@@ -275,7 +275,7 @@ const codexProvider: AgentProvider = {
       args.push('--model', opts.model);
     }
 
-    const codexHome = join(opts.stateDir ?? join(homedir(), '.rctrl'), 'codex-home');
+    const codexHome = join(opts.stateDir ?? join(homedir(), '.umbel'), 'codex-home');
     const userCodexHome = opts.userCodexHome ?? join(homedir(), '.codex');
     return {
       bin: 'codex',

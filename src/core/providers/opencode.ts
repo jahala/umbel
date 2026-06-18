@@ -3,8 +3,8 @@ import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './
 // ---------------------------------------------------------------------------
 // PLUGIN_SOURCE — bundled opencode JS plugin written verbatim to disk.
 //
-// Runs inside opencode's JS runtime. Cannot import rctrl. All logic is inline.
-// No-ops unless RCTRL_STATE and RCTRL_SESSION_ID are set (inert in normal use).
+// Runs inside opencode's JS runtime. Cannot import umbel. All logic is inline.
+// No-ops unless UMBEL_STATE and UMBEL_SESSION_ID are set (inert in normal use).
 // On session.status {type:"idle"}: writes events/session-id and touches events/stop.
 // On permission.updated: touches events/notification (worker blocked on approval).
 // ---------------------------------------------------------------------------
@@ -13,10 +13,10 @@ export const PLUGIN_SOURCE = `import { mkdir, writeFile } from "node:fs/promises
 import { join } from "node:path";
 
 async function fireStop(sessionID) {
-  const state = process.env.RCTRL_STATE;
-  const rctrlSession = process.env.RCTRL_SESSION_ID;
-  if (!state || !rctrlSession) return;
-  const eventsDir = join(state, "sessions", rctrlSession, "events");
+  const state = process.env.UMBEL_STATE;
+  const umbelSession = process.env.UMBEL_SESSION_ID;
+  if (!state || !umbelSession) return;
+  const eventsDir = join(state, "sessions", umbelSession, "events");
   await mkdir(eventsDir, { recursive: true });
   await writeFile(join(eventsDir, "session-id"), String(sessionID), "utf8");
   await writeFile(join(eventsDir, "stop"), "", "utf8");
@@ -27,10 +27,10 @@ async function fireStop(sessionID) {
 }
 
 async function fireNotification(tool, message) {
-  const state = process.env.RCTRL_STATE;
-  const rctrlSession = process.env.RCTRL_SESSION_ID;
-  if (!state || !rctrlSession) return;
-  const eventsDir = join(state, "sessions", rctrlSession, "events");
+  const state = process.env.UMBEL_STATE;
+  const umbelSession = process.env.UMBEL_SESSION_ID;
+  if (!state || !umbelSession) return;
+  const eventsDir = join(state, "sessions", umbelSession, "events");
   await mkdir(eventsDir, { recursive: true });
   const { appendFile } = await import("node:fs/promises");
   const line = JSON.stringify({
@@ -50,15 +50,15 @@ export const Plugin = async () => ({
     if (
       event?.type === "session.status" &&
       event?.properties?.status?.type === "idle" &&
-      !!process.env.RCTRL_STATE &&
-      !!process.env.RCTRL_SESSION_ID
+      !!process.env.UMBEL_STATE &&
+      !!process.env.UMBEL_SESSION_ID
     ) {
       await fireStop(event?.properties?.sessionID ?? "");
     }
     if (
       event?.type === "permission.updated" &&
-      !!process.env.RCTRL_STATE &&
-      !!process.env.RCTRL_SESSION_ID
+      !!process.env.UMBEL_STATE &&
+      !!process.env.UMBEL_SESSION_ID
     ) {
       await fireNotification(event?.properties?.type, event?.properties?.title);
     }
@@ -304,7 +304,7 @@ export function extractOpencodeActionsFromContent(content: string): ActionManife
 
 // ---------------------------------------------------------------------------
 // opencodePluginShouldFire — pure gating predicate mirrored in the plugin.
-// True iff event is session.status idle AND both rctrl env vars are set.
+// True iff event is session.status idle AND both umbel env vars are set.
 // Never throws.
 // ---------------------------------------------------------------------------
 
@@ -322,7 +322,7 @@ export function opencodePluginShouldFire(
   if (status === null || typeof status !== 'object') return false;
   const s = status as JsonObj;
   if (s.type !== 'idle') return false;
-  return !!env?.RCTRL_STATE && !!env?.RCTRL_SESSION_ID;
+  return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
 }
 
 // A permission event means opencode is BLOCKED asking the user to approve a tool
@@ -336,7 +336,7 @@ export function opencodePluginShouldFireNotification(
   if (event === null || typeof event !== 'object') return false;
   const e = event as JsonObj;
   if (e.type !== 'permission.updated') return false;
-  return !!env?.RCTRL_STATE && !!env?.RCTRL_SESSION_ID;
+  return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
 }
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ smokeDescribe('p-mode round-trip', () => {
   const guard = makeCleanupGuard();
   afterEach(() => guard.cleanup());
 
-  test('rctrl -p --model haiku positional prompt exits 0 and stdout contains OK', async () => {
+  test('umbel -p --model haiku positional prompt exits 0 and stdout contains OK', async () => {
     // Validates: Stop hook fires from real claude, JSONL is readable, stdout is printed
     const name = smokeName('pm1');
     guard.register(name);
@@ -27,7 +27,7 @@ smokeDescribe('p-mode round-trip', () => {
     expect(r.stdout.trim()).toContain('OK');
   }, 120_000);
 
-  test('rctrl -p --model haiku reads prompt from stdin and exits 0', async () => {
+  test('umbel -p --model haiku reads prompt from stdin and exits 0', async () => {
     // Validates: stdin pipe path through runPMode reads correctly; Stop hook fires
     const r = await runCli(['-p', '--model', 'haiku'], 'Reply with exactly the word: OK\n');
 

@@ -244,7 +244,7 @@ const geminiProvider: AgentProvider = {
   //
   // NOTE: gemini must already be authenticated (a one-time `gemini` → Sign in
   // with Google). On an unauthenticated machine an auth-method prompt appears
-  // AFTER trust; rctrl does not auto-dismiss it (completing OAuth needs a
+  // AFTER trust; umbel does not auto-dismiss it (completing OAuth needs a
   // browser, and silently picking an auth method is a poor default).
   startupDialogs: [{ match: /trust the files in this folder/i, keys: ['Enter'] }],
 
@@ -261,7 +261,7 @@ const geminiProvider: AgentProvider = {
             {
               type: 'command',
               command: opts.hookScriptPath,
-              name: 'rctrl-stop',
+              name: 'umbel-stop',
               timeout: 60000,
             },
           ],
@@ -278,7 +278,7 @@ const geminiProvider: AgentProvider = {
             {
               type: 'command',
               command: opts.notifyScriptPath,
-              name: 'rctrl-notify',
+              name: 'umbel-notify',
               timeout: 60000,
             },
           ],

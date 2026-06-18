@@ -181,7 +181,7 @@ describe('OpenCodeProvider.buildLaunch', () => {
   const baseOpts = {
     sessionId: 'test-session',
     cwd: '/tmp/proj',
-    hookScriptPath: '/home/user/.rctrl/hooks/opencode-stop.ts',
+    hookScriptPath: '/home/user/.umbel/hooks/opencode-stop.ts',
   };
 
   test('bin is "opencode"', () => {
@@ -255,62 +255,62 @@ describe('OpenCodeProvider static fields', () => {
 // ---------------------------------------------------------------------------
 // opencodePluginShouldFire — pure gating predicate the bundled plugin uses.
 // CRITICAL safety property: the globally-installed plugin must NO-OP during the
-// user's normal opencode use (RCTRL_SESSION_ID absent), and only act on
-// end-of-turn (session.status idle) under an rctrl-driven session.
+// user's normal opencode use (UMBEL_SESSION_ID absent), and only act on
+// end-of-turn (session.status idle) under an umbel-driven session.
 // ---------------------------------------------------------------------------
 
 describe('opencodePluginShouldFire (plugin env-gating)', () => {
   const idle = { type: 'session.status', properties: { status: { type: 'idle' } } };
-  const rctrlEnv = { RCTRL_STATE: '/tmp/state', RCTRL_SESSION_ID: 'sess1' };
+  const umbelEnv = { UMBEL_STATE: '/tmp/state', UMBEL_SESSION_ID: 'sess1' };
 
-  test('fires on session.status idle under rctrl (both env vars set)', () => {
-    expect(opencodePluginShouldFire(idle, rctrlEnv)).toBe(true);
+  test('fires on session.status idle under umbel (both env vars set)', () => {
+    expect(opencodePluginShouldFire(idle, umbelEnv)).toBe(true);
   });
 
-  test('does NOT fire when RCTRL_SESSION_ID is absent (normal opencode use)', () => {
-    expect(opencodePluginShouldFire(idle, { RCTRL_STATE: '/tmp/state' })).toBe(false);
+  test('does NOT fire when UMBEL_SESSION_ID is absent (normal opencode use)', () => {
+    expect(opencodePluginShouldFire(idle, { UMBEL_STATE: '/tmp/state' })).toBe(false);
   });
 
-  test('does NOT fire when RCTRL_STATE is absent', () => {
-    expect(opencodePluginShouldFire(idle, { RCTRL_SESSION_ID: 'sess1' })).toBe(false);
+  test('does NOT fire when UMBEL_STATE is absent', () => {
+    expect(opencodePluginShouldFire(idle, { UMBEL_SESSION_ID: 'sess1' })).toBe(false);
   });
 
   test('does NOT fire on a non-idle status (busy)', () => {
     const busy = { type: 'session.status', properties: { status: { type: 'busy' } } };
-    expect(opencodePluginShouldFire(busy, rctrlEnv)).toBe(false);
+    expect(opencodePluginShouldFire(busy, umbelEnv)).toBe(false);
   });
 
   test('does NOT fire on a different event type', () => {
-    expect(opencodePluginShouldFire({ type: 'message.updated', properties: {} }, rctrlEnv)).toBe(
+    expect(opencodePluginShouldFire({ type: 'message.updated', properties: {} }, umbelEnv)).toBe(
       false,
     );
   });
 
   test('does not throw on a malformed event', () => {
-    expect(opencodePluginShouldFire({}, rctrlEnv)).toBe(false);
+    expect(opencodePluginShouldFire({}, umbelEnv)).toBe(false);
   });
 });
 
 describe('opencodePluginShouldFireNotification (permission detection)', () => {
-  const rctrlEnv = { RCTRL_STATE: '/tmp/state', RCTRL_SESSION_ID: 'sess1' };
+  const umbelEnv = { UMBEL_STATE: '/tmp/state', UMBEL_SESSION_ID: 'sess1' };
 
-  test('fires on permission.updated under rctrl (worker blocked on approval)', () => {
+  test('fires on permission.updated under umbel (worker blocked on approval)', () => {
     const ev = { type: 'permission.updated', properties: { sessionID: 's', title: 'Bash' } };
-    expect(opencodePluginShouldFireNotification(ev, rctrlEnv)).toBe(true);
+    expect(opencodePluginShouldFireNotification(ev, umbelEnv)).toBe(true);
   });
 
   test('does NOT fire on session.status idle (that is the stop signal, not input)', () => {
     const idle = { type: 'session.status', properties: { status: { type: 'idle' } } };
-    expect(opencodePluginShouldFireNotification(idle, rctrlEnv)).toBe(false);
+    expect(opencodePluginShouldFireNotification(idle, umbelEnv)).toBe(false);
   });
 
-  test('does NOT fire without the rctrl env vars', () => {
+  test('does NOT fire without the umbel env vars', () => {
     const ev = { type: 'permission.updated', properties: {} };
-    expect(opencodePluginShouldFireNotification(ev, { RCTRL_STATE: '/tmp' })).toBe(false);
+    expect(opencodePluginShouldFireNotification(ev, { UMBEL_STATE: '/tmp' })).toBe(false);
   });
 
   test('does not throw on a malformed event', () => {
-    expect(opencodePluginShouldFireNotification({}, rctrlEnv)).toBe(false);
+    expect(opencodePluginShouldFireNotification({}, umbelEnv)).toBe(false);
   });
 });
 

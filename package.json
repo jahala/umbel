@@ -1,11 +1,11 @@
 {
-  "name": "rctrl",
+  "name": "umbel",
   "version": "0.0.1",
   "description": "Remote-control interactive Claude Code (and other agent CLIs) over tmux. Subscription-billed orchestration.",
   "type": "module",
   "module": "src/main.ts",
   "bin": {
-    "rctrl": "./dist/rctrl"
+    "umbel": "./dist/umbel"
   },
   "scripts": {
     "build": "bun run scripts/build.ts",

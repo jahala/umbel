@@ -1,4 +1,4 @@
-import { RctrlUsageError, SessionDeadError } from '../core/errors.ts';
+import { SessionDeadError, UmbelUsageError } from '../core/errors.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { ActionManifest } from '../core/providers/types.ts';
 import type { Deps } from './deps.ts';
@@ -19,7 +19,7 @@ export interface ActionsOpts {
 }
 
 // Machine-readable path: the raw manifest, for code callers (`actions --json`).
-// Throws SessionDeadError when there is no transcript yet and RctrlUsageError
+// Throws SessionDeadError when there is no transcript yet and UmbelUsageError
 // when the provider has no extractor — callers that want prose use actions().
 export async function actionsManifest(opts: ActionsOpts): Promise<ActionManifest> {
   const d = { ...defaultDeps, ...opts.deps };
@@ -28,7 +28,7 @@ export async function actionsManifest(opts: ActionsOpts): Promise<ActionManifest
   const session = await d.fs.readMeta(opts.name, env);
   const provider = getProvider(session.provider);
   if (provider.extractActions === undefined) {
-    throw new RctrlUsageError(
+    throw new UmbelUsageError(
       `actions extraction not implemented for provider: ${session.provider}`,
     );
   }
@@ -51,7 +51,7 @@ export async function actions(opts: ActionsOpts): Promise<string> {
     manifest = await actionsManifest(opts);
   } catch (err) {
     if (err instanceof SessionDeadError) return '(no transcript yet)';
-    if (err instanceof RctrlUsageError) return `(${err.message})`;
+    if (err instanceof UmbelUsageError) return `(${err.message})`;
     throw err;
   }
   return formatManifest(manifest);

@@ -15,7 +15,7 @@ smokeDescribeFor('codex', 'codex multiline prompt via paste-buffer', () => {
 
   test('codex three-line prompt sent via paste-buffer yields coherent response', async () => {
     // Validates: tmux load-buffer + paste-buffer path for prompts containing \n
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-cdx-ml-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-cdx-ml-'));
     const name = smokeName('cdx-ml');
     guard.register(name);
 

@@ -19,7 +19,7 @@ smokeDescribeFor('codex', 'codex supervisor spawn/send/wait/read/kill lifecycle'
 
   test('codex spawn → send → wait → read → kill completes cleanly', async () => {
     // Validates: tmux session lifecycle, send-keys delivery, Stop hook via .codex/hooks.json, JSONL discovery
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-cdx-sup-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-cdx-sup-'));
     const name = smokeName('cdx-sup');
     guard.register(name);
 

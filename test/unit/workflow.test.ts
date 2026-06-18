@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { RctrlUsageError, WorkflowCycleError } from '../../src/core/errors.ts';
+import { UmbelUsageError, WorkflowCycleError } from '../../src/core/errors.ts';
 import { parseWorkflow, substitute, topoSort } from '../../src/core/workflow.ts';
 
 // ---------------------------------------------------------------------------
@@ -211,18 +211,18 @@ describe('substitute', () => {
     expect(result).toBe('hello and hello');
   });
 
-  test('throws RctrlUsageError on unresolved env variable', () => {
-    expect(() => substitute('value is {{ env.MISSING }}', emptyCtx)).toThrow(RctrlUsageError);
+  test('throws UmbelUsageError on unresolved env variable', () => {
+    expect(() => substitute('value is {{ env.MISSING }}', emptyCtx)).toThrow(UmbelUsageError);
   });
 
-  test('throws RctrlUsageError on unresolved step output (step not found)', () => {
+  test('throws UmbelUsageError on unresolved step output (step not found)', () => {
     expect(() => substitute('value is {{ steps.missing.outputs.x }}', emptyCtx)).toThrow(
-      RctrlUsageError,
+      UmbelUsageError,
     );
   });
 
   // Lines 128-130: step EXISTS but output key not found — unique throw path
-  test('throws RctrlUsageError when step exists but output key is missing', () => {
+  test('throws UmbelUsageError when step exists but output key is missing', () => {
     const ctx = {
       ...emptyCtx,
       steps: { reviewer: { outputs: { summary: 'LGTM' } } },
@@ -233,17 +233,17 @@ describe('substitute', () => {
     } catch (err) {
       caught = err;
     }
-    expect(caught instanceof RctrlUsageError).toBe(true);
-    expect((caught as RctrlUsageError).message).toContain('nonexistent');
-    expect((caught as RctrlUsageError).message).toContain('reviewer');
+    expect(caught instanceof UmbelUsageError).toBe(true);
+    expect((caught as UmbelUsageError).message).toContain('nonexistent');
+    expect((caught as UmbelUsageError).message).toContain('reviewer');
   });
 
-  test('throws RctrlUsageError on unresolved $session', () => {
-    expect(() => substitute('session: {{ $session }}', emptyCtx)).toThrow(RctrlUsageError);
+  test('throws UmbelUsageError on unresolved $session', () => {
+    expect(() => substitute('session: {{ $session }}', emptyCtx)).toThrow(UmbelUsageError);
   });
 
-  test('throws RctrlUsageError on malformed reference (unrecognised prefix)', () => {
-    expect(() => substitute('value is {{ unknown.x }}', emptyCtx)).toThrow(RctrlUsageError);
+  test('throws UmbelUsageError on malformed reference (unrecognised prefix)', () => {
+    expect(() => substitute('value is {{ unknown.x }}', emptyCtx)).toThrow(UmbelUsageError);
   });
 
   test('handles whitespace in template expressions', () => {

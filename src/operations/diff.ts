@@ -1,5 +1,5 @@
 import { unifiedDiff } from '../core/diff.ts';
-import { RctrlUsageError, SessionDeadError } from '../core/errors.ts';
+import { SessionDeadError, UmbelUsageError } from '../core/errors.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -13,7 +13,7 @@ import { resolveTranscriptContent } from './resolve-transcript.ts';
 // turns, not the full new transcript).
 //
 // `from` and `to` are turn indices. Negative indices count from the end
-// (-1 = latest). Out-of-range indices throw RctrlUsageError.
+// (-1 = latest). Out-of-range indices throw UmbelUsageError.
 // ---------------------------------------------------------------------------
 
 export interface DiffOpts {
@@ -59,12 +59,12 @@ export async function diff(opts: DiffOpts): Promise<string> {
   const fromIdx = resolveIndex(opts.from, turns.length, toIdx - 1);
 
   if (fromIdx < 0 || fromIdx >= turns.length) {
-    throw new RctrlUsageError(
+    throw new UmbelUsageError(
       `diff: from index ${opts.from ?? fromIdx} out of range (have ${turns.length} turns)`,
     );
   }
   if (toIdx < 0 || toIdx >= turns.length) {
-    throw new RctrlUsageError(
+    throw new UmbelUsageError(
       `diff: to index ${opts.to ?? toIdx} out of range (have ${turns.length} turns)`,
     );
   }

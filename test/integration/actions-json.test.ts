@@ -1,5 +1,5 @@
 /**
- * `rctrl actions --json` — machine-readable ActionManifest egress.
+ * `umbel actions --json` — machine-readable ActionManifest egress.
  *
  * The text digest is for LLM orchestrators; --json is for code callers (the
  * pleach conductor assembles WorkerResult.filesTouched from it). Drives the
@@ -37,15 +37,15 @@ async function spawnCli(args: string[], env: Record<string, string> = {}): Promi
 
 describe('actions --json', () => {
   test('emits the ActionManifest as a single JSON object on stdout', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-aj-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-aj-'));
     const name = `aj${randomBytes(4).toString('hex')}`;
     const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
     const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
     await mkdir(jsonlDir, { recursive: true });
 
     const baseEnv = {
-      RCTRL_STATE: tmpDir,
-      RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
+      UMBEL_STATE: tmpDir,
+      UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
       FAKE_CLAUDE_JSONL_DIR: jsonlDir,
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
     };
@@ -83,9 +83,9 @@ describe('actions --json', () => {
   }, 60_000);
 
   test('missing session exits non-zero (no JSON error envelope)', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-aj2-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-aj2-'));
     try {
-      const r = await spawnCli(['actions', '--json', 'noexist-aj'], { RCTRL_STATE: tmpDir });
+      const r = await spawnCli(['actions', '--json', 'noexist-aj'], { UMBEL_STATE: tmpDir });
       expect(r.code).not.toBe(0);
       expect(r.stdout.trim()).toBe('');
     } finally {

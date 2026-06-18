@@ -19,8 +19,8 @@ import type { Session } from '../../src/core/types.ts';
 let tmpDir: string;
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-fs-state-test-'));
-  return { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-fs-state-test-'));
+  return { UMBEL_STATE: tmpDir };
 }
 
 afterEach(async () => {
@@ -44,13 +44,13 @@ function makeSession(name: string): Session {
 }
 
 describe('stateDir', () => {
-  test('returns RCTRL_STATE env var when set', () => {
-    expect(stateDir({ RCTRL_STATE: '/custom/path' })).toBe('/custom/path');
+  test('returns UMBEL_STATE env var when set', () => {
+    expect(stateDir({ UMBEL_STATE: '/custom/path' })).toBe('/custom/path');
   });
 
-  test('falls back to ~/.rctrl when RCTRL_STATE unset', () => {
+  test('falls back to ~/.umbel when UMBEL_STATE unset', () => {
     const result = stateDir({});
-    expect(result).toMatch(/\.rctrl$/);
+    expect(result).toMatch(/\.umbel$/);
   });
 });
 

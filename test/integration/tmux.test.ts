@@ -44,7 +44,7 @@ describe('newSession + hasSession', () => {
 });
 
 describe('listSessions', () => {
-  test('returns only rctrl-prefixed sessions we created', async () => {
+  test('returns only umbel-prefixed sessions we created', async () => {
     const name1 = sessionName('list1');
     const name2 = sessionName('list2');
     CREATED.push(name1, name2);
@@ -52,9 +52,9 @@ describe('listSessions', () => {
     await newSession({ name: name2, cwd: '/tmp', cmd: ['bash'] });
 
     const sessions = await listSessions();
-    // All returned names must be bare (no rctrl- prefix)
+    // All returned names must be bare (no umbel- prefix)
     for (const s of sessions) {
-      expect(s.startsWith('rctrl-')).toBe(false);
+      expect(s.startsWith('umbel-')).toBe(false);
     }
     expect(sessions).toContain(name1);
     expect(sessions).toContain(name2);
@@ -73,7 +73,7 @@ describe('sendText + capturePane', () => {
   });
 
   test('single-line send appears in capturePane', async () => {
-    const marker = `RCTRL_SINGLE_${RUN_ID}`;
+    const marker = `UMBEL_SINGLE_${RUN_ID}`;
     await sendText(sessionForSend, `echo ${marker}`);
     await Bun.sleep(300);
     const output = await capturePane(sessionForSend, 50);
@@ -81,8 +81,8 @@ describe('sendText + capturePane', () => {
   });
 
   test('multi-line send all lines appear in capturePane', async () => {
-    const markerA = `RCTRL_MULTI_A_${RUN_ID}`;
-    const markerB = `RCTRL_MULTI_B_${RUN_ID}`;
+    const markerA = `UMBEL_MULTI_A_${RUN_ID}`;
+    const markerB = `UMBEL_MULTI_B_${RUN_ID}`;
     await sendText(sessionForSend, `echo ${markerA}\necho ${markerB}`);
     await Bun.sleep(500);
     const output = await capturePane(sessionForSend, 100);
@@ -91,11 +91,11 @@ describe('sendText + capturePane', () => {
   });
 
   test('long text (>1000 chars) uses load-buffer path', async () => {
-    const longText = `echo RCTRL_LONG_${RUN_ID}_${'x'.repeat(1010)}`;
+    const longText = `echo UMBEL_LONG_${RUN_ID}_${'x'.repeat(1010)}`;
     await sendText(sessionForSend, longText);
     await Bun.sleep(500);
     const output = await capturePane(sessionForSend, 50);
-    expect(output).toContain(`RCTRL_LONG_${RUN_ID}`);
+    expect(output).toContain(`UMBEL_LONG_${RUN_ID}`);
   });
 });
 
@@ -163,13 +163,13 @@ describe('listSessions — no server (line 93 catch path)', () => {
     expect(sessions).toEqual([]);
 
     // Restart the server with a dummy session so other tests still work
-    const startProc = Bun.spawn(['tmux', 'new-session', '-d', '-s', `rctrl-boot-${RUN_ID}`], {
+    const startProc = Bun.spawn(['tmux', 'new-session', '-d', '-s', `umbel-boot-${RUN_ID}`], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
     await startProc.exited;
     // Clean it up immediately
-    const cleanProc = Bun.spawn(['tmux', 'kill-session', '-t', `rctrl-boot-${RUN_ID}`], {
+    const cleanProc = Bun.spawn(['tmux', 'kill-session', '-t', `umbel-boot-${RUN_ID}`], {
       stdout: 'pipe',
       stderr: 'pipe',
     });

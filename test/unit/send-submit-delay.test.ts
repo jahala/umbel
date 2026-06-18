@@ -38,7 +38,7 @@ describe('send — submitDelayMs threading', () => {
     await send({
       name: 's',
       prompt: 'hello',
-      env: { RCTRL_STATE: '/tmp/x' },
+      env: { UMBEL_STATE: '/tmp/x' },
       deps: makeDeps('codex', calls) as never,
     });
     expect(calls).toHaveLength(1);
@@ -53,7 +53,7 @@ describe('send — submitDelayMs threading', () => {
     await send({
       name: 's',
       prompt: 'hi',
-      env: { RCTRL_STATE: '/tmp/x' },
+      env: { UMBEL_STATE: '/tmp/x' },
       deps: makeDeps('claude', calls) as never,
     });
     expect(calls).toHaveLength(1);

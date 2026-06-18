@@ -16,7 +16,7 @@ import { waitFor } from '../../src/operations/wait.ts';
 // Test isolation
 //
 // codex delivers hooks via a global $CODEX_HOME/hooks.json — a project
-// .codex/hooks.json is silently ignored inside linked git worktrees. rctrl
+// .codex/hooks.json is silently ignored inside linked git worktrees. umbel
 // points the worker at <stateDir>/codex-home and populates it from the user's
 // real CODEX_HOME (auth.json symlink + config.toml copy). Both the state dir and
 // a fake "user" CODEX_HOME are temp dirs, so nothing touches the real ~/.codex.
@@ -28,11 +28,11 @@ let tmpDir = '';
 let fakeUserCodex = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-codex-test-'));
-  fakeUserCodex = await mkdtemp(join(tmpdir(), 'rctrl-codex-userhome-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-codex-test-'));
+  fakeUserCodex = await mkdtemp(join(tmpdir(), 'umbel-codex-userhome-'));
   await writeFile(join(fakeUserCodex, 'auth.json'), '{"OPENAI_API_KEY":"fake"}');
   await writeFile(join(fakeUserCodex, 'config.toml'), 'model = "fake-model"\n');
-  return { RCTRL_STATE: tmpDir, CODEX_HOME: fakeUserCodex };
+  return { UMBEL_STATE: tmpDir, CODEX_HOME: fakeUserCodex };
 }
 
 function codexHome(): string {
@@ -87,7 +87,7 @@ function makeSpawnOpts(
 describe('codex-provider — CODEX_HOME hook delivery', () => {
   test('spawn writes hooks.json into the codex-home, never the worker cwd', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
@@ -99,9 +99,9 @@ describe('codex-provider — CODEX_HOME hook delivery', () => {
     }
   });
 
-  test('hooks.json content references rctrl stop.sh', async () => {
+  test('hooks.json content references umbel stop.sh', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
@@ -119,7 +119,7 @@ describe('codex-provider — CODEX_HOME hook delivery', () => {
 
   test('auth.json is symlinked from the user CODEX_HOME (no secret copy)', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
@@ -134,7 +134,7 @@ describe('codex-provider — CODEX_HOME hook delivery', () => {
 
   test('config.toml is copied from the user CODEX_HOME (carries model/endpoint)', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
@@ -155,7 +155,7 @@ describe('codex-provider — CODEX_HOME hook delivery', () => {
 describe('codex-provider — end-to-end turn', () => {
   test('send prompt → Stop hook fires → resolveJsonlPath returns transcript', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     const name = sessionName('e2e');
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd, { name }));
@@ -177,7 +177,7 @@ describe('codex-provider — end-to-end turn', () => {
 
   test('CodexProvider.parseTranscript returns agent_message text from real transcript', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     const name = sessionName('parse');
     const prompt = 'parse me please';
     try {
@@ -207,7 +207,7 @@ describe('codex-provider — end-to-end turn', () => {
 describe('codex-provider — shared codex-home lifecycle', () => {
   test('meta.providerFiles excludes the shared codex-home files', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
@@ -220,7 +220,7 @@ describe('codex-provider — shared codex-home lifecycle', () => {
 
   test('kill leaves the shared codex-home in place (other workers depend on it)', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     const name = sessionName('kill');
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd, { name }));
@@ -246,7 +246,7 @@ describe('codex-provider — shared codex-home lifecycle', () => {
 describe('codex-provider — session meta', () => {
   test('meta.json records provider as codex', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd));
       CREATED.push(session.name);
@@ -258,7 +258,7 @@ describe('codex-provider — session meta', () => {
 
   test('meta.json records model when supplied', async () => {
     const env = await setup();
-    const cwd = await mkdtemp(join(tmpdir(), 'rctrl-codex-cwd-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
     try {
       const { session } = await spawn(makeSpawnOpts(env, cwd, { model: 'o4-mini' }));
       CREATED.push(session.name);

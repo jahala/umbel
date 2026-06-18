@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// truncateAssistantText — smart truncation for rctrl_read output (pure)
+// truncateAssistantText — smart truncation for umbel_read output (pure)
 // ---------------------------------------------------------------------------
 //
 // Purpose: the orchestrator's context burn is dominated by reading worker
@@ -81,7 +81,7 @@ function assembleHeadTail(
   const head = takeHead(text, headTokens);
   const tail = takeTail(text, tailTokens);
   const elidedTokens = Math.max(0, totalTokens - headTokens - tailTokens);
-  return `${head}\n\n... [~${elidedTokens} tokens elided, call rctrl_read with full=true to see all] ...\n\n${tail}`;
+  return `${head}\n\n... [~${elidedTokens} tokens elided, call umbel_read with full=true to see all] ...\n\n${tail}`;
 }
 
 function extractMarkdownSection(text: string, heading: string): string {

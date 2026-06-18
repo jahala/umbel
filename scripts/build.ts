@@ -13,10 +13,10 @@ interface Target {
 }
 
 const TARGETS = {
-  'darwin-arm64': { name: 'rctrl-darwin-arm64', target: 'bun-darwin-arm64' },
-  'darwin-x64': { name: 'rctrl-darwin-x64', target: 'bun-darwin-x64' },
-  'linux-x64': { name: 'rctrl-linux-x64', target: 'bun-linux-x64' },
-  'linux-arm64': { name: 'rctrl-linux-arm64', target: 'bun-linux-arm64' },
+  'darwin-arm64': { name: 'umbel-darwin-arm64', target: 'bun-darwin-arm64' },
+  'darwin-x64': { name: 'umbel-darwin-x64', target: 'bun-darwin-x64' },
+  'linux-x64': { name: 'umbel-linux-x64', target: 'bun-linux-x64' },
+  'linux-arm64': { name: 'umbel-linux-arm64', target: 'bun-linux-arm64' },
 } as const satisfies Record<string, Target>;
 
 async function main(): Promise<void> {
@@ -49,12 +49,12 @@ async function main(): Promise<void> {
     }
   }
 
-  const localLink = join(DIST, 'rctrl');
+  const localLink = join(DIST, 'umbel');
   const current = pickCurrent();
   const currentBin = join(DIST, current.name);
   await Bun.write(localLink, Bun.file(currentBin));
   await Bun.spawn(['chmod', '+x', localLink]).exited;
-  process.stderr.write(`\ndist/rctrl → ${current.name} (use --all for all targets)\n`);
+  process.stderr.write(`\ndist/umbel → ${current.name} (use --all for all targets)\n`);
 
   if (process.argv.includes('--install')) {
     const dest = installDest();
@@ -92,8 +92,8 @@ export async function installBinary(srcPath: string, destPath: string): Promise<
 }
 
 function installDest(): string {
-  const dir = process.env.RCTRL_INSTALL_DIR ?? join(homedir(), '.local', 'bin');
-  return join(dir, 'rctrl');
+  const dir = process.env.UMBEL_INSTALL_DIR ?? join(homedir(), '.local', 'bin');
+  return join(dir, 'umbel');
 }
 
 if (import.meta.main) {

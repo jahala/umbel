@@ -1,14 +1,14 @@
-# rctrl CLI Reference
+# umbel CLI Reference
 
-`rctrl` is a single binary with three entry points: supervisor verbs, the `-p` drop-in mode, and the `mcp` server. All verbs and `-p` flags share zod schemas defined in `src/faces/verbs.ts` — the same schemas drive the MCP tool definitions.
+`umbel` is a single binary with three entry points: supervisor verbs, the `-p` drop-in mode, and the `mcp` server. All verbs and `-p` flags share zod schemas defined in `src/faces/verbs.ts` — the same schemas drive the MCP tool definitions.
 
 ## Usage summary
 
 ```
-rctrl <verb> [flags...]          Supervisor verbs
-rctrl -p [PROMPT]                Drop-in for claude -p
-rctrl --help                     Show help
-rctrl --version                  Show version (0.0.1)
+umbel <verb> [flags...]          Supervisor verbs
+umbel -p [PROMPT]                Drop-in for claude -p
+umbel --help                     Show help
+umbel --version                  Show version (0.0.1)
 ```
 
 ## Exit codes
@@ -32,10 +32,10 @@ The mapping lives in `errorExitCode` (`src/faces/cli.ts`).
 
 ### spawn
 
-Create a named tmux session running a provider CLI interactively. The session is registered in `~/.rctrl/sessions/<name>/meta.json` and appears in tmux as `rctrl-<name>`.
+Create a named tmux session running a provider CLI interactively. The session is registered in `~/.umbel/sessions/<name>/meta.json` and appears in tmux as `umbel-<name>`.
 
 ```
-rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS] [--env KEY=VALUE]...
+umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS] [--env KEY=VALUE]...
 ```
 
 **Flags**
@@ -45,7 +45,7 @@ rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--name NAME` | auto-generated `anon-XXXXXX` | Session name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`. Can also be the first positional argument. |
 | `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist. |
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
-| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; rctrl does not restrict the values. |
+| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. |
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
 | `--permission-mode MODE` | unset | Claude permission mode (`default`/`acceptEdits`/`bypassPermissions`/`plan`). **Claude only** (usage error otherwise). `bypassPermissions` lets an autonomous worker run unattended — appropriate when work is sandboxed and externally verified (e.g. under the pleach conductor); a curated `--allowed-tools` list cannot cover MCP tools, so unattended workers need this. |
 | `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. Use for per-worker proxies, API keys, or custom config dirs. Not persisted to `meta.json`. |
@@ -58,38 +58,38 @@ rctrl spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 
 ```bash
 # Named session, specific model
-rctrl spawn --name reviewer --cwd ./worktrees/review --model sonnet
+umbel spawn --name reviewer --cwd ./worktrees/review --model sonnet
 
 # Codex provider
-rctrl spawn --name fixer --provider codex --cwd ./worktrees/fix --model o4-mini
+umbel spawn --name fixer --provider codex --cwd ./worktrees/fix --model o4-mini
 
 # Gemini provider
-rctrl spawn --name analyst --provider gemini --cwd ./worktrees/analysis
+umbel spawn --name analyst --provider gemini --cwd ./worktrees/analysis
 
 # OpenCode provider — free keyless model
-rctrl spawn --name helper --provider opencode --cwd ./worktrees/help --model opencode/big-pickle
+umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model opencode/big-pickle
 
 # OpenCode provider — local Ollama model (no API key needed)
-rctrl spawn --name helper --provider opencode --cwd ./worktrees/help --model ollama/qwen2.5-coder
+umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model ollama/qwen2.5-coder
 
 # OpenCode provider — cloud API model (key passed via --env; not subscription-billed)
-rctrl spawn --name helper --provider opencode --cwd ./worktrees/help --model openrouter/deepseek/deepseek-v4-flash --env OPENROUTER_API_KEY=sk-...
+umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model openrouter/deepseek/deepseek-v4-flash --env OPENROUTER_API_KEY=sk-...
 
 # Pass env vars to the worker (repeatable) — e.g. a proxy or a custom-endpoint key
-rctrl spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --env FOO=bar
+umbel spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --env FOO=bar
 
-# Anonymous (auto-killed after one turn via rctrl -p)
-rctrl spawn --cwd /tmp/scratch
+# Anonymous (auto-killed after one turn via umbel -p)
+umbel spawn --cwd /tmp/scratch
 ```
 
 ---
 
 ### send
 
-Send a prompt to an existing session. The session must be alive. This only dispatches the text; it does not wait for a response. Use `rctrl wait` after.
+Send a prompt to an existing session. The session must be alive. This only dispatches the text; it does not wait for a response. Use `umbel wait` after.
 
 ```
-rctrl send [--json] <name> <prompt>
+umbel send [--json] <name> <prompt>
 ```
 
 **Positionals**
@@ -103,21 +103,21 @@ rctrl send [--json] <name> <prompt>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `rctrl wait --since N` to make stop-detection race-free when send and wait run in separate processes. |
+| `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `umbel wait --since N` to make stop-detection race-free when send and wait run in separate processes. |
 
 Multi-line prompts are handled automatically via `tmux load-buffer` + `paste-buffer` (see `src/adapters/tmux.ts`).
 
 **Examples**
 
 ```bash
-rctrl send reviewer "Review the diff in review.md and list issues."
+umbel send reviewer "Review the diff in review.md and list issues."
 
 # Capture sinceMtime for race-free wait
-SINCE=$(rctrl send --json reviewer "Fix the bug" | jq -r .sinceMtime)
-rctrl wait --since "$SINCE" reviewer
+SINCE=$(umbel send --json reviewer "Fix the bug" | jq -r .sinceMtime)
+umbel wait --since "$SINCE" reviewer
 
 # Multi-line via shell heredoc
-rctrl send fixer "$(cat <<'EOF'
+umbel send fixer "$(cat <<'EOF'
 Apply the fixes listed in fixes.md.
 Run the tests when done.
 EOF
@@ -131,7 +131,7 @@ EOF
 Block until a session reaches a condition. Default: wait for the Stop hook to fire (end of turn). Returns exit code 124 on timeout, or 125 if the worker's session dies before the condition is met (e.g. the CLI crashed or exited non-zero).
 
 ```
-rctrl wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]
+umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]
 ```
 
 **Positionals**
@@ -145,7 +145,7 @@ rctrl wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout and **exit 0 regardless of reason**. The JSON is the signal; non-zero exit codes are only emitted in non-JSON mode. `message` is included when `reason` is `input`. |
-| `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `rctrl send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
+| `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `umbel send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
 | `--pattern REGEX` | — | Required when `--until=pattern`. Regex matched against tmux pane output. |
@@ -154,7 +154,7 @@ rctrl wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 **Wait condition kinds**
 
-- `stop` — waits for the Stop hook to touch `~/.rctrl/sessions/<name>/events/stop` with a newer mtime than the pre-send snapshot. This is the only deterministic end-of-turn signal.
+- `stop` — waits for the Stop hook to touch `~/.umbel/sessions/<name>/events/stop` with a newer mtime than the pre-send snapshot. This is the only deterministic end-of-turn signal.
 - `file` — waits for the given path to exist on disk.
 - `pattern` — waits for a line in the tmux pane matching the regex.
 
@@ -166,8 +166,8 @@ The default timeout (30 minutes) is enforced even when `--timeout` is not specif
 
 | Reason | Exit (non-JSON) | Meaning |
 |--------|-----------------|---------|
-| stop | 0 | Turn completed — `rctrl read` the result. |
-| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `rctrl send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
+| stop | 0 | Turn completed — `umbel read` the result. |
+| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
 | idle | 123 | No pane activity for `--idle-timeout`. Pane prints to stderr. |
 | dead | 125 | Worker exited before finishing its turn. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |
@@ -178,16 +178,16 @@ With `--json`, exit code is **always 0** — the `reason` field in the JSON obje
 
 ```bash
 # Wait for turn completion (most common)
-rctrl wait reviewer
+umbel wait reviewer
 
 # Wait up to 10 minutes
-rctrl wait reviewer --timeout 10m
+umbel wait reviewer --timeout 10m
 
 # Wait for the agent to produce a file
-rctrl wait reviewer --until file --file ./worktrees/review/review.md
+umbel wait reviewer --until file --file ./worktrees/review/review.md
 
 # Wait for a pattern in pane output
-rctrl wait reviewer --until pattern --pattern "All tests passed"
+umbel wait reviewer --until pattern --pattern "All tests passed"
 ```
 
 ---
@@ -197,7 +197,7 @@ rctrl wait reviewer --until pattern --pattern "All tests passed"
 Show the status table for one or all sessions. Columns: NAME, STATUS (alive/dead), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
 
 ```
-rctrl status [name] [--json]
+umbel status [name] [--json]
 ```
 
 **Positionals**
@@ -220,39 +220,39 @@ A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInput
 
 ```bash
 # All sessions
-rctrl status
+umbel status
 
 # Machine-readable, for a fleet watcher
-rctrl status --json | jq '.[] | select(.needsInputReason == "permission")'
+umbel status --json | jq '.[] | select(.needsInputReason == "permission")'
 
 # One session
-rctrl status reviewer
+umbel status reviewer
 ```
 
 ---
 
 ### ls
 
-List all active sessions. Equivalent to `rctrl status` with no argument. Output is the same columnar table.
+List all active sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table.
 
 ```
-rctrl ls
+umbel ls
 ```
 
 **Examples**
 
 ```bash
-rctrl ls
+umbel ls
 ```
 
 ---
 
 ### kill
 
-Kill a session and (by default) remove its state directory from `~/.rctrl/sessions/`.
+Kill a session and (by default) remove its state directory from `~/.umbel/sessions/`.
 
 ```
-rctrl kill <name> [--keep-state]
+umbel kill <name> [--keep-state]
 ```
 
 **Positionals**
@@ -265,15 +265,15 @@ rctrl kill <name> [--keep-state]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--keep-state` | false | Kill the tmux session but leave `~/.rctrl/sessions/<name>/` on disk. Useful for post-mortem inspection. |
+| `--keep-state` | false | Kill the tmux session but leave `~/.umbel/sessions/<name>/` on disk. Useful for post-mortem inspection. |
 
 **Examples**
 
 ```bash
-rctrl kill reviewer
+umbel kill reviewer
 
 # Kill but preserve logs and meta
-rctrl kill reviewer --keep-state
+umbel kill reviewer --keep-state
 ```
 
 ---
@@ -283,7 +283,7 @@ rctrl kill reviewer --keep-state
 Attach your terminal to a running session's tmux pane. Hands control directly to tmux; exit with the normal tmux detach key (`Ctrl-b d`).
 
 ```
-rctrl attach <name>
+umbel attach <name>
 ```
 
 **Positionals**
@@ -295,7 +295,7 @@ rctrl attach <name>
 **Examples**
 
 ```bash
-rctrl attach reviewer
+umbel attach reviewer
 ```
 
 ---
@@ -305,7 +305,7 @@ rctrl attach reviewer
 Write the last assistant message from the session's JSONL log to stdout. Reads `session.jsonl` at the path stored in `meta.json`. Does not interact with the tmux pane.
 
 ```
-rctrl read <name>
+umbel read <name>
 ```
 
 **Positionals**
@@ -322,8 +322,8 @@ rctrl read <name>
 **Examples**
 
 ```bash
-rctrl read reviewer
-rctrl read reviewer > review.md
+umbel read reviewer
+umbel read reviewer > review.md
 ```
 
 ---
@@ -333,7 +333,7 @@ rctrl read reviewer > review.md
 Write a structured digest of what a worker DID this session — tools used (with counts), files read/edited/written, bash commands, errors, and the final message — to stdout. Reads the transcript via the same resolution chain as `read`. Often the right shape for "what happened?" when you don't need the verbatim response.
 
 ```
-rctrl actions [--json] <name>
+umbel actions [--json] <name>
 ```
 
 | Flag | Default | Description |
@@ -349,7 +349,7 @@ rctrl actions [--json] <name>
 **Examples**
 
 ```bash
-rctrl actions fixer
+umbel actions fixer
 ```
 
 ---
@@ -359,7 +359,7 @@ rctrl actions fixer
 Write a unified text diff between two turns of a session to stdout. Default: the latest turn vs the one before it. Indices are zero-based; negative indices count from the end (`-1` = latest). Useful in review→fix loops to see only what changed since the previous turn.
 
 ```
-rctrl diff <name> [--from N] [--to N]
+umbel diff <name> [--from N] [--to N]
 ```
 
 **Positionals**
@@ -378,18 +378,18 @@ rctrl diff <name> [--from N] [--to N]
 **Examples**
 
 ```bash
-rctrl diff reviewer                # latest vs previous
-rctrl diff reviewer --from 0 --to 2
+umbel diff reviewer                # latest vs previous
+umbel diff reviewer --from 0 --to 2
 ```
 
 ---
 
 ### capture
 
-Write the last N lines of the tmux pane to stdout. Uses `tmux capture-pane`. For human watching only; do not parse this output for agent responses (use `rctrl read` instead).
+Write the last N lines of the tmux pane to stdout. Uses `tmux capture-pane`. For human watching only; do not parse this output for agent responses (use `umbel read` instead).
 
 ```
-rctrl capture <name> [--lines N]
+umbel capture <name> [--lines N]
 ```
 
 **Positionals**
@@ -407,18 +407,18 @@ rctrl capture <name> [--lines N]
 **Examples**
 
 ```bash
-rctrl capture reviewer
-rctrl capture reviewer --lines 50
+umbel capture reviewer
+umbel capture reviewer --lines 50
 ```
 
 ---
 
 ### logs
 
-Print the session event log (`~/.rctrl/sessions/<name>/events/log`). Each line is a nanosecond timestamp appended when the Stop hook fires.
+Print the session event log (`~/.umbel/sessions/<name>/events/log`). Each line is a nanosecond timestamp appended when the Stop hook fires.
 
 ```
-rctrl logs <name> [--follow]
+umbel logs <name> [--follow]
 ```
 
 **Positionals**
@@ -436,8 +436,8 @@ rctrl logs <name> [--follow]
 **Examples**
 
 ```bash
-rctrl logs reviewer
-rctrl logs reviewer --follow
+umbel logs reviewer
+umbel logs reviewer --follow
 ```
 
 ---
@@ -447,7 +447,7 @@ rctrl logs reviewer --follow
 Execute a workflow YAML file. Spawns the workers declared in `workers:`, executes steps in dependency order (parallel where `needs:` permits), captures outputs, and tears down workers on exit.
 
 ```
-rctrl run <file>
+umbel run <file>
 ```
 
 **Positionals**
@@ -458,13 +458,13 @@ rctrl run <file>
 
 **Output:** `workflow completed: runId=<id>` on success. On failure, the failing step name and reason are written to stderr and exit code 1 is returned.
 
-Workflow run state is persisted at `~/.rctrl/workflows/<run-id>/`.
+Workflow run state is persisted at `~/.umbel/workflows/<run-id>/`.
 
 **Examples**
 
 ```bash
-rctrl run review-then-fix.yaml
-PR=42 rctrl run pr-pipeline.yaml
+umbel run review-then-fix.yaml
+PR=42 umbel run pr-pipeline.yaml
 ```
 
 ---
@@ -474,7 +474,7 @@ PR=42 rctrl run pr-pipeline.yaml
 Start an MCP server on stdio. Exposes all supervisor verbs as MCP tools. Tool input schemas are generated from the same zod definitions in `src/faces/verbs.ts` (single source of truth).
 
 ```
-rctrl mcp
+umbel mcp
 ```
 
 Intended to be launched by an MCP host (e.g., Claude Code itself) as a subprocess. Not for interactive use.
@@ -483,7 +483,7 @@ Intended to be launched by an MCP host (e.g., Claude Code itself) as a subproces
 
 ```bash
 # Typical invocation from an MCP host config
-rctrl mcp
+umbel mcp
 ```
 
 ---
@@ -493,7 +493,7 @@ rctrl mcp
 Run a single-turn prompt through the interactive provider CLI, wait for completion, and write the response to stdout. Drop-in replacement for `claude -p` that routes through the subscription-billed interactive TUI.
 
 ```
-rctrl -p [PROMPT] [--name NAME] [--resume NAME] [--cwd PATH] [--provider PROVIDER] \
+umbel -p [PROMPT] [--name NAME] [--resume NAME] [--cwd PATH] [--provider PROVIDER] \
          [--model MODEL] [--allowed-tools TOOLS] [--output-format text|json] [--timeout DURATION]
 ```
 
@@ -528,19 +528,19 @@ If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
 
 ```bash
 # Basic drop-in
-rctrl -p "Summarise the changes in the last 5 commits."
+umbel -p "Summarise the changes in the last 5 commits."
 
 # From stdin
-git diff HEAD~1 | rctrl -p "What broke?"
+git diff HEAD~1 | umbel -p "What broke?"
 
 # Persistent named session, JSON output
-rctrl -p --name assistant --output-format json "Hello"
+umbel -p --name assistant --output-format json "Hello"
 
 # Resume an existing session
-rctrl -p --resume assistant "Continue from where we left off."
+umbel -p --resume assistant "Continue from where we left off."
 
 # With tool access
-rctrl -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
+umbel -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
 ```
 
 ---
@@ -549,29 +549,29 @@ rctrl -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
 
 The `claude` provider can target any Anthropic-compatible API — DeepSeek, OpenRouter, a local proxy — by giving the worker its endpoint env. Same Claude Code binary (same hooks, transcript, tools), different model behind it. **Billed per-token by that endpoint, not your Claude subscription.**
 
-Cleanest is **inheritance**: export the vars in the shell (or process) that launches rctrl and they reach the worker automatically — no secret in any spawn call.
+Cleanest is **inheritance**: export the vars in the shell (or process) that launches umbel and they reach the worker automatically — no secret in any spawn call.
 
 ```bash
 export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
 export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
-rctrl spawn --provider claude --name ds --cwd ./work
+umbel spawn --provider claude --name ds --cwd ./work
 ```
 
 Or set them per-worker with `--env` (CLI) / `env:` (workflow):
 
 ```bash
-rctrl spawn --provider claude --name ds --cwd ./work \
+umbel spawn --provider claude --name ds --cwd ./work \
   --env ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
   --env ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
   --env 'ANTHROPIC_MODEL=deepseek-v4-pro[1m]'
 ```
 
-- Use **`ANTHROPIC_AUTH_TOKEN`**, not `ANTHROPIC_API_KEY`. rctrl drops an inherited `ANTHROPIC_API_KEY` when a custom `AUTH_TOKEN` is set — it would otherwise shadow the endpoint and wedge the worker on Claude Code's "Detected a custom API key… use this key?" prompt.
+- Use **`ANTHROPIC_AUTH_TOKEN`**, not `ANTHROPIC_API_KEY`. umbel drops an inherited `ANTHROPIC_API_KEY` when a custom `AUTH_TOKEN` is set — it would otherwise shadow the endpoint and wedge the worker on Claude Code's "Detected a custom API key… use this key?" prompt.
 - Set **`ANTHROPIC_SMALL_FAST_MODEL`** (and/or `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`) to an endpoint-valid model, or Claude Code's background/subagent calls 404 against a model the endpoint lacks.
-- Over MCP or in a workflow (no shell to expand `$VARS`), pass a secret **by reference** instead of inlining it: `"ANTHROPIC_AUTH_TOKEN": {"fromEnv": "DEEPSEEK_API_KEY"}` — rctrl resolves it from its own env, so the literal never lands in the caller's transcript.
+- Over MCP or in a workflow (no shell to expand `$VARS`), pass a secret **by reference** instead of inlining it: `"ANTHROPIC_AUTH_TOKEN": {"fromEnv": "DEEPSEEK_API_KEY"}` — umbel resolves it from its own env, so the literal never lands in the caller's transcript.
 - Quote model strings with brackets (`'…[1m]'`) so the shell does not glob them.
-- `rctrl status` reports each worker's effective `baseUrl` — confirm routing without a `printenv` round-trip.
+- `umbel status` reports each worker's effective `baseUrl` — confirm routing without a `printenv` round-trip.
 - Per-worker: a DeepSeek worker and a subscription Claude worker coexist in one pool.
 
 ---
@@ -580,10 +580,10 @@ rctrl spawn --provider claude --name ds --cwd ./work \
 
 | Variable | Description |
 |----------|-------------|
-| `RCTRL_STATE` | Override the default state directory (`~/.rctrl/`). All session metadata, hook event files, and workflow run state are stored here. Useful in CI or for isolated test environments. |
-| `RCTRL_CLAUDE_BIN` | Override the `claude` binary path. Used by the test suite to inject `test/fixtures/fake-claude.sh`. Not intended for production use. |
-| `RCTRL_CODEX_BIN` | Override the `codex` binary path. Same contract as `RCTRL_CLAUDE_BIN` — inject `test/fixtures/fake-codex.sh` in tests, or point at a non-PATH install. |
-| `RCTRL_GEMINI_BIN` | Override the `gemini` binary path. Same contract as `RCTRL_CLAUDE_BIN`. |
-| `RCTRL_OPENCODE_BIN` | Override the `opencode` binary path. Same contract as `RCTRL_CLAUDE_BIN`. |
+| `UMBEL_STATE` | Override the default state directory (`~/.umbel/`). All session metadata, hook event files, and workflow run state are stored here. Useful in CI or for isolated test environments. |
+| `UMBEL_CLAUDE_BIN` | Override the `claude` binary path. Used by the test suite to inject `test/fixtures/fake-claude.sh`. Not intended for production use. |
+| `UMBEL_CODEX_BIN` | Override the `codex` binary path. Same contract as `UMBEL_CLAUDE_BIN` — inject `test/fixtures/fake-codex.sh` in tests, or point at a non-PATH install. |
+| `UMBEL_GEMINI_BIN` | Override the `gemini` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
+| `UMBEL_OPENCODE_BIN` | Override the `opencode` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
 
-**Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass keys via `--env KEY=VAL` or ensure they are in the inherited env. rctrl does not manage opencode API keys.
+**Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass keys via `--env KEY=VAL` or ensure they are in the inherited env. umbel does not manage opencode API keys.

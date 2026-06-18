@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fake `codex` binary for e2e tests.
 # Env vars:
-#   RCTRL_SESSION_ID       (passed by rctrl at spawn time)
+#   UMBEL_SESSION_ID       (passed by umbel at spawn time)
 #   FAKE_CODEX_DELAY       optional, ms to sleep before responding (default 0)
 #   FAKE_CODEX_JSONL_DIR   optional, write JSONL here instead of $CODEX_HOME/sessions/...
 #   FAKE_CODEX_HOOK        optional, exec this (stop.sh) when done
@@ -9,7 +9,7 @@
 set -euo pipefail
 
 DELAY="${FAKE_CODEX_DELAY:-0}"
-SESSION_ID="${RCTRL_SESSION_ID:-fake-codex-session}"
+SESSION_ID="${UMBEL_SESSION_ID:-fake-codex-session}"
 
 if [[ -n "${FAKE_CODEX_JSONL_DIR:-}" ]]; then
   mkdir -p "${FAKE_CODEX_JSONL_DIR}"

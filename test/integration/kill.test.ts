@@ -18,9 +18,9 @@ let tmpDir = '';
 let projectsDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-kill-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-kill-test-'));
   projectsDir = join(tmpDir, 'projects');
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionName(suffix: string): string {
@@ -160,7 +160,7 @@ describe('kill — idempotent', () => {
 });
 
 // ---------------------------------------------------------------------------
-// kill — plain tmux session (no rctrl state)
+// kill — plain tmux session (no umbel state)
 // ---------------------------------------------------------------------------
 
 describe('kill — plain tmux session', () => {

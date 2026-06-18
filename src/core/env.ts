@@ -4,7 +4,7 @@ import type { EnvValue } from './types.ts';
 // A worker-env spec maps names to literal values OR {fromEnv} references.
 export type WorkerEnvSpec = Record<string, EnvValue>;
 
-// Resolve {fromEnv} references against a source env (the rctrl server's
+// Resolve {fromEnv} references against a source env (the umbel server's
 // process.env at the call site), returning a flat string env. PURE + total:
 // throws EnvRefUnresolvedError when a referenced source var is unset, so an
 // unresolved secret fails loudly instead of reaching the worker as "[object Object]".

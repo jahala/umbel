@@ -6,10 +6,10 @@ import {
   HookTimeoutError,
   JsonlMalformedError,
   ProviderUnknownError,
-  RctrlUsageError,
   SessionDeadError,
   SessionNotFoundError,
   TmuxError,
+  UmbelUsageError,
   WaitTimeoutError,
   WorkerBlockedError,
 } from '../core/errors.ts';
@@ -33,13 +33,13 @@ import { runWorkflow } from './workflow.ts';
 
 const VERSION = '0.0.1';
 
-const HELP = `rctrl — remote-control interactive Claude Code over tmux
+const HELP = `umbel — remote-control interactive Claude Code over tmux
 
 Usage:
-  rctrl <verb> [flags...]    Supervisor verbs
-  rctrl -p [PROMPT]          Drop-in for claude -p
-  rctrl --help               Show this help
-  rctrl --version            Show version
+  umbel <verb> [flags...]    Supervisor verbs
+  umbel -p [PROMPT]          Drop-in for claude -p
+  umbel --help               Show this help
+  umbel --version            Show version
 
 Verbs:
   spawn   Create a new session
@@ -163,7 +163,7 @@ export function parseEnvFlags(entries: string[]): Record<string, string> {
   for (const entry of entries) {
     const eq = entry.indexOf('=');
     if (eq <= 0) {
-      throw new RctrlUsageError(`Invalid --env '${entry}'. Use --env KEY=VALUE.`);
+      throw new UmbelUsageError(`Invalid --env '${entry}'. Use --env KEY=VALUE.`);
     }
     out[entry.slice(0, eq)] = entry.slice(eq + 1);
   }
@@ -217,7 +217,7 @@ function errorExitCode(err: unknown): number {
   if (err instanceof WaitTimeoutError) return 124;
   if (err instanceof WorkerBlockedError) return 126;
   if (
-    err instanceof RctrlUsageError ||
+    err instanceof UmbelUsageError ||
     err instanceof ProviderUnknownError ||
     err instanceof EnvRefUnresolvedError ||
     err instanceof AllowedToolsUnsupportedError
@@ -238,15 +238,15 @@ function errorExitCode(err: unknown): number {
 }
 
 function printError(err: unknown): void {
-  process.stderr.write(`rctrl: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`umbel: ${err instanceof Error ? err.message : String(err)}\n`);
 }
 
-// Forward env vars the user may set in their shell that affect rctrl's
+// Forward env vars the user may set in their shell that affect umbel's
 // behaviour. We deliberately whitelist instead of passing process.env wholesale
 // (see src/operations/spawn.ts for why).
 function getCliEnv(): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};
-  if (process.env.RCTRL_STATE !== undefined) out.RCTRL_STATE = process.env.RCTRL_STATE;
+  if (process.env.UMBEL_STATE !== undefined) out.UMBEL_STATE = process.env.UMBEL_STATE;
   return out;
 }
 
@@ -259,7 +259,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (flagBool(flags, 'version')) {
-    process.stdout.write(`rctrl ${VERSION}\n`);
+    process.stdout.write(`umbel ${VERSION}\n`);
     return 0;
   }
 
@@ -306,7 +306,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       case 'mcp':
         return await verbMcp();
       default:
-        process.stderr.write(`rctrl: unknown verb '${verb}'\n`);
+        process.stderr.write(`umbel: unknown verb '${verb}'\n`);
         process.stderr.write(HELP);
         return 2;
     }
@@ -335,7 +335,7 @@ async function runPMode(
       }
       prompt = Buffer.concat(chunks).toString('utf8');
     } else {
-      process.stderr.write('rctrl: no prompt provided\n');
+      process.stderr.write('umbel: no prompt provided\n');
       return 2;
     }
   }
@@ -350,8 +350,8 @@ async function runPMode(
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
   const timeoutMs = rawTimeout !== undefined ? parseDuration(rawTimeout) : undefined;
-  // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
-  const claudeBin = process.env.RCTRL_CLAUDE_BIN;
+  // UMBEL_CLAUDE_BIN allows tests to inject a fake claude binary
+  const claudeBin = process.env.UMBEL_CLAUDE_BIN;
 
   try {
     const envEntries = repeated.get('env') ?? [];
@@ -399,15 +399,15 @@ async function verbSpawn(
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name !== undefined && !isValidSessionName(name)) {
-    throw new RctrlUsageError(`Invalid session name: ${name}`);
+    throw new UmbelUsageError(`Invalid session name: ${name}`);
   }
   const cwd = flagStr(flags, 'cwd') ?? process.cwd();
   const provider = flagStr(flags, 'provider');
   const model = flagStr(flags, 'model');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
-  // RCTRL_CLAUDE_BIN allows tests to inject a fake claude binary
-  const claudeBin = process.env.RCTRL_CLAUDE_BIN;
+  // UMBEL_CLAUDE_BIN allows tests to inject a fake claude binary
+  const claudeBin = process.env.UMBEL_CLAUDE_BIN;
   const envEntries = repeated.get('env') ?? [];
   const workerEnv = envEntries.length > 0 ? parseEnvFlags(envEntries) : undefined;
 
@@ -437,8 +437,8 @@ async function verbSend(
 ): Promise<number> {
   const name = positionals[0];
   const prompt = flagStr(flags, 'prompt') ?? positionals[1];
-  if (name === undefined) throw new RctrlUsageError('send: <name> is required');
-  if (prompt === undefined) throw new RctrlUsageError('send: <prompt> is required');
+  if (name === undefined) throw new UmbelUsageError('send: <name> is required');
+  if (prompt === undefined) throw new UmbelUsageError('send: <prompt> is required');
   const result = await send({ name, prompt, env: getCliEnv() });
   if (flagBool(flags, 'json')) {
     process.stdout.write(`${JSON.stringify({ sinceMtime: result.sinceMtime })}\n`);
@@ -455,7 +455,7 @@ async function verbWait(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('wait: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('wait: <name> is required');
 
   const jsonMode = flagBool(flags, 'json');
   const until = (flagStr(flags, 'until') ?? 'stop') as 'stop' | 'file' | 'pattern';
@@ -469,19 +469,19 @@ async function verbWait(
   if (rawSince !== undefined) {
     sinceMtime = Number(rawSince);
     if (!Number.isFinite(sinceMtime)) {
-      throw new RctrlUsageError(`wait: --since must be a numeric mtime, got '${rawSince}'`);
+      throw new UmbelUsageError(`wait: --since must be a numeric mtime, got '${rawSince}'`);
     }
   }
 
   let condition: WaitCondition | undefined;
   if (until === 'file') {
     const file = flagStr(flags, 'file');
-    if (file === undefined) throw new RctrlUsageError('wait: --file required when --until=file');
+    if (file === undefined) throw new UmbelUsageError('wait: --file required when --until=file');
     condition = { kind: 'file', path: file };
   } else if (until === 'pattern') {
     const pat = flagStr(flags, 'pattern');
     if (pat === undefined)
-      throw new RctrlUsageError('wait: --pattern required when --until=pattern');
+      throw new UmbelUsageError('wait: --pattern required when --until=pattern');
     condition = { kind: 'pattern', session: SessionNameSchema.parse(name), regex: pat };
   }
 
@@ -512,27 +512,27 @@ async function verbWait(
 
   if (result.reason === 'timeout') {
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
-      process.stderr.write(`rctrl: wait timed out. Last tmux pane:\n${result.paneSnapshot}\n`);
+      process.stderr.write(`umbel: wait timed out. Last tmux pane:\n${result.paneSnapshot}\n`);
     }
     return 124;
   }
   if (result.reason === 'dead') {
     process.stderr.write(
-      `rctrl: wait failed — session '${name}' died before completing its turn.\n`,
+      `umbel: wait failed — session '${name}' died before completing its turn.\n`,
     );
     return 125;
   }
   if (result.reason === 'input') {
     const hasMsg = result.message !== undefined && result.message.length > 0;
     const detail = hasMsg ? ` — ${result.message}` : '';
-    process.stderr.write(`rctrl: session '${name}' is waiting for input${detail}\n`);
+    process.stderr.write(`umbel: session '${name}' is waiting for input${detail}\n`);
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
       process.stderr.write(`${result.paneSnapshot}\n`);
     }
     return 126;
   }
   if (result.reason === 'idle') {
-    process.stderr.write(`rctrl: session '${name}' is idle — no pane activity.\n`);
+    process.stderr.write(`umbel: session '${name}' is idle — no pane activity.\n`);
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
       process.stderr.write(`${result.paneSnapshot}\n`);
     }
@@ -590,7 +590,7 @@ async function verbKill(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('kill: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('kill: <name> is required');
   const keepState = flagBool(flags, 'keep-state', 'keepState');
   await kill({ name, removeState: !keepState, env: getCliEnv() });
   return 0;
@@ -605,8 +605,8 @@ async function verbAttach(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('attach: <name> is required');
-  const proc = Bun.spawn(['tmux', 'attach', '-t', `rctrl-${name}`], {
+  if (name === undefined) throw new UmbelUsageError('attach: <name> is required');
+  const proc = Bun.spawn(['tmux', 'attach', '-t', `umbel-${name}`], {
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',
@@ -624,7 +624,7 @@ async function verbRead(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('read: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('read: <name> is required');
   const cliEnv = getCliEnv();
   const session = await defaultDeps.fs.readMeta(name, cliEnv);
   const provider = getProvider(session.provider);
@@ -649,7 +649,7 @@ async function verbActions(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('actions: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('actions: <name> is required');
   if (flagBool(flags, 'json')) {
     const manifest = await actionsManifest({ name, env: getCliEnv() });
     process.stdout.write(`${JSON.stringify(manifest)}\n`);
@@ -669,7 +669,7 @@ async function verbDiff(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('diff: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('diff: <name> is required');
   const fromStr = flagStr(flags, 'from');
   const toStr = flagStr(flags, 'to');
   const text = await diff({
@@ -691,7 +691,7 @@ async function verbCapture(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('capture: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('capture: <name> is required');
   const linesStr = flagStr(flags, 'lines');
   const lines = linesStr !== undefined ? Number.parseInt(linesStr, 10) : 100;
   process.stdout.write(await defaultDeps.tmux.capturePane(name, lines));
@@ -707,7 +707,7 @@ async function verbLogs(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new RctrlUsageError('logs: <name> is required');
+  if (name === undefined) throw new UmbelUsageError('logs: <name> is required');
   const follow = flagBool(flags, 'follow', 'f');
   const logPath = join(defaultDeps.fs.eventsDir(name, getCliEnv()), 'log');
 
@@ -751,14 +751,14 @@ async function verbLogs(
 
 async function verbRun(positionals: string[]): Promise<number> {
   const file = positionals[0];
-  if (file === undefined) throw new RctrlUsageError('run: <file> is required');
+  if (file === undefined) throw new UmbelUsageError('run: <file> is required');
   const result = await runWorkflow({ file });
   if (result.status === 'failed') {
     const step = result.failedStep;
     process.stderr.write(
       step !== undefined
-        ? `rctrl: workflow failed at step '${step.worker}': ${step.reason}\n`
-        : 'rctrl: workflow failed\n',
+        ? `umbel: workflow failed at step '${step.worker}': ${step.reason}\n`
+        : 'umbel: workflow failed\n',
     );
     return 1;
   }

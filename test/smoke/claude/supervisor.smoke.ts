@@ -19,7 +19,7 @@ smokeDescribe('supervisor spawn/send/wait/read/kill lifecycle', () => {
 
   test('spawn → send → wait → read → kill completes cleanly', async () => {
     // Validates: tmux session lifecycle, send-keys delivery, Stop hook via --settings inline JSON, JSONL discovery
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-sup-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-sup-'));
     const name = smokeName('sup');
     guard.register(name);
 

@@ -1,12 +1,12 @@
 name: Feature request
-description: A thing rctrl doesn't do yet, that you wish it did.
+description: A thing umbel doesn't do yet, that you wish it did.
 labels: ["enhancement"]
 body:
   - type: textarea
     id: problem
     attributes:
       label: The problem
-      description: What are you trying to do that rctrl gets in the way of?
+      description: What are you trying to do that umbel gets in the way of?
     validations:
       required: true
 

@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 async function setup(): Promise<string> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-jsonl-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-jsonl-test-'));
   return tmpDir;
 }
 

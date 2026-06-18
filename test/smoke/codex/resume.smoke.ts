@@ -10,9 +10,9 @@ smokeDescribeFor('codex', 'codex p-mode --resume re-uses conversation context', 
 
   afterEach(() => guard.cleanup());
 
-  test('codex second rctrl -p --resume recalls codeword from first turn', async () => {
+  test('codex second umbel -p --resume recalls codeword from first turn', async () => {
     // Validates: --name persists session, --resume attaches to existing session,
-    // codex conversation context survives across rctrl invocations
+    // codex conversation context survives across umbel invocations
     const name = smokeName('cdx-rsm');
     guard.register(name);
 

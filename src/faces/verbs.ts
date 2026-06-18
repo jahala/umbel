@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RctrlUsageError } from '../core/errors.ts';
+import { UmbelUsageError } from '../core/errors.ts';
 import { EnvValueSchema, ProviderNameSchema } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------
@@ -9,7 +9,7 @@ import { EnvValueSchema, ProviderNameSchema } from '../core/types.ts';
 export function parseDuration(text: string): number {
   const match = text.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);
   if (match === null) {
-    throw new RctrlUsageError(`Invalid duration '${text}'. Use e.g. '5m', '30s', '1h', '500ms'.`);
+    throw new UmbelUsageError(`Invalid duration '${text}'. Use e.g. '5m', '30s', '1h', '500ms'.`);
   }
   const value = Number.parseFloat(match[1] ?? '0');
   const unit = match[2];
@@ -23,7 +23,7 @@ export function parseDuration(text: string): number {
     case 'h':
       return value * 60 * 60 * 1000;
     default:
-      throw new RctrlUsageError(`Unknown duration unit '${unit}'.`);
+      throw new UmbelUsageError(`Unknown duration unit '${unit}'.`);
   }
 }
 
@@ -55,8 +55,8 @@ export const VerbSchemas = {
     timeout: z.string().optional(),
     // Opt-in idle net: settle 'idle' if the pane shows no change for this long.
     idleTimeout: z.string().optional(),
-    // Stop-mtime baseline from a prior rctrl_send call. Thread this from
-    // rctrl_send's sinceMtime return value so send-in-one-process and
+    // Stop-mtime baseline from a prior umbel_send call. Thread this from
+    // umbel_send's sinceMtime return value so send-in-one-process and
     // wait-in-another are race-free (without it the baseline defaults to 0,
     // which falsely resolves if the stop file pre-dates the send).
     sinceMtime: z.number().optional(),

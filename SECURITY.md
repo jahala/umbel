@@ -4,7 +4,7 @@
 
 Please **don't** open a public issue. Use GitHub's private advisory flow:
 
-→ <https://github.com/jahala/rctrl/security/advisories/new>
+→ <https://github.com/jahala/umbel/security/advisories/new>
 
 We'll acknowledge within 72 hours and coordinate disclosure with you.
 
@@ -14,12 +14,12 @@ Only the latest minor release receives security updates. Older versions don't.
 
 ## Threat model
 
-`rctrl` is a developer tool that:
+`umbel` is a developer tool that:
 
 - Drives interactive agent CLIs (`claude`, `codex`, `gemini`) over `tmux`.
-- Installs a single global Stop/AfterAgent hook script at `$RCTRL_STATE/hooks/stop.sh` (default `~/.rctrl/`).
-- Writes per-session metadata to `$RCTRL_STATE/sessions/<name>/`.
-- Writes provider hook config inside the worker's `cwd` (`<cwd>/.codex/hooks.json`, `<cwd>/.gemini/settings.json`). Known hazard: if you have your own Codex/Gemini hooks config in that `cwd`, rctrl will overwrite it on spawn (v4 plan: move provider config out of `cwd` via `CODEX_HOME`/equivalent).
+- Installs a single global Stop/AfterAgent hook script at `$UMBEL_STATE/hooks/stop.sh` (default `~/.umbel/`).
+- Writes per-session metadata to `$UMBEL_STATE/sessions/<name>/`.
+- Writes provider hook config inside the worker's `cwd` (`<cwd>/.codex/hooks.json`, `<cwd>/.gemini/settings.json`). Known hazard: if you have your own Codex/Gemini hooks config in that `cwd`, umbel will overwrite it on spawn (v4 plan: move provider config out of `cwd` via `CODEX_HOME`/equivalent).
 
 It does **not** open network ports, accept inbound connections, or run as root. All side effects are local-fs + tmux + child processes. The trust boundary is the user's own shell.
 
@@ -33,4 +33,4 @@ It does **not** open network ports, accept inbound connections, or run as root. 
 
 ## Reporting non-security bugs
 
-Open a regular issue: <https://github.com/jahala/rctrl/issues/new/choose>.
+Open a regular issue: <https://github.com/jahala/umbel/issues/new/choose>.

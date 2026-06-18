@@ -4,7 +4,7 @@ import { EnvRefUnresolvedError } from '../../src/core/errors.ts';
 import { EnvValueSchema } from '../../src/core/types.ts';
 
 // resolveEnvRefs turns a worker-env spec (literals + {fromEnv} references) into a
-// flat string env, resolving references against a source env (the rctrl server's
+// flat string env, resolving references against a source env (the umbel server's
 // process.env at the call site). Passing a reference instead of a literal keeps
 // the secret out of the caller's tool-call transcript.
 

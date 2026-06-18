@@ -18,7 +18,7 @@ smokeDescribe('workflow two-step picker/transformer', () => {
   test('two-step workflow completes and transformer echoes picker color', async () => {
     // Validates: workflow YAML executor, step output capture via assistant_last_message,
     // {{var}} substitution, status.json written as 'completed', outputs persisted on disk
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-wf-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-wf-'));
 
     const yamlContent = `
 workers:
@@ -53,7 +53,7 @@ steps:
     expect(runId).toBeTruthy();
 
     // Verify status.json is 'completed'
-    const stateRoot = process.env.RCTRL_STATE ?? join(homedir(), '.rctrl');
+    const stateRoot = process.env.UMBEL_STATE ?? join(homedir(), '.umbel');
     const runDir = join(stateRoot, 'workflows', runId as string);
     const statusRaw = await readFile(join(runDir, 'status.json'), 'utf8');
     const statusJson = JSON.parse(statusRaw) as { status: string };

@@ -9,7 +9,7 @@ import { getProvider, PROVIDERS } from '../../../src/core/providers/registry.ts'
 
 // codex delivers hooks via a global <stateDir>/codex-home/hooks.json because a
 // project .codex/hooks.json is silently ignored inside linked git worktrees
-// (see docs/codex-worktree-hooks.md). spawn injects stateDir (rctrl state root)
+// (see docs/codex-worktree-hooks.md). spawn injects stateDir (umbel state root)
 // and userCodexHome (the user's real CODEX_HOME — auth/config source).
 const STATE_DIR = '/state';
 const USER_CODEX_HOME = '/home/user/.codex';
@@ -21,7 +21,7 @@ function launch(extra?: Partial<CodexLaunchOpts>): ReturnType<typeof CodexProvid
   return CodexProvider.buildLaunch({
     sessionId: 'test-session',
     cwd: '/home/user/project',
-    hookScriptPath: '/rctrl/hooks/stop.sh',
+    hookScriptPath: '/umbel/hooks/stop.sh',
     stateDir: STATE_DIR,
     userCodexHome: USER_CODEX_HOME,
     ...extra,
@@ -61,7 +61,7 @@ describe('CodexProvider.buildLaunch', () => {
     expect(launch().args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
   });
 
-  test('env.CODEX_HOME points at the rctrl-managed codex-home under stateDir', () => {
+  test('env.CODEX_HOME points at the umbel-managed codex-home under stateDir', () => {
     expect(launch().env.CODEX_HOME).toBe(CODEX_HOME);
   });
 
@@ -88,7 +88,7 @@ describe('CodexProvider.buildLaunch', () => {
   });
 
   test('with notifyScriptPath, hooks.json registers a PermissionRequest hook', () => {
-    const notify = '/rctrl/hooks/notify.sh';
+    const notify = '/umbel/hooks/notify.sh';
     const content = hooksContent(launch({ notifyScriptPath: notify }));
     expect(content).toContain('PermissionRequest');
     expect(content).toContain(notify);
@@ -97,7 +97,7 @@ describe('CodexProvider.buildLaunch', () => {
   test('hooks.json content is valid JSON with Stop → hookScriptPath', () => {
     const parsed = JSON.parse(hooksContent(launch())) as unknown;
     expect(parsed).toMatchObject({
-      hooks: { Stop: [{ hooks: [{ type: 'command', command: '/rctrl/hooks/stop.sh' }] }] },
+      hooks: { Stop: [{ hooks: [{ type: 'command', command: '/umbel/hooks/stop.sh' }] }] },
     });
   });
 

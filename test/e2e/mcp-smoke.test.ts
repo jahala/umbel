@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { SERVER_INSTRUCTIONS, TOOL_DESCRIPTIONS } from '../../src/faces/mcp.ts';
 
 // ---------------------------------------------------------------------------
-// MCP smoke test — start rctrl mcp as subprocess, send tools/list, verify
+// MCP smoke test — start umbel mcp as subprocess, send tools/list, verify
 // ---------------------------------------------------------------------------
 
 const MAIN = join(import.meta.dir, '../../src/main.ts');
@@ -20,14 +20,14 @@ afterAll(async () => {
 });
 
 describe('mcp-smoke', () => {
-  test('rctrl mcp exposes all expected tool names', async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-mcp-smoke-'));
+  test('umbel mcp exposes all expected tool names', async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-mcp-smoke-'));
 
     const proc = Bun.spawn(['bun', 'run', MAIN, 'mcp'], {
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, RCTRL_STATE: tmpDir },
+      env: { ...process.env, UMBEL_STATE: tmpDir },
     });
 
     // MCP JSON-RPC initialize + tools/list sequence
@@ -121,18 +121,18 @@ describe('mcp-smoke', () => {
     const toolNames = tools.map((t) => t.name);
 
     const expectedTools = [
-      'rctrl_spawn',
-      'rctrl_send',
-      'rctrl_wait',
-      'rctrl_status',
-      'rctrl_ls',
-      'rctrl_kill',
-      'rctrl_read',
-      'rctrl_actions',
-      'rctrl_diff',
-      'rctrl_capture',
-      'rctrl_logs',
-      'rctrl_help',
+      'umbel_spawn',
+      'umbel_send',
+      'umbel_wait',
+      'umbel_status',
+      'umbel_ls',
+      'umbel_kill',
+      'umbel_read',
+      'umbel_actions',
+      'umbel_diff',
+      'umbel_capture',
+      'umbel_logs',
+      'umbel_help',
     ];
 
     for (const expected of expectedTools) {
@@ -154,21 +154,21 @@ describe('mcp-smoke', () => {
     expect(SERVER_INSTRUCTIONS.length).toBeLessThan(1500);
     // Fork-decision is the load-bearing content; missing this means the
     // string drifted away from its purpose.
-    expect(SERVER_INSTRUCTIONS).toContain('USE rctrl');
+    expect(SERVER_INSTRUCTIONS).toContain('USE umbel');
     expect(SERVER_INSTRUCTIONS).toContain("USE your host's subagent");
     expect(SERVER_INSTRUCTIONS).toContain('Lifecycle:');
-    expect(SERVER_INSTRUCTIONS).toContain('rctrl_send does NOT wait');
-    expect(SERVER_INSTRUCTIONS).toContain('rctrl_help');
+    expect(SERVER_INSTRUCTIONS).toContain('umbel_send does NOT wait');
+    expect(SERVER_INSTRUCTIONS).toContain('umbel_help');
   });
 
-  test('rctrl mcp serves rctrl_help with topic content over JSON-RPC', async () => {
-    const subTmp = await mkdtemp(join(tmpdir(), 'rctrl-mcp-help-smoke-'));
+  test('umbel mcp serves umbel_help with topic content over JSON-RPC', async () => {
+    const subTmp = await mkdtemp(join(tmpdir(), 'umbel-mcp-help-smoke-'));
 
     const proc = Bun.spawn(['bun', 'run', MAIN, 'mcp'], {
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, RCTRL_STATE: subTmp },
+      env: { ...process.env, UMBEL_STATE: subTmp },
     });
 
     const init = JSON.stringify({
@@ -186,13 +186,13 @@ describe('mcp-smoke', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'rctrl_help', arguments: {} },
+      params: { name: 'umbel_help', arguments: {} },
     });
     const callWorkflow = JSON.stringify({
       jsonrpc: '2.0',
       id: 3,
       method: 'tools/call',
-      params: { name: 'rctrl_help', arguments: { topic: 'workflow' } },
+      params: { name: 'umbel_help', arguments: { topic: 'workflow' } },
     });
 
     proc.stdin.write(`${init}\n`);
@@ -242,7 +242,7 @@ describe('mcp-smoke', () => {
     expect(workflowResp).toBeDefined();
 
     const indexText = indexResp?.result?.content?.[0]?.text ?? '';
-    expect(indexText).toContain('rctrl_help topics');
+    expect(indexText).toContain('umbel_help topics');
     expect(indexText).toContain('lifecycle');
     expect(indexText).toContain('workflow');
     expect(indexText).toContain('providers');
@@ -255,26 +255,26 @@ describe('mcp-smoke', () => {
 
   test('TOOL_DESCRIPTIONS has an entry per registered tool, each non-empty and bounded', () => {
     const expected = [
-      'rctrl_spawn',
-      'rctrl_send',
-      'rctrl_wait',
-      'rctrl_status',
-      'rctrl_ls',
-      'rctrl_kill',
-      'rctrl_read',
-      'rctrl_actions',
-      'rctrl_diff',
-      'rctrl_capture',
-      'rctrl_logs',
-      'rctrl_help',
+      'umbel_spawn',
+      'umbel_send',
+      'umbel_wait',
+      'umbel_status',
+      'umbel_ls',
+      'umbel_kill',
+      'umbel_read',
+      'umbel_actions',
+      'umbel_diff',
+      'umbel_capture',
+      'umbel_logs',
+      'umbel_help',
     ];
     for (const name of expected) {
       const desc = (TOOL_DESCRIPTIONS as Record<string, string | undefined>)[name];
       expect(desc).toBeTruthy();
       if (desc !== undefined) {
         expect(desc.length).toBeGreaterThan(20);
-        // rctrl_actions description is a bit longer (it spells out the
-        // contrast with rctrl_read); allow up to 260 chars.
+        // umbel_actions description is a bit longer (it spells out the
+        // contrast with umbel_read); allow up to 260 chars.
         expect(desc.length).toBeLessThan(260);
       }
     }
@@ -284,24 +284,24 @@ describe('mcp-smoke', () => {
   // Regression: process must EXIT when stdin closes (parent death)
   // ---------------------------------------------------------------------------
   //
-  // Production bug: `rctrl mcp` blocked forever on a Promise that only resolved
+  // Production bug: `umbel mcp` blocked forever on a Promise that only resolved
   // on opts.signal — which the CLI never passes. On stdin EOF (the MCP client /
   // parent dying) the process reparented to launchd and busy-looped a CPU core
   // (stdin left flowing on an EOF'd pipe). Every session reconnect leaked one.
   //
-  // Spawns the real `rctrl mcp` subprocess, completes the initialize handshake
+  // Spawns the real `umbel mcp` subprocess, completes the initialize handshake
   // (so start() has registered its stdin listeners — the exact leak state),
   // then closes stdin and asserts the process exits promptly. Pre-fix:
   // proc.exited never resolves → loses the race against the timeout.
 
-  test('rctrl mcp exits promptly when stdin closes (no orphan/spin)', async () => {
-    const subTmp = await mkdtemp(join(tmpdir(), 'rctrl-mcp-exit-'));
+  test('umbel mcp exits promptly when stdin closes (no orphan/spin)', async () => {
+    const subTmp = await mkdtemp(join(tmpdir(), 'umbel-mcp-exit-'));
 
     const proc = Bun.spawn(['bun', 'run', MAIN, 'mcp'], {
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, RCTRL_STATE: subTmp },
+      env: { ...process.env, UMBEL_STATE: subTmp },
     });
 
     const init = JSON.stringify({
@@ -326,7 +326,7 @@ describe('mcp-smoke', () => {
 
     if (result === TIMEOUT) {
       proc.kill('SIGKILL');
-      throw new Error('rctrl mcp did not exit within 4s of stdin close — orphan/leak regression');
+      throw new Error('umbel mcp did not exit within 4s of stdin close — orphan/leak regression');
     }
 
     // Any prompt exit proves it didn't hang/spin.

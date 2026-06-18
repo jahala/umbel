@@ -5,13 +5,13 @@
  * cli.ts. Captures stdout/stderr by monkey-patching process.stdout.write and
  * process.stderr.write; restores in afterEach.
  *
- * The CLI face reads RCTRL_STATE via getCliEnv; beforeAll points it at an
- * isolated tmpdir so these in-proc runs never write to the real ~/.rctrl.
+ * The CLI face reads UMBEL_STATE via getCliEnv; beforeAll points it at an
+ * isolated tmpdir so these in-proc runs never write to the real ~/.umbel.
  *
  * Coverage targets:
  * - --help, --version, bare invocation (no state)
  * - Unknown verb → exit 2
- * - spawn --name INVALID → exit 2 (RctrlUsageError path)
+ * - spawn --name INVALID → exit 2 (UmbelUsageError path)
  * - send missing args → exit 2 (usage error)
  * - wait missing --file → exit 2 (usage error)
  * - wait missing --pattern → exit 2 (usage error)
@@ -22,7 +22,7 @@
  * - read happy path + null jsonlPath
  * - capture happy path
  * - logs happy path
- * - errorExitCode: AbortError → 130, WaitTimeoutError → 124, RctrlUsageError → 2
+ * - errorExitCode: AbortError → 130, WaitTimeoutError → 124, UmbelUsageError → 2
  */
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
@@ -38,11 +38,11 @@ import { runCli } from '../../src/faces/cli.ts';
 // ---------------------------------------------------------------------------
 
 const RUN_ID = randomBytes(4).toString('hex');
-// tmpDir holds JSONL/fake-claude dirs AND (via RCTRL_STATE, set in beforeAll)
-// all CLI session state — so these in-proc runs never touch the real ~/.rctrl.
+// tmpDir holds JSONL/fake-claude dirs AND (via UMBEL_STATE, set in beforeAll)
+// all CLI session state — so these in-proc runs never touch the real ~/.umbel.
 let tmpDir = '';
 let projectsDir = '';
-let savedRctrlState: string | undefined;
+let savedUmbelState: string | undefined;
 
 function sessionName(suffix: string): string {
   return `t${RUN_ID}${suffix}`;
@@ -51,10 +51,10 @@ function sessionName(suffix: string): string {
 const CREATED: string[] = [];
 
 beforeAll(async () => {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-cli-inproc-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-cli-inproc-'));
   projectsDir = join(tmpDir, 'projects');
-  savedRctrlState = process.env.RCTRL_STATE;
-  process.env.RCTRL_STATE = tmpDir;
+  savedUmbelState = process.env.UMBEL_STATE;
+  process.env.UMBEL_STATE = tmpDir;
 });
 
 afterEach(async () => {
@@ -62,8 +62,8 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  if (savedRctrlState === undefined) delete process.env.RCTRL_STATE;
-  else process.env.RCTRL_STATE = savedRctrlState;
+  if (savedUmbelState === undefined) delete process.env.UMBEL_STATE;
+  else process.env.UMBEL_STATE = savedUmbelState;
   if (tmpDir) {
     await rm(tmpDir, { recursive: true, force: true });
     tmpDir = '';
@@ -109,7 +109,7 @@ async function runWithCapture(fn: () => Promise<number>): Promise<{ code: number
 }
 
 // ---------------------------------------------------------------------------
-// Helper: spawn a session via the CLI itself (state isolated to tmpDir via RCTRL_STATE)
+// Helper: spawn a session via the CLI itself (state isolated to tmpDir via UMBEL_STATE)
 // ---------------------------------------------------------------------------
 
 async function cliSpawnSession(name: string): Promise<void> {
@@ -119,11 +119,11 @@ async function cliSpawnSession(name: string): Promise<void> {
   const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
   await mkdir(jsonlDir, { recursive: true });
 
-  const savedBin = process.env.RCTRL_CLAUDE_BIN;
+  const savedBin = process.env.UMBEL_CLAUDE_BIN;
   const savedJsonlDir = process.env.FAKE_CLAUDE_JSONL_DIR;
   const savedHook = process.env.FAKE_CLAUDE_HOOK;
 
-  process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
+  process.env.UMBEL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
   process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
   process.env.FAKE_CLAUDE_HOOK = join(tmpDir, 'hooks', 'stop.sh');
 
@@ -133,7 +133,7 @@ async function cliSpawnSession(name: string): Promise<void> {
   } finally {
     // biome assignment-not-delete: setting to undefined removes the env var
     // for child processes (Bun.spawn ignores undefined values).
-    process.env.RCTRL_CLAUDE_BIN = savedBin;
+    process.env.UMBEL_CLAUDE_BIN = savedBin;
     process.env.FAKE_CLAUDE_JSONL_DIR = savedJsonlDir;
     process.env.FAKE_CLAUDE_HOOK = savedHook;
   }
@@ -147,7 +147,7 @@ describe('cli — help and version', () => {
   test('--help exits 0 with usage text including verb names', async () => {
     const { code, stdout } = await runWithCapture(() => runCli(['--help']));
     expect(code).toBe(0);
-    expect(stdout).toContain('rctrl');
+    expect(stdout).toContain('umbel');
     expect(stdout).toContain('spawn');
     expect(stdout).toContain('send');
     expect(stdout).toContain('wait');
@@ -156,19 +156,19 @@ describe('cli — help and version', () => {
   test('-h exits 0', async () => {
     const { code, stdout } = await runWithCapture(() => runCli(['-h']));
     expect(code).toBe(0);
-    expect(stdout).toContain('rctrl');
+    expect(stdout).toContain('umbel');
   });
 
   test('--version exits 0 with version string', async () => {
     const { code, stdout } = await runWithCapture(() => runCli(['--version']));
     expect(code).toBe(0);
-    expect(stdout).toMatch(/rctrl \d/);
+    expect(stdout).toMatch(/umbel \d/);
   });
 
   test('bare invocation (no args) exits 2 and shows help', async () => {
     const { code, stdout } = await runWithCapture(() => runCli([]));
     expect(code).toBe(2);
-    expect(stdout).toContain('rctrl');
+    expect(stdout).toContain('umbel');
   });
 
   // parseArgv: -- separator treats remaining args as positionals (lines 63-66)
@@ -327,7 +327,7 @@ describe('cli — status', () => {
   });
 
   test('status missing name arg exits 2', async () => {
-    // --name without value → flagStr returns undefined → status({}) uses ~/.rctrl
+    // --name without value → flagStr returns undefined → status({}) uses ~/.umbel
     // We just verify it runs without crashing and returns 0 (may or may not have sessions)
     const { code } = await runWithCapture(() => runCli(['status']));
     // Exit 0 whether sessions exist or not
@@ -418,13 +418,13 @@ describe('cli — read', () => {
     await mkdir(jsonlDir, { recursive: true });
 
     // Spawn with deps override so jsonl is discovered from our projectsDir.
-    // RCTRL_STATE=tmpDir isolates all state; the hook is installed under tmpDir.
+    // UMBEL_STATE=tmpDir isolates all state; the hook is installed under tmpDir.
     await spawnOp({
       name,
       cwd: tmpDir,
       claudeBin: join(import.meta.dir, '../fixtures/fake-claude.sh'),
       env: {
-        RCTRL_STATE: tmpDir,
+        UMBEL_STATE: tmpDir,
         FAKE_CLAUDE_JSONL_DIR: jsonlDir,
         FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
       },
@@ -438,18 +438,18 @@ describe('cli — read', () => {
       },
     });
 
-    // All operations use RCTRL_STATE=tmpDir, matching the CLI read below — the
+    // All operations use UMBEL_STATE=tmpDir, matching the CLI read below — the
     // whole chain (spawn → send → wait → read) stays isolated to tmpDir.
-    const sendResult = await send({ name, prompt: 'hello read', env: { RCTRL_STATE: tmpDir } });
+    const sendResult = await send({ name, prompt: 'hello read', env: { UMBEL_STATE: tmpDir } });
 
     await waitFor({
       name,
       sinceMtime: sendResult.sinceMtime,
       defaultTimeoutMs: 15_000,
-      env: { RCTRL_STATE: tmpDir },
+      env: { UMBEL_STATE: tmpDir },
     });
 
-    // verbRead reads meta from tmpDir (RCTRL_STATE) and uses its stored jsonlPath
+    // verbRead reads meta from tmpDir (UMBEL_STATE) and uses its stored jsonlPath
     const { code, stdout } = await runWithCapture(() => runCli(['read', name]));
     expect(code).toBe(0);
     expect(stdout).toContain('Response to: hello read');
@@ -526,14 +526,14 @@ steps:
     const yamlFile = join(tmpDir, `wf-${RUN_ID}.yaml`);
     await writeFile(yamlFile, yaml, 'utf8');
 
-    const savedBin = process.env.RCTRL_CLAUDE_BIN;
+    const savedBin = process.env.UMBEL_CLAUDE_BIN;
     const savedJsonlDir = process.env.FAKE_CLAUDE_JSONL_DIR;
     const savedHook = process.env.FAKE_CLAUDE_HOOK;
 
     // verbRun calls runWorkflow({ file }) with no claudeBin injection — not testable
     // with fake-claude via env alone. We test the error path instead.
     // (verbRun is at lines 539-554 in cli.ts — covered via the usage error path above)
-    if (savedBin !== undefined) process.env.RCTRL_CLAUDE_BIN = savedBin;
+    if (savedBin !== undefined) process.env.UMBEL_CLAUDE_BIN = savedBin;
     if (savedJsonlDir !== undefined) process.env.FAKE_CLAUDE_JSONL_DIR = savedJsonlDir;
     if (savedHook !== undefined) process.env.FAKE_CLAUDE_HOOK = savedHook;
 
@@ -554,12 +554,12 @@ describe('cli — -p mode', () => {
     const jsonlDir = join(projectsDir, encodedCwd);
     await mkdir(jsonlDir, { recursive: true });
 
-    // runPMode reads RCTRL_CLAUDE_BIN from process.env; set it so spawn
+    // runPMode reads UMBEL_CLAUDE_BIN from process.env; set it so spawn
     // uses the fixture rather than real claude.
-    const savedBin = process.env.RCTRL_CLAUDE_BIN;
+    const savedBin = process.env.UMBEL_CLAUDE_BIN;
     const savedJsonlDir = process.env.FAKE_CLAUDE_JSONL_DIR;
     const savedHook = process.env.FAKE_CLAUDE_HOOK;
-    process.env.RCTRL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
+    process.env.UMBEL_CLAUDE_BIN = join(import.meta.dir, '../fixtures/fake-claude.sh');
     process.env.FAKE_CLAUDE_JSONL_DIR = jsonlDir;
     process.env.FAKE_CLAUDE_HOOK = join(tmpDir, 'hooks', 'stop.sh');
 
@@ -568,7 +568,7 @@ describe('cli — -p mode', () => {
       expect(result.code).toBe(0);
       expect(result.stdout).toContain('Response to: hello from test');
     } finally {
-      process.env.RCTRL_CLAUDE_BIN = savedBin;
+      process.env.UMBEL_CLAUDE_BIN = savedBin;
       process.env.FAKE_CLAUDE_JSONL_DIR = savedJsonlDir;
       process.env.FAKE_CLAUDE_HOOK = savedHook;
     }
@@ -600,7 +600,7 @@ describe('cli — errorExitCode paths', () => {
     expect(true).toBe(true);
   });
 
-  test('RctrlUsageError → exit 2', async () => {
+  test('UmbelUsageError → exit 2', async () => {
     // Covered by usage error tests above
     expect(true).toBe(true);
   });

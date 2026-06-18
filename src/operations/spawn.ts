@@ -2,7 +2,7 @@ import { access, copyFile, mkdir, symlink, unlink, writeFile } from 'node:fs/pro
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { resolveEnvRefs } from '../core/env.ts';
-import { AllowedToolsUnsupportedError, RctrlUsageError } from '../core/errors.ts';
+import { AllowedToolsUnsupportedError, UmbelUsageError } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { ProviderLaunchSpec } from '../core/providers/types.ts';
@@ -140,12 +140,12 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const name = opts.name ?? generateSessionName('anon');
 
   if (!isValidSessionName(name)) {
-    throw new RctrlUsageError(`Invalid session name: ${name}`);
+    throw new UmbelUsageError(`Invalid session name: ${name}`);
   }
 
   const anonymous = opts.anonymous ?? opts.name === undefined;
 
-  // Resolve {fromEnv} references against the rctrl server's env BEFORE any I/O,
+  // Resolve {fromEnv} references against the umbel server's env BEFORE any I/O,
   // so an unresolved reference fails fast (no session dir / hooks to clean up).
   const resolvedWorkerEnv =
     opts.workerEnv !== undefined ? resolveEnvRefs(opts.workerEnv, process.env) : undefined;
@@ -165,7 +165,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   if (opts.permissionMode !== undefined) {
     if (providerName === 'codex') {
       if (opts.permissionMode !== 'bypassPermissions') {
-        throw new RctrlUsageError(
+        throw new UmbelUsageError(
           `codex --permission-mode supports only 'bypassPermissions' (maps to --dangerously-bypass-approvals-and-sandbox); got '${opts.permissionMode}'`,
         );
       }
@@ -187,7 +187,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   // codex needs an isolated CODEX_HOME — a project .codex/hooks.json is ignored
   // inside linked git worktrees, so the Stop hook is delivered via a global
-  // <stateDir>/codex-home/hooks.json instead. Resolve the rctrl state root and
+  // <stateDir>/codex-home/hooks.json instead. Resolve the umbel state root and
   // the user's real codex home (auth/config source) for the provider to declare
   // that home; other providers ignore both opts.
   const stateRoot = d.fs.stateDir(env);
@@ -240,7 +240,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // startup byte to stdin that races the first send-keys and gets consumed as
   // an empty prompt. Precedence (low→high): inherited < operational env <
   // explicit workerEnv override < provider launch env (RESERVED) <
-  // RCTRL_STATE/RCTRL_SESSION_ID — the last two forced so the stop hook can
+  // UMBEL_STATE/UMBEL_SESSION_ID — the last two forced so the stop hook can
   // always locate the session dir.
   const SHELL_INIT_DENYLIST = new Set(['SHELL', 'PROMPT_COMMAND', 'BASH_ENV', 'ZDOTDIR', 'ENV']);
   const tmuxEnv: Record<string, string> = {};
@@ -248,7 +248,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     if (v === undefined || SHELL_INIT_DENYLIST.has(k)) continue;
     tmuxEnv[k] = v;
   }
-  // Operational env (RCTRL_STATE, test-injected vars).
+  // Operational env (UMBEL_STATE, test-injected vars).
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) tmuxEnv[k] = v;
   }
@@ -258,14 +258,14 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
       tmuxEnv[k] = v;
     }
   }
-  // Provider launch env is RESERVED — rctrl controls it, so it wins even over an
-  // explicit --env: codex's CODEX_HOME must point at rctrl's isolated home or the
+  // Provider launch env is RESERVED — umbel controls it, so it wins even over an
+  // explicit --env: codex's CODEX_HOME must point at umbel's isolated home or the
   // Stop hook never fires. Every provider but codex declares an empty launch env.
   for (const [k, v] of Object.entries(launchSpec.env)) {
     tmuxEnv[k] = v;
   }
-  tmuxEnv.RCTRL_STATE = stateRoot;
-  tmuxEnv.RCTRL_SESSION_ID = name;
+  tmuxEnv.UMBEL_STATE = stateRoot;
+  tmuxEnv.UMBEL_SESSION_ID = name;
 
   // Let the provider reconcile mutually-exclusive credentials in the final env
   // (claude drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is

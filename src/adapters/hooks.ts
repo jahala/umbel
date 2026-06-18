@@ -15,7 +15,7 @@ import { stateDir } from './fs-state.ts';
 // advances.
 export const STOP_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
-state="\${RCTRL_STATE:?}/sessions/\${RCTRL_SESSION_ID:?}"
+state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
 payload=$(cat || true)
 if command -v jq >/dev/null 2>&1; then
@@ -36,7 +36,7 @@ date +%s%N >> "$state/events/log"
 // ping. mtime advance = signal; core/notification.ts classifies the latest line.
 export const NOTIFY_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
-state="\${RCTRL_STATE:?}/sessions/\${RCTRL_SESSION_ID:?}"
+state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
 payload=$(cat || true)
 if command -v jq >/dev/null 2>&1; then

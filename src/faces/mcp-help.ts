@@ -1,4 +1,4 @@
-// Embedded help content surfaced via the `rctrl_help` MCP tool. Kept here
+// Embedded help content surfaced via the `umbel_help` MCP tool. Kept here
 // (not read from docs/) so the single-binary build self-contains everything,
 // no runtime file I/O is needed, and content can be agent-curated (tighter
 // than human-facing docs/). Drift against docs/ is sanity-checked by tests.
@@ -6,9 +6,9 @@
 export const HELP_TOPICS = ['lifecycle', 'workflow', 'providers'] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
-const LIFECYCLE = `# rctrl lifecycle
+const LIFECYCLE = `# umbel lifecycle
 
-Verbs are short-lived. Per-session state lives in $RCTRL_STATE/sessions/<name>/ (default ~/.rctrl/).
+Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ (default ~/.umbel/).
 
 ## spawn → send → wait → read → kill
 
@@ -20,20 +20,20 @@ Verbs are short-lived. Per-session state lives in $RCTRL_STATE/sessions/<name>/ 
 
 ## Anonymous vs named
 
-  rctrl_spawn { cwd } → anonymous (auto-named, kill yourself when done)
-  rctrl_spawn { cwd, name: "reviewer" } → named, persists across calls
+  umbel_spawn { cwd } → anonymous (auto-named, kill yourself when done)
+  umbel_spawn { cwd, name: "reviewer" } → named, persists across calls
 
 ## Typical orchestration
 
-  const { content } = await tools.rctrl_spawn({ cwd: "/repo", name: "rev", provider: "claude" });
+  const { content } = await tools.umbel_spawn({ cwd: "/repo", name: "rev", provider: "claude" });
   const { name } = JSON.parse(content[0].text);
-  await tools.rctrl_send({ name, prompt: "Review PR #42" });
-  await tools.rctrl_wait({ name, until: "stop", timeout: "10m" });
-  const { content: r } = await tools.rctrl_read({ name });
+  await tools.umbel_send({ name, prompt: "Review PR #42" });
+  await tools.umbel_wait({ name, until: "stop", timeout: "10m" });
+  const { content: r } = await tools.umbel_read({ name });
   // r[0].text contains the assistant's response
-  await tools.rctrl_kill({ name, keepState: false });
+  await tools.umbel_kill({ name, keepState: false });
 
-## Wait kinds (rctrl_wait \`until\` field)
+## Wait kinds (umbel_wait \`until\` field)
 
   until: "stop"     → end-of-turn (default; Stop hook fired)
   until: "file"     → file appears at \`file\` path
@@ -41,11 +41,11 @@ Verbs are short-lived. Per-session state lives in $RCTRL_STATE/sessions/<name>/ 
 
 ## Wait outcomes (the \`reason\` field in the result)
 
-rctrl_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
-  stop   → turn complete; rctrl_read the result.
+umbel_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
+  stop   → turn complete; umbel_read the result.
   input  → the worker is BLOCKED on a prompt (a permission ask, or idle). \`message\`
-           is the question — answer it with rctrl_send ("1", "yes", or a
-           clarification), then rctrl_wait again. This is the ping: you do NOT hang
+           is the question — answer it with umbel_send ("1", "yes", or a
+           clarification), then umbel_wait again. This is the ping: you do NOT hang
            to the timeout when a worker needs you.
   idle   → no pane activity for idle_timeout. Pass idle_timeout: "3m" to enable this
            net (off by default — a worker may run a long silent tool call). Inspect
@@ -53,21 +53,21 @@ rctrl_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
   dead   → the worker exited without finishing. Respawn or fail.
   timeout→ hard deadline hit; paneSnapshot shows the stuck pane.
 
-For poll-style control of a fleet, rctrl_status carries needsInput + needsInputReason (permission/idle/question) per worker — the same disambiguation without a blocking wait. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
+For poll-style control of a fleet, umbel_status carries needsInput + needsInputReason (permission/idle/question) per worker — the same disambiguation without a blocking wait. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
 
 ## Critical rule
 
-Pair every rctrl_send with a rctrl_wait. Sending without waiting causes your next rctrl_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.
+Pair every umbel_send with a umbel_wait. Sending without waiting causes your next umbel_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.
 
 ## Reading worker output efficiently
 
-- \`rctrl_read\` returns the verbatim final assistant text. Long responses (>~2000 tokens) auto-truncate to head+tail with an elision marker. Override with \`full: true\` to see everything, or \`head\`/\`tail\` (approx token counts) / \`section: "## Heading"\` to control the window.
-- \`rctrl_actions\` returns a structured digest (tools used, files touched, errors, final message). The right shape for "what HAPPENED?" — easier to scan than verbatim text and surfaces info rctrl_read doesn't (file paths touched, bash commands run, error count). Default reach for orchestration.
-- \`rctrl_diff\` returns a unified text diff between two turns of a session. Default: latest vs previous. Indispensable in review→fix loops — you see only what's NEW, not the prefix the reviewer keeps repeating.
+- \`umbel_read\` returns the verbatim final assistant text. Long responses (>~2000 tokens) auto-truncate to head+tail with an elision marker. Override with \`full: true\` to see everything, or \`head\`/\`tail\` (approx token counts) / \`section: "## Heading"\` to control the window.
+- \`umbel_actions\` returns a structured digest (tools used, files touched, errors, final message). The right shape for "what HAPPENED?" — easier to scan than verbatim text and surfaces info umbel_read doesn't (file paths touched, bash commands run, error count). Default reach for orchestration.
+- \`umbel_diff\` returns a unified text diff between two turns of a session. Default: latest vs previous. Indispensable in review→fix loops — you see only what's NEW, not the prefix the reviewer keeps repeating.
 
-When orchestrating multiple workers, prefer rctrl_actions per worker and only escalate to rctrl_read when you need the verbatim text. In iterative loops, use rctrl_diff to track the delta between turns.`;
+When orchestrating multiple workers, prefer umbel_actions per worker and only escalate to umbel_read when you need the verbatim text. In iterative loops, use umbel_diff to track the delta between turns.`;
 
-const WORKFLOW = `# rctrl workflow YAML
+const WORKFLOW = `# umbel workflow YAML
 
 For multi-step, multi-worker pipelines. Schema is validated by WorkflowSpecSchema in src/core/types.ts.
 
@@ -75,7 +75,7 @@ For multi-step, multi-worker pipelines. Schema is validated by WorkflowSpecSchem
 
   workers:
     <name>:
-      cwd: string                   # required; must exist before \`rctrl run\`
+      cwd: string                   # required; must exist before \`umbel run\`
       provider: claude|codex|gemini|opencode # default: claude
       model: string                 # optional; provider validates at spawn
       allowedTools: string          # optional; comma-separated
@@ -108,11 +108,11 @@ Captured outputs flow downstream via \`{{ steps.NAME.outputs.KEY }}\`.
 
 ## Templating (intentionally minimal — variable substitution only)
 
-  {{ env.X }}                  # env var at \`rctrl run\` time
+  {{ env.X }}                  # env var at \`umbel run\` time
   {{ steps.NAME.outputs.KEY }} # captured output (requires \`needs: [NAME]\`)
   {{ $session }}               # current step's worker name
 
-No expressions, conditionals, or loops. For control flow, wrap rctrl in a shell script.
+No expressions, conditionals, or loops. For control flow, wrap umbel in a shell script.
 
 ## Parallelism
 
@@ -133,15 +133,15 @@ Steps with no unsatisfied \`needs:\` run concurrently in the same wave. Cycles i
       prompt: "Apply these fixes:\\n{{ steps.reviewer.outputs.findings }}"
       wait: { all: [ { stop: $session }, { file: ./worktrees/fix/tests-passed } ] }
 
-Run: \`rctrl run pipeline.yaml\`.`;
+Run: \`umbel run pipeline.yaml\`.`;
 
-const PROVIDERS = `# rctrl providers
+const PROVIDERS = `# umbel providers
 
 Pluggable interface — same orchestration over four vendor CLIs.
 
 ## Subscription billing vs bring-your-own-model
 
-Claude, Codex, and Gemini are subscription-billed (rctrl drives their interactive TUI).
+Claude, Codex, and Gemini are subscription-billed (umbel drives their interactive TUI).
 OpenCode is NOT subscription-billed — it is: local (ollama/…, free), free-tier (opencode/big-pickle, keyless but limited), or API-billed (your own key for anthropic/… or openrouter/…). OpenCode is the bring-any-model lane, not a cheaper path to cloud models.
 
 ## Per-vendor specifics
@@ -150,12 +150,12 @@ Claude (\`provider: claude\`)
 - Hook config delivered inline via \`--settings '<json>'\` (no file write).
 - stopEventName: "Stop". Trust dialog auto-dismissed on first launch in a fresh cwd.
 - Flags: --model <name>, --allowedTools "Read,Write,...".
-- Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by giving the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL (+ ANTHROPIC_SMALL_FAST_MODEL for background calls) — via inherited env, --env / env:, or {fromEnv} references (resolved from the rctrl server's env, so a secret never enters the caller's transcript). Use AUTH_TOKEN not API_KEY: rctrl drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set (else it shadows the endpoint and wedges the worker on the "use this key?" prompt). Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription. status reports the effective baseUrl.
+- Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by giving the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL (+ ANTHROPIC_SMALL_FAST_MODEL for background calls) — via inherited env, --env / env:, or {fromEnv} references (resolved from the umbel server's env, so a secret never enters the caller's transcript). Use AUTH_TOKEN not API_KEY: umbel drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set (else it shadows the endpoint and wedges the worker on the "use this key?" prompt). Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription. status reports the effective baseUrl.
 
 Codex (\`provider: codex\`)
 - Hook config delivered via <cwd>/.codex/hooks.json (written at spawn, removed at kill).
-- stopEventName: "Stop". transcript_path may be null per Codex docs; rctrl falls back to dir-snapshot.
-- Hazard: rctrl OVERWRITES any pre-existing <cwd>/.codex/hooks.json. If the user has their own Codex hooks config there, it will be replaced on spawn and not restored. v4 plan is CODEX_HOME-style out-of-cwd config.
+- stopEventName: "Stop". transcript_path may be null per Codex docs; umbel falls back to dir-snapshot.
+- Hazard: umbel OVERWRITES any pre-existing <cwd>/.codex/hooks.json. If the user has their own Codex hooks config there, it will be replaced on spawn and not restored. v4 plan is CODEX_HOME-style out-of-cwd config.
 
 Gemini (\`provider: gemini\`)
 - Hook config delivered via <cwd>/.gemini/settings.json.
@@ -163,11 +163,11 @@ Gemini (\`provider: gemini\`)
 - Same overwrite hazard as Codex.
 
 OpenCode (\`provider: opencode\`)
-- Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config (~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation, crash-safe, reversible. Inert unless RCTRL_SESSION_ID is set.
+- Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config (~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation, crash-safe, reversible. Inert unless UMBEL_SESSION_ID is set.
 - No JSONL transcript (SQLite only). Output read via \`opencode export <sessionID>\`.
 - stopEventName: "session.status" idle (plugin-based).
 - Model flag: -m provider/model. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
-- API keys reach the worker via inherited env or --env KEY=VAL; rctrl does not manage keys.
+- API keys reach the worker via inherited env or --env KEY=VAL; umbel does not manage keys.
 
 ## When to mix providers
 
@@ -177,7 +177,7 @@ OpenCode (\`provider: opencode\`)
 
 ## Model names
 
-Free-form strings. Each provider validates at spawn time. rctrl does not enforce names.
+Free-form strings. Each provider validates at spawn time. umbel does not enforce names.
 
   claude: "sonnet", "opus", "haiku"
   codex:  "o4-mini", "gpt-4.1", ...
@@ -190,18 +190,18 @@ const TOPIC_CONTENT: Record<HelpTopic, string> = {
   providers: PROVIDERS,
 };
 
-const INDEX = `rctrl_help topics:
+const INDEX = `umbel_help topics:
 
   lifecycle  — spawn/send/wait/read/kill verb contracts and typical orchestration
-  workflow   — YAML schema for multi-step pipelines (rctrl run)
+  workflow   — YAML schema for multi-step pipelines (umbel run)
   providers  — per-vendor specifics for claude/codex/gemini/opencode
 
-Call rctrl_help with { topic: "<name>" } for a topic. Omit topic for this index.`;
+Call umbel_help with { topic: "<name>" } for a topic. Omit topic for this index.`;
 
 export function helpForTopic(topic?: string): string {
   if (topic === undefined) return INDEX;
   if ((HELP_TOPICS as readonly string[]).includes(topic)) {
     return TOPIC_CONTENT[topic as HelpTopic];
   }
-  return `Unknown rctrl_help topic: "${topic}". Available: ${HELP_TOPICS.join(', ')}.`;
+  return `Unknown umbel_help topic: "${topic}". Available: ${HELP_TOPICS.join(', ')}.`;
 }

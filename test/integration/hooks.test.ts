@@ -12,8 +12,8 @@ import {
 let tmpDir: string;
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-hooks-test-'));
-  return { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-hooks-test-'));
+  return { UMBEL_STATE: tmpDir };
 }
 
 afterEach(async () => {
@@ -29,7 +29,7 @@ describe('buildSettingsJson', () => {
   });
 
   test('contains Stop hook with command path', () => {
-    const scriptPath = '/home/user/.rctrl/hooks/stop.sh';
+    const scriptPath = '/home/user/.umbel/hooks/stop.sh';
     const json = buildSettingsJson({ hookScriptPath: scriptPath });
     const obj = JSON.parse(json) as Record<string, unknown>;
     const jsonStr = JSON.stringify(obj);
@@ -66,7 +66,7 @@ describe('buildSettingsJson', () => {
   });
 
   test('with notifyScriptPath includes a Notification block for permission + idle prompts', () => {
-    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const notify = '/home/user/.umbel/hooks/notify.sh';
     const json = buildSettingsJson({ hookScriptPath: '/stop.sh', notifyScriptPath: notify });
     const obj = JSON.parse(json) as { hooks?: { Notification?: Array<{ matcher?: string }> } };
     expect(Array.isArray(obj.hooks?.Notification)).toBe(true);
@@ -89,9 +89,9 @@ describe('STOP_HOOK_SCRIPT', () => {
     expect(STOP_HOOK_SCRIPT.startsWith('#!/usr/bin/env bash')).toBe(true);
   });
 
-  test('references RCTRL_STATE and RCTRL_SESSION_ID env vars', () => {
-    expect(STOP_HOOK_SCRIPT).toContain('RCTRL_STATE');
-    expect(STOP_HOOK_SCRIPT).toContain('RCTRL_SESSION_ID');
+  test('references UMBEL_STATE and UMBEL_SESSION_ID env vars', () => {
+    expect(STOP_HOOK_SCRIPT).toContain('UMBEL_STATE');
+    expect(STOP_HOOK_SCRIPT).toContain('UMBEL_SESSION_ID');
   });
 
   test('touches events/stop and appends to events/log', () => {
@@ -134,8 +134,8 @@ describe('ensureGlobalHooks', () => {
 
     const proc = Bun.spawn(['bash', stopScriptPath], {
       env: {
-        RCTRL_STATE: tmpDir,
-        RCTRL_SESSION_ID: sessionId,
+        UMBEL_STATE: tmpDir,
+        UMBEL_SESSION_ID: sessionId,
       },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -165,7 +165,7 @@ describe('NOTIFY_HOOK_SCRIPT', () => {
 
   test('writes the message to events/notification', () => {
     expect(NOTIFY_HOOK_SCRIPT).toContain('events/notification');
-    expect(NOTIFY_HOOK_SCRIPT).toContain('RCTRL_SESSION_ID');
+    expect(NOTIFY_HOOK_SCRIPT).toContain('UMBEL_SESSION_ID');
   });
 });
 
@@ -187,7 +187,7 @@ describe('ensureGlobalHooks — notify.sh', () => {
     await mkdir(sessionEventsDir, { recursive: true });
 
     const proc = Bun.spawn(['bash', notifyScriptPath], {
-      env: { RCTRL_STATE: tmpDir, RCTRL_SESSION_ID: sessionId },
+      env: { UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: sessionId },
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -211,7 +211,7 @@ describe('ensureGlobalHooks — notify.sh', () => {
 
     const fire = async (payload: object): Promise<void> => {
       const proc = Bun.spawn(['bash', notifyScriptPath], {
-        env: { RCTRL_STATE: tmpDir, RCTRL_SESSION_ID: sessionId },
+        env: { UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: sessionId },
         stdin: 'pipe',
         stdout: 'pipe',
         stderr: 'pipe',

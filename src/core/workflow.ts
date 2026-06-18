@@ -1,5 +1,5 @@
 import { parse as parseYaml } from 'yaml';
-import { RctrlUsageError, WorkflowCycleError } from './errors.ts';
+import { UmbelUsageError, WorkflowCycleError } from './errors.ts';
 import { type WorkflowSpec, WorkflowSpecSchema, type WorkflowStep } from './types.ts';
 
 // ---------------------------------------------------------------------------
@@ -12,11 +12,11 @@ export function parseWorkflow(yamlText: string): WorkflowSpec {
     raw = parseYaml(yamlText);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new RctrlUsageError(`Invalid workflow YAML: ${msg}`);
+    throw new UmbelUsageError(`Invalid workflow YAML: ${msg}`);
   }
   const result = WorkflowSpecSchema.safeParse(raw);
   if (!result.success) {
-    throw new RctrlUsageError(`Invalid workflow: ${result.error.message}`);
+    throw new UmbelUsageError(`Invalid workflow: ${result.error.message}`);
   }
   return result.data;
 }
@@ -100,7 +100,7 @@ export function substitute(
 
     if (expr === '$session') {
       if (ctx.currentSession === undefined) {
-        throw new RctrlUsageError(`Unresolved template: ${match} — no currentSession in context`);
+        throw new UmbelUsageError(`Unresolved template: ${match} — no currentSession in context`);
       }
       return ctx.currentSession;
     }
@@ -109,7 +109,7 @@ export function substitute(
       const key = expr.slice('env.'.length);
       const value = ctx.env[key];
       if (value === undefined) {
-        throw new RctrlUsageError(`Unresolved template: ${match} — env.${key} is not set`);
+        throw new UmbelUsageError(`Unresolved template: ${match} — env.${key} is not set`);
       }
       return value;
     }
@@ -119,20 +119,20 @@ export function substitute(
       const [, stepName, outputKey] = stepsMatch;
       const step = ctx.steps[stepName ?? ''];
       if (step === undefined) {
-        throw new RctrlUsageError(
+        throw new UmbelUsageError(
           `Unresolved template: ${match} — step '${stepName}' not found in completed steps`,
         );
       }
       const value = step.outputs[outputKey ?? ''];
       if (value === undefined) {
-        throw new RctrlUsageError(
+        throw new UmbelUsageError(
           `Unresolved template: ${match} — output '${outputKey}' not found in step '${stepName}'`,
         );
       }
       return value;
     }
 
-    throw new RctrlUsageError(
+    throw new UmbelUsageError(
       `Malformed template: ${match} — unrecognised reference pattern '${expr}'`,
     );
   });

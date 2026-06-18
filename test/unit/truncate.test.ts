@@ -21,7 +21,7 @@ describe('truncateAssistantText — no opts (default truncation)', () => {
     const out = truncateAssistantText(text);
     expect(out).not.toBe(text);
     expect(out).toContain('elided');
-    expect(out).toContain('call rctrl_read with full=true');
+    expect(out).toContain('call umbel_read with full=true');
     // First line preserved
     expect(out).toContain('line 0:');
     // Last line preserved

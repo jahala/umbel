@@ -27,8 +27,8 @@ async function setupSession(opts: {
   env: Record<string, string | undefined>;
   jsonlPath: string;
 }> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-actions-test-'));
-  const env = { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-actions-test-'));
+  const env = { UMBEL_STATE: tmpDir };
 
   const sessionDir = join(tmpDir, 'sessions', opts.name);
   await mkdir(join(sessionDir, 'events'), { recursive: true });
@@ -252,7 +252,7 @@ describe('actions operation', () => {
   // see null and return "(no transcript yet)" even though the data IS
   // available via the fallback chain (resolveJsonlPath handles this).
   //
-  // Discovered by live test of rctrl_actions against a fresh claude session.
+  // Discovered by live test of umbel_actions against a fresh claude session.
 
   test('meta.jsonlPath=null + events/transcript-path → reads JSONL via fallback (not "(no transcript yet)")', async () => {
     // Build the JSONL on disk first so we can reference its path.
@@ -273,8 +273,8 @@ describe('actions operation', () => {
 
     // Manual setup — bypass setupSession because we need jsonlPath=null
     // in meta AND a separate transcript file at a known location.
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-actions-fallback-'));
-    const env = { RCTRL_STATE: tmpDir };
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-actions-fallback-'));
+    const env = { UMBEL_STATE: tmpDir };
     const name = 'sess6';
     const sessionDir = join(tmpDir, 'sessions', name);
     await mkdir(join(sessionDir, 'events'), { recursive: true });

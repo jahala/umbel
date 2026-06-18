@@ -60,8 +60,8 @@ export class WaitTimeoutError extends Error {
   }
 }
 
-export class RctrlUsageError extends Error {
-  override name = 'RctrlUsageError';
+export class UmbelUsageError extends Error {
+  override name = 'UmbelUsageError';
 }
 
 export class ProviderUnknownError extends Error {
