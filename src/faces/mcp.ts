@@ -24,7 +24,7 @@ import { parseDuration, VerbSchemas } from './verbs.ts';
 // Always-on context the MCP client renders into the agent's system prompt.
 // Kept tight — fork-decision (when to use umbel vs the host's own subagent)
 // plus the lifecycle one-liner. Deeper docs go behind umbel_help.
-export const SERVER_INSTRUCTIONS = `umbel drives interactive agent CLIs (Claude Code, Codex, Gemini) in tmux, subscription-billed.
+export const SERVER_INSTRUCTIONS = `umbel drives interactive agent CLIs (Claude Code, Codex, Gemini, OpenCode) in tmux — subscription-billed for claude/codex/gemini, bring-any-model (local/free/key) for opencode.
 
 USE umbel when you need: a persistent worker across many turns (review→fix→verify); a different provider than yourself (e.g., you're Claude but want Codex); parallel workers in separate cwds (git worktrees); granular send/wait/read control.
 
@@ -36,7 +36,7 @@ Lifecycle: spawn → send → wait → read → (loop or kill). umbel_send does 
 // prevent bugs (send→wait pairing, capture-vs-read).
 export const TOOL_DESCRIPTIONS = {
   umbel_spawn:
-    'Spawn a worker. `provider` selects claude/codex/gemini. Returns the session name to pass to other verbs.',
+    'Spawn a worker. `provider` selects claude/codex/gemini/opencode. Returns the session name to pass to other verbs.',
   umbel_send: 'Send a prompt to a session. Returns immediately — pair with umbel_wait.',
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
