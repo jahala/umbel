@@ -1,0 +1,5 @@
+brand:
+  source: github.com/jahala/plotplot-ai
+  version: v2.0.0
+  product: umbel
+  overrides: {}
