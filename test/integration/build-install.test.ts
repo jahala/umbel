@@ -32,17 +32,17 @@ async function run(bin: string): Promise<{ out: string; code: number }> {
 
 describe('installBinary', () => {
   test('lands a runnable executable, creating the bin dir', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'rctrl-install-'));
+    const dir = await mkdtemp(join(tmpdir(), 'umbel-install-'));
     created.push(dir);
-    const dest = join(dir, 'bin', 'rctrl'); // nested dir must be created
+    const dest = join(dir, 'bin', 'umbel'); // nested dir must be created
     await installBinary(await fakeBin(dir, 'ok'), dest);
     expect(await run(dest)).toEqual({ out: 'ok', code: 0 });
   });
 
   test('re-installing over an existing binary stays runnable (fresh inode, not in-place)', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'rctrl-install-'));
+    const dir = await mkdtemp(join(tmpdir(), 'umbel-install-'));
     created.push(dir);
-    const dest = join(dir, 'bin', 'rctrl');
+    const dest = join(dir, 'bin', 'umbel');
     await installBinary(await fakeBin(dir, 'v1'), dest);
     await installBinary(await fakeBin(dir, 'v2'), dest); // overwrite — the macOS-kill scenario
     expect(await run(dest)).toEqual({ out: 'v2', code: 0 });

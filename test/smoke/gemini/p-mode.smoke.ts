@@ -9,7 +9,7 @@ smokeDescribeFor('gemini', 'gemini p-mode round-trip', () => {
   const guard = makeCleanupGuard();
   afterEach(() => guard.cleanup());
 
-  test('rctrl -p --provider gemini positional prompt exits 0 and stdout contains OK', async () => {
+  test('umbel -p --provider gemini positional prompt exits 0 and stdout contains OK', async () => {
     // Validates: AfterAgent hook fires from real gemini, JSONL is readable, stdout is printed
     const name = smokeName('gem-pm1');
     guard.register(name);
@@ -27,7 +27,7 @@ smokeDescribeFor('gemini', 'gemini p-mode round-trip', () => {
     expect(r.stdout.trim()).toContain('OK');
   }, 120_000);
 
-  test('rctrl -p --provider gemini reads prompt from stdin and exits 0', async () => {
+  test('umbel -p --provider gemini reads prompt from stdin and exits 0', async () => {
     // Validates: stdin pipe path through runPMode reads correctly; AfterAgent hook fires
     const r = await runCli(['-p', '--provider', 'gemini'], 'Reply with exactly the word: OK\n');
 

@@ -4,7 +4,7 @@
  * An autonomous worker (driven by a conductor like pleach) cannot answer
  * permission prompts — anything the curated allowedTools list misses (notably
  * MCP tools, whose names are unknowable in advance) blocks the turn. claude's
- * own `--permission-mode bypassPermissions` is the escape; rctrl passes it
+ * own `--permission-mode bypassPermissions` is the escape; umbel passes it
  * through. Safety for autonomous use is external (sandbox + audit), not prompts.
  */
 import { describe, expect, test } from 'bun:test';
@@ -71,9 +71,9 @@ describe('spawn guard — permissionMode (claude + codex)', () => {
     // codex maps only the unattended `bypassPermissions` intent (→ its
     // approvals+sandbox bypass); claude's other named modes are meaningless there.
     const { spawn } = await import('../../src/operations/spawn.ts');
-    const { RctrlUsageError } = await import('../../src/core/errors.ts');
+    const { UmbelUsageError } = await import('../../src/core/errors.ts');
     await expect(
       spawn({ name: 'x', cwd: '/tmp', provider: 'codex', permissionMode: 'acceptEdits' }),
-    ).rejects.toBeInstanceOf(RctrlUsageError);
+    ).rejects.toBeInstanceOf(UmbelUsageError);
   });
 });

@@ -18,9 +18,9 @@ const RUN_ID = randomBytes(4).toString('hex');
 let tmpDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-opencode-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-opencode-test-'));
   // Isolate the opencode config dir so installGlobalPlugin never touches ~/.config.
-  return { RCTRL_STATE: tmpDir, XDG_CONFIG_HOME: join(tmpDir, 'xdg') };
+  return { UMBEL_STATE: tmpDir, XDG_CONFIG_HOME: join(tmpDir, 'xdg') };
 }
 
 function sessionName(suffix: string): string {
@@ -41,7 +41,7 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 // Fixture mechanics check — independent of provider registry.
 // Verifies that fake-opencode.sh itself creates events/stop + events/session-id
-// when run with RCTRL_STATE / RCTRL_SESSION_ID set. These PASS regardless of
+// when run with UMBEL_STATE / UMBEL_SESSION_ID set. These PASS regardless of
 // whether the opencode provider is registered — they test the fixture directly.
 // ---------------------------------------------------------------------------
 
@@ -49,7 +49,7 @@ const FAKE_OPENCODE = join(import.meta.dir, '../fixtures/fake-opencode.sh');
 
 describe('fake-opencode.sh — fixture mechanics (must PASS)', () => {
   test('creates events/stop and events/session-id when given a prompt via stdin', async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), 'rctrl-oc-fixture-'));
+    const stateDir = await mkdtemp(join(tmpdir(), 'umbel-oc-fixture-'));
     try {
       const sessionId = 'fixture-test-session';
       const eventsDir = join(stateDir, 'sessions', sessionId, 'events');
@@ -61,8 +61,8 @@ describe('fake-opencode.sh — fixture mechanics (must PASS)', () => {
         stderr: 'pipe',
         env: {
           ...process.env,
-          RCTRL_STATE: stateDir,
-          RCTRL_SESSION_ID: sessionId,
+          UMBEL_STATE: stateDir,
+          UMBEL_SESSION_ID: sessionId,
         },
       });
 
@@ -88,7 +88,7 @@ describe('fake-opencode.sh — fixture mechanics (must PASS)', () => {
   });
 
   test('events/session-id contains the fake session ID ses_fake123', async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), 'rctrl-oc-fixture2-'));
+    const stateDir = await mkdtemp(join(tmpdir(), 'umbel-oc-fixture2-'));
     try {
       const sessionId = 'fixture-sid-check';
       const eventsDir = join(stateDir, 'sessions', sessionId, 'events');
@@ -100,8 +100,8 @@ describe('fake-opencode.sh — fixture mechanics (must PASS)', () => {
         stderr: 'pipe',
         env: {
           ...process.env,
-          RCTRL_STATE: stateDir,
-          RCTRL_SESSION_ID: sessionId,
+          UMBEL_STATE: stateDir,
+          UMBEL_SESSION_ID: sessionId,
         },
       });
 

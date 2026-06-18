@@ -10,7 +10,7 @@ import { mergeOpencodePluginConfig } from '../../src/core/providers/opencode.ts'
 //   - result must always be valid JSON
 // ---------------------------------------------------------------------------
 
-const PLUGIN_PATH = '/home/user/.rctrl/hooks/opencode-stop.ts';
+const PLUGIN_PATH = '/home/user/.umbel/hooks/opencode-stop.ts';
 
 describe('mergeOpencodePluginConfig', () => {
   test('null existing → creates config with plugin array containing the path', () => {

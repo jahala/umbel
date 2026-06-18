@@ -4,7 +4,7 @@
 //
 // Some provider TUIs block on interactive dialogs on first launch in a fresh
 // cwd (Claude's workspace-trust prompt; Codex's directory-trust + hook-review
-// prompts). rctrl auto-dismisses them by watching the tmux pane and sending
+// prompts). umbel auto-dismisses them by watching the tmux pane and sending
 // the keystrokes a human would. Each provider declares its dialogs here; the
 // generic poll/dismiss loop lives in the operations layer (it does the I/O).
 //

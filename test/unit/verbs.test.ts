@@ -2,11 +2,11 @@
  * Unit tests for src/faces/verbs.ts
  *
  * Covers:
- * - parseDuration: valid cases (ms, s, m, h, fractional) and invalid cases (throws RctrlUsageError with input in message)
+ * - parseDuration: valid cases (ms, s, m, h, fractional) and invalid cases (throws UmbelUsageError with input in message)
  * - VerbSchemas: each verb parses a valid input AND rejects an invalid one with a checked zod issue
  */
 import { describe, expect, test } from 'bun:test';
-import { RctrlUsageError } from '../../src/core/errors.ts';
+import { UmbelUsageError } from '../../src/core/errors.ts';
 import { parseDuration, VerbSchemas } from '../../src/faces/verbs.ts';
 
 // ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ describe('parseDuration — valid', () => {
   });
 });
 
-describe('parseDuration — invalid (throws RctrlUsageError)', () => {
+describe('parseDuration — invalid (throws UmbelUsageError)', () => {
   function expectUsageError(input: string): void {
     let caught: unknown;
     try {
@@ -51,9 +51,9 @@ describe('parseDuration — invalid (throws RctrlUsageError)', () => {
     } catch (err) {
       caught = err;
     }
-    expect(caught instanceof RctrlUsageError).toBe(true);
+    expect(caught instanceof UmbelUsageError).toBe(true);
     // The error message must include the bad input so users can diagnose it
-    expect((caught as RctrlUsageError).message).toContain(input);
+    expect((caught as UmbelUsageError).message).toContain(input);
   }
 
   test("'5' — bare number, no unit", () => expectUsageError('5'));

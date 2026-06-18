@@ -17,11 +17,11 @@ let tmpDir = '';
 let jsonlDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-wf-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-wf-test-'));
   // All JSONL files go into a flat dir; we override discoverSessionJsonl to look by name
   jsonlDir = join(tmpDir, 'jsonl');
   await mkdir(jsonlDir, { recursive: true });
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionTag(suffix: string): string {
@@ -44,8 +44,8 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 // A session-name-aware discoverSessionJsonl: since fake-claude writes
-// ${FAKE_CLAUDE_JSONL_DIR}/${RCTRL_SESSION_ID}.jsonl, and RCTRL_SESSION_ID is
-// the rctrl session name, we can look up the file directly by name.
+// ${FAKE_CLAUDE_JSONL_DIR}/${UMBEL_SESSION_ID}.jsonl, and UMBEL_SESSION_ID is
+// the umbel session name, we can look up the file directly by name.
 async function sessionAwareDiscover(opts: {
   sessionName: string;
   cwd: string;

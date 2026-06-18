@@ -10,7 +10,7 @@ import { SessionSchema } from '../core/types.ts';
 // ---------------------------------------------------------------------------
 
 export function stateDir(env: Record<string, string | undefined> = {}): string {
-  return env.RCTRL_STATE ?? join(homedir(), '.rctrl');
+  return env.UMBEL_STATE ?? join(homedir(), '.umbel');
 }
 
 export function sessionDir(name: string, env: Record<string, string | undefined> = {}): string {

@@ -16,7 +16,7 @@ export interface ProviderLaunchSpec {
   //   • { symlinkTo } — symlink path → symlinkTo (share a credential, no copy).
   //   • { copyFrom }  — copy copyFrom → path; ifAbsent skips if path already exists,
   //                     and the copy is skipped silently when copyFrom is missing.
-  // `shared: true` marks rctrl-managed infra OUTSIDE the worker's cwd (e.g. a
+  // `shared: true` marks umbel-managed infra OUTSIDE the worker's cwd (e.g. a
   // per-provider CODEX_HOME): NOT recorded in meta.providerFiles and NOT removed on
   // kill (other live workers depend on it). Default (ephemeral) files ARE tracked
   // and cleaned on session kill. Empty for providers with inline-config flags
@@ -93,14 +93,14 @@ export interface AgentProvider {
   readonly name: string;
 
   buildLaunch(opts: {
-    sessionId: string; // rctrl session name (= tmux session suffix)
+    sessionId: string; // umbel session name (= tmux session suffix)
     cwd: string;
     hookScriptPath: string; // absolute path to our stop.sh
     notifyScriptPath?: string; // absolute path to our notify.sh (needs-input hook)
     model?: string;
     allowedTools?: string;
     permissionMode?: string;
-    // rctrl state root ($RCTRL_STATE). Providers needing an isolated config home
+    // umbel state root ($UMBEL_STATE). Providers needing an isolated config home
     // derive it from here (codex: <stateDir>/codex-home). Injected by spawn.
     stateDir?: string;
     // codex: the user's real CODEX_HOME — source for the auth.json symlink and
@@ -117,7 +117,7 @@ export interface AgentProvider {
   reconcileEnv?(env: Record<string, string>): Record<string, string>;
 
   // Which lifecycle event name marks end-of-turn in this provider's hook
-  // payload? rctrl's stop.sh is generic — it captures transcript_path from
+  // payload? umbel's stop.sh is generic — it captures transcript_path from
   // whatever payload it gets. This field is informational + tests.
   readonly stopEventName: string; // 'Stop' for Claude/Codex, 'AfterAgent' for Gemini
 
@@ -128,7 +128,7 @@ export interface AgentProvider {
   // Optional: extract a normalized digest of tool calls, files touched, and
   // errors from the transcript. Returned shape is ActionManifest. Pure —
   // never throws on malformed input; returns an empty/partial manifest.
-  // Operations layer (rctrl_actions) falls back to a "not implemented for
+  // Operations layer (umbel_actions) falls back to a "not implemented for
   // this provider" message when this is undefined.
   extractActions?(content: string): ActionManifest;
 
@@ -165,7 +165,7 @@ export interface AgentProvider {
   // Mutually exclusive with hook-based completion; the operations layer
   // checks this field to choose its wait strategy.
   readonly anchorStrategy?: {
-    sentinel: string; // e.g. '<<<RCTRL_DONE_8e2a>>>'
+    sentinel: string; // e.g. '<<<UMBEL_DONE_8e2a>>>'
     promptSuffix: string; // appended to user prompts so the model
     // is instructed to emit the sentinel
   };

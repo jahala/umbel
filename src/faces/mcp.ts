@@ -22,40 +22,40 @@ import { parseDuration, VerbSchemas } from './verbs.ts';
 // ---------------------------------------------------------------------------
 
 // Always-on context the MCP client renders into the agent's system prompt.
-// Kept tight — fork-decision (when to use rctrl vs the host's own subagent)
-// plus the lifecycle one-liner. Deeper docs go behind rctrl_help.
-export const SERVER_INSTRUCTIONS = `rctrl drives interactive agent CLIs (Claude Code, Codex, Gemini) in tmux, subscription-billed.
+// Kept tight — fork-decision (when to use umbel vs the host's own subagent)
+// plus the lifecycle one-liner. Deeper docs go behind umbel_help.
+export const SERVER_INSTRUCTIONS = `umbel drives interactive agent CLIs (Claude Code, Codex, Gemini) in tmux, subscription-billed.
 
-USE rctrl when you need: a persistent worker across many turns (review→fix→verify); a different provider than yourself (e.g., you're Claude but want Codex); parallel workers in separate cwds (git worktrees); granular send/wait/read control.
+USE umbel when you need: a persistent worker across many turns (review→fix→verify); a different provider than yourself (e.g., you're Claude but want Codex); parallel workers in separate cwds (git worktrees); granular send/wait/read control.
 
 USE your host's subagent/Task tool instead for single-shot research, specialized agent types (Explore, debugger), or context-isolated one-shot results.
 
-Lifecycle: spawn → send → wait → read → (loop or kill). rctrl_send does NOT wait — always pair with rctrl_wait. Call rctrl_help for workflow YAML, provider quirks, or examples.`;
+Lifecycle: spawn → send → wait → read → (loop or kill). umbel_send does NOT wait — always pair with umbel_wait. Call umbel_help for workflow YAML, provider quirks, or examples.`;
 
 // Per-tool descriptions. Narrow + specific. Lifecycle hints where they
 // prevent bugs (send→wait pairing, capture-vs-read).
 export const TOOL_DESCRIPTIONS = {
-  rctrl_spawn:
+  umbel_spawn:
     'Spawn a worker. `provider` selects claude/codex/gemini. Returns the session name to pass to other verbs.',
-  rctrl_send: 'Send a prompt to a session. Returns immediately — pair with rctrl_wait.',
-  rctrl_wait:
-    "Block until stop/input/idle/dead/timeout. Call after rctrl_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from rctrl_send's result for race-free stop detection across processes.",
-  rctrl_status:
+  umbel_send: 'Send a prompt to a session. Returns immediately — pair with umbel_wait.',
+  umbel_wait:
+    "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
+  umbel_status:
     "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, and needsInput + needsInputReason (permission/idle/question) — tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
-  rctrl_ls: 'List all sessions. Same as rctrl_status with no name.',
-  rctrl_kill: 'Kill a session and its tmux process. Removes state unless `keepState=true`.',
-  rctrl_read:
-    "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after rctrl_wait returns.",
-  rctrl_actions:
-    'Structured digest of what a worker DID this session (tools used, files touched, errors, final message). Use INSTEAD of rctrl_read when you want the summary, not the verbatim response — much smaller payload.',
-  rctrl_diff:
+  umbel_ls: 'List all sessions. Same as umbel_status with no name.',
+  umbel_kill: 'Kill a session and its tmux process. Removes state unless `keepState=true`.',
+  umbel_read:
+    "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after umbel_wait returns.",
+  umbel_actions:
+    'Structured digest of what a worker DID this session (tools used, files touched, errors, final message). Use INSTEAD of umbel_read when you want the summary, not the verbatim response — much smaller payload.',
+  umbel_diff:
     'Unified text diff between two turns of a session. Default: latest vs previous. Negative indices count from end. Useful in review→fix loops to see only what changed since last turn.',
-  rctrl_capture:
-    'Snapshot N lines from the tmux pane. Human inspection only — use rctrl_read to parse agent output.',
-  rctrl_logs:
+  umbel_capture:
+    'Snapshot N lines from the tmux pane. Human inspection only — use umbel_read to parse agent output.',
+  umbel_logs:
     "Read the session's event log. Each end-of-turn appends a timestamp. For lifecycle debugging.",
-  rctrl_help:
-    'Get rctrl reference docs. `topic` ∈ {lifecycle, workflow, providers} for a section; omit for the index.',
+  umbel_help:
+    'Get umbel reference docs. `topic` ∈ {lifecycle, workflow, providers} for a section; omit for the index.',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 // optional-or-undefined; without the explicit undefined here the handlers
 // don't satisfy the SDK's overload.
 export interface McpToolHandlers {
-  rctrl_spawn: (args: {
+  umbel_spawn: (args: {
     name?: string | undefined;
     cwd: string;
     provider?: 'claude' | 'codex' | 'gemini' | 'opencode' | undefined;
@@ -95,8 +95,8 @@ export interface McpToolHandlers {
     permissionMode?: string | undefined;
     env?: Record<string, string | { fromEnv: string }> | undefined;
   }) => Promise<ToolResult>;
-  rctrl_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
-  rctrl_wait: (args: {
+  umbel_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
+  umbel_wait: (args: {
     name: string;
     until: 'stop' | 'file' | 'pattern';
     file?: string | undefined;
@@ -105,25 +105,25 @@ export interface McpToolHandlers {
     idleTimeout?: string | undefined;
     sinceMtime?: number | undefined;
   }) => Promise<ToolResult>;
-  rctrl_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
-  rctrl_ls: (args: Record<string, never>) => Promise<ToolResult>;
-  rctrl_kill: (args: { name: string; keepState: boolean }) => Promise<ToolResult>;
-  rctrl_read: (args: {
+  umbel_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
+  umbel_ls: (args: Record<string, never>) => Promise<ToolResult>;
+  umbel_kill: (args: { name: string; keepState: boolean }) => Promise<ToolResult>;
+  umbel_read: (args: {
     name: string;
     head?: number | undefined;
     tail?: number | undefined;
     section?: string | undefined;
     full?: boolean | undefined;
   }) => Promise<ToolResult>;
-  rctrl_actions: (args: { name: string }) => Promise<ToolResult>;
-  rctrl_diff: (args: {
+  umbel_actions: (args: { name: string }) => Promise<ToolResult>;
+  umbel_diff: (args: {
     name: string;
     from?: number | undefined;
     to?: number | undefined;
   }) => Promise<ToolResult>;
-  rctrl_capture: (args: { name: string; lines: number }) => Promise<ToolResult>;
-  rctrl_logs: (args: { name: string }) => Promise<ToolResult>;
-  rctrl_help: (args: { topic?: HelpTopic | undefined }) => Promise<ToolResult>;
+  umbel_capture: (args: { name: string; lines: number }) => Promise<ToolResult>;
+  umbel_logs: (args: { name: string }) => Promise<ToolResult>;
+  umbel_help: (args: { topic?: HelpTopic | undefined }) => Promise<ToolResult>;
 }
 
 export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
@@ -132,7 +132,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
   const d = { ...defaultDeps, ...deps };
 
   return {
-    rctrl_spawn: async (args) => {
+    umbel_spawn: async (args) => {
       const spawnOpts = {
         cwd: args.cwd,
         env,
@@ -150,7 +150,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       };
     },
 
-    rctrl_send: async (args) => {
+    umbel_send: async (args) => {
       const sendOpts = {
         name: args.name,
         prompt: args.prompt,
@@ -165,7 +165,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       };
     },
 
-    rctrl_wait: async (args) => {
+    umbel_wait: async (args) => {
       const idleTimeoutMs =
         args.idleTimeout !== undefined ? parseDuration(args.idleTimeout) : undefined;
       const waitOpts = {
@@ -194,7 +194,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       };
     },
 
-    rctrl_status: async (args) => {
+    umbel_status: async (args) => {
       const statusOpts = {
         env,
         ...(args.name !== undefined ? { name: args.name } : {}),
@@ -206,14 +206,14 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       };
     },
 
-    rctrl_ls: async (_args) => {
+    umbel_ls: async (_args) => {
       const entries = await status({ env, ...(deps !== undefined ? { deps } : {}) });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(entries) }],
       };
     },
 
-    rctrl_kill: async (args) => {
+    umbel_kill: async (args) => {
       const killOpts = {
         name: args.name,
         removeState: !args.keepState,
@@ -224,7 +224,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       return { content: [{ type: 'text' as const, text: 'killed' }] };
     },
 
-    rctrl_read: async (args) => {
+    umbel_read: async (args) => {
       const session = await d.fs.readMeta(args.name, env);
       const provider = getProvider(session.provider);
       let content: string;
@@ -253,7 +253,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       return { content: [{ type: 'text' as const, text: truncated }] };
     },
 
-    rctrl_actions: async (args) => {
+    umbel_actions: async (args) => {
       const actionsOpts = {
         name: args.name,
         env,
@@ -263,7 +263,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       return { content: [{ type: 'text' as const, text }] };
     },
 
-    rctrl_diff: async (args) => {
+    umbel_diff: async (args) => {
       const diffOpts = {
         name: args.name,
         env,
@@ -275,12 +275,12 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       return { content: [{ type: 'text' as const, text }] };
     },
 
-    rctrl_capture: async (args) => {
+    umbel_capture: async (args) => {
       const text = await d.tmux.capturePane(args.name, args.lines);
       return { content: [{ type: 'text' as const, text }] };
     },
 
-    rctrl_logs: async (args) => {
+    umbel_logs: async (args) => {
       const logPath = `${d.fs.eventsDir(args.name, env)}/log`;
       let content = '';
       try {
@@ -291,7 +291,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       return { content: [{ type: 'text' as const, text: content }] };
     },
 
-    rctrl_help: async (args) => {
+    umbel_help: async (args) => {
       return {
         content: [{ type: 'text' as const, text: helpForTopic(args.topic) }],
       };
@@ -307,51 +307,51 @@ export async function runMcpServer(opts: McpServerOpts): Promise<void> {
   const tools = createMcpTools(opts);
 
   const server = new McpServer(
-    { name: 'rctrl', version: '0.0.1' },
+    { name: 'umbel', version: '0.0.1' },
     { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
   );
 
   server.tool(
-    'rctrl_spawn',
-    TOOL_DESCRIPTIONS.rctrl_spawn,
+    'umbel_spawn',
+    TOOL_DESCRIPTIONS.umbel_spawn,
     VerbSchemas.spawn.shape,
-    tools.rctrl_spawn,
+    tools.umbel_spawn,
   );
-  server.tool('rctrl_send', TOOL_DESCRIPTIONS.rctrl_send, VerbSchemas.send.shape, tools.rctrl_send);
-  server.tool('rctrl_wait', TOOL_DESCRIPTIONS.rctrl_wait, VerbSchemas.wait.shape, tools.rctrl_wait);
+  server.tool('umbel_send', TOOL_DESCRIPTIONS.umbel_send, VerbSchemas.send.shape, tools.umbel_send);
+  server.tool('umbel_wait', TOOL_DESCRIPTIONS.umbel_wait, VerbSchemas.wait.shape, tools.umbel_wait);
   server.tool(
-    'rctrl_status',
-    TOOL_DESCRIPTIONS.rctrl_status,
+    'umbel_status',
+    TOOL_DESCRIPTIONS.umbel_status,
     VerbSchemas.status.shape,
-    tools.rctrl_status,
+    tools.umbel_status,
   );
-  server.tool('rctrl_ls', TOOL_DESCRIPTIONS.rctrl_ls, VerbSchemas.ls.shape, tools.rctrl_ls);
-  server.tool('rctrl_kill', TOOL_DESCRIPTIONS.rctrl_kill, VerbSchemas.kill.shape, tools.rctrl_kill);
-  server.tool('rctrl_read', TOOL_DESCRIPTIONS.rctrl_read, VerbSchemas.read.shape, tools.rctrl_read);
+  server.tool('umbel_ls', TOOL_DESCRIPTIONS.umbel_ls, VerbSchemas.ls.shape, tools.umbel_ls);
+  server.tool('umbel_kill', TOOL_DESCRIPTIONS.umbel_kill, VerbSchemas.kill.shape, tools.umbel_kill);
+  server.tool('umbel_read', TOOL_DESCRIPTIONS.umbel_read, VerbSchemas.read.shape, tools.umbel_read);
   server.tool(
-    'rctrl_actions',
-    TOOL_DESCRIPTIONS.rctrl_actions,
+    'umbel_actions',
+    TOOL_DESCRIPTIONS.umbel_actions,
     { name: z.string() },
-    tools.rctrl_actions,
+    tools.umbel_actions,
   );
   server.tool(
-    'rctrl_diff',
-    TOOL_DESCRIPTIONS.rctrl_diff,
+    'umbel_diff',
+    TOOL_DESCRIPTIONS.umbel_diff,
     { name: z.string(), from: z.number().int().optional(), to: z.number().int().optional() },
-    tools.rctrl_diff,
+    tools.umbel_diff,
   );
   server.tool(
-    'rctrl_capture',
-    TOOL_DESCRIPTIONS.rctrl_capture,
+    'umbel_capture',
+    TOOL_DESCRIPTIONS.umbel_capture,
     VerbSchemas.capture.shape,
-    tools.rctrl_capture,
+    tools.umbel_capture,
   );
-  server.tool('rctrl_logs', TOOL_DESCRIPTIONS.rctrl_logs, { name: z.string() }, tools.rctrl_logs);
+  server.tool('umbel_logs', TOOL_DESCRIPTIONS.umbel_logs, { name: z.string() }, tools.umbel_logs);
   server.tool(
-    'rctrl_help',
-    TOOL_DESCRIPTIONS.rctrl_help,
+    'umbel_help',
+    TOOL_DESCRIPTIONS.umbel_help,
     { topic: z.enum(HELP_TOPICS).optional() },
-    tools.rctrl_help,
+    tools.umbel_help,
   );
 
   const transport = new StdioServerTransport();

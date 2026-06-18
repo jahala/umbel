@@ -1,4 +1,4 @@
-# rctrl — Architecture v3
+# umbel — Architecture v3
 
 > Remote-control interactive agent CLIs (Claude Code, Codex, Gemini) over tmux.
 > One binary, three faces, **pluggable providers**.
@@ -11,7 +11,7 @@
 |---|---|---|
 | Claude Code only | Provider abstraction with `ClaudeProvider`, `CodexProvider`, `GeminiProvider` | Codex and Gemini have near-identical hook lifecycles to Claude; the four points of provider-specific behavior can be cleanly abstracted (see §4) |
 | Spawn-time JSONL discovery (`discoverSessionJsonl`) | Lazy resolution via `events/transcript-path` written by Stop hook from the payload | Real claude doesn't write the transcript until first message — discovery at spawn-time is impossible. The hook payload contains `transcript_path` for free. |
-| Argv parser: short flags consume next non-dash arg | Short flags are ALWAYS boolean | `rctrl -p "prompt"` was eating the prompt. Caught by smoke testing; saved by root-cause investigation. |
+| Argv parser: short flags consume next non-dash arg | Short flags are ALWAYS boolean | `umbel -p "prompt"` was eating the prompt. Caught by smoke testing; saved by root-cause investigation. |
 | spawn passes full process.env to tmux | Inherit the environment MINUS a denylist (`SHELL PROMPT_COMMAND BASH_ENV ZDOTDIR ENV`), plus explicit `--env`/`env:` override | A worker should run with the user's environment (proxies, API keys, custom config dirs reach it) — like running the CLI yourself. The denylisted shell-init vars are excluded because they trigger a bash startup byte racing the first send-keys. (An earlier 7-var allowlist silently stripped everything else.) |
 | `lastAssistantMessage` walks backward stopping at first non-assistant | Finds last assistant index, then walks back from there | Real claude appends `system`/`last-prompt`/`ai-title`/`permission-mode` metadata AFTER the assistant response. |
 | `encodeCwd` literal slash replacement | `realpathSync` before encoding | macOS `/var/folders` resolves to `/private/var/folders`; claude encodes the resolved path. |
@@ -21,17 +21,17 @@ Net: provider-agnostic core, sustained Claude Code support, and provider-shaped 
 
 ## 1. What it is
 
-`rctrl` is a single TypeScript binary (Bun-compiled) that drives interactive agent CLIs running inside tmux sessions, with a pluggable provider interface so the same orchestration works against Claude, Codex, or Gemini.
+`umbel` is a single TypeScript binary (Bun-compiled) that drives interactive agent CLIs running inside tmux sessions, with a pluggable provider interface so the same orchestration works against Claude, Codex, or Gemini.
 
-It exists because Anthropic priced `claude -p` at API rates while leaving the interactive TUI on subscription billing. Same trade-off applies (or will) for other vendors. `rctrl` is the *interactive-TUI-as-API* layer.
+It exists because Anthropic priced `claude -p` at API rates while leaving the interactive TUI on subscription billing. Same trade-off applies (or will) for other vendors. `umbel` is the *interactive-TUI-as-API* layer.
 
 Three faces, one engine, multiple providers:
 
 | Face | Command | For |
 |---|---|---|
-| Headless drop-in | `rctrl -p [PROMPT]` | swap-in for `claude -p` / `codex -p` / `gemini -p` |
-| Supervisor | `rctrl spawn --provider {claude,codex,gemini} ...` (also MCP) | agent orchestrating other agents |
-| Workflow runner | `rctrl run workflow.yaml` (per-worker `provider:`) | declarative multi-agent pipelines, optionally mixed-provider |
+| Headless drop-in | `umbel -p [PROMPT]` | swap-in for `claude -p` / `codex -p` / `gemini -p` |
+| Supervisor | `umbel spawn --provider {claude,codex,gemini} ...` (also MCP) | agent orchestrating other agents |
+| Workflow runner | `umbel run workflow.yaml` (per-worker `provider:`) | declarative multi-agent pipelines, optionally mixed-provider |
 
 ## 2. Principles (unchanged from v2)
 
@@ -80,7 +80,7 @@ export interface AgentProvider {
   name: 'claude' | 'codex' | 'gemini' | 'aider' | string;
 
   buildLaunch(opts: {
-    sessionId: string;          // rctrl session name (= tmux session suffix)
+    sessionId: string;          // umbel session name (= tmux session suffix)
     cwd: string;
     hookScriptPath: string;     // absolute path to our stop.sh
     model?: string;
@@ -88,7 +88,7 @@ export interface AgentProvider {
   }): ProviderLaunchSpec;
 
   // Which lifecycle event name marks end-of-turn in this provider's hook
-  // payload? rctrl's stop.sh is generic — it captures transcript_path from
+  // payload? umbel's stop.sh is generic — it captures transcript_path from
   // whatever payload it gets. This field is informational + tests.
   stopEventName: string;        // 'Stop' for Claude/Codex, 'AfterAgent' for Gemini
 
@@ -100,7 +100,7 @@ export interface AgentProvider {
   // Mutually exclusive with hook-based completion; the operations layer
   // checks this field to choose its wait strategy.
   anchorStrategy?: {
-    sentinel: string;           // e.g. '<<<RCTRL_DONE_8e2a>>>'
+    sentinel: string;           // e.g. '<<<UMBEL_DONE_8e2a>>>'
     promptSuffix: string;       // appended to user prompts so the model
                                 // is instructed to emit the sentinel
   };
@@ -120,11 +120,11 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - Custom endpoints: pointing `ANTHROPIC_BASE_URL`/`AUTH_TOKEN`/`MODEL` (via the env passthrough) at any Anthropic-compatible API (DeepSeek, OpenRouter, local) runs that model under Claude Code's harness — the **second** model-agnostic lane alongside OpenCode, API-billed not subscription. Not a new provider: same binary, hooks, transcript.
 
 ### CodexProvider (`src/core/providers/codex.ts`)
-- `buildLaunch` → declares a global `$CODEX_HOME/hooks.json` (referencing our stop.sh) in an rctrl-managed home (`$RCTRL_STATE/codex-home`); a project `<cwd>/.codex/hooks.json` is ignored inside linked git worktrees (see `docs/codex-worktree-hooks.md`)
+- `buildLaunch` → declares a global `$CODEX_HOME/hooks.json` (referencing our stop.sh) in an umbel-managed home (`$UMBEL_STATE/codex-home`); a project `<cwd>/.codex/hooks.json` is ignored inside linked git worktrees (see `docs/codex-worktree-hooks.md`)
 - `files: [{ path: '<codexHome>/hooks.json', content, shared: true }, { symlinkTo auth.json }, { copyFrom config.toml }]` — `shared` infra, set up idempotently, NOT recorded in `providerFiles` or cleaned on kill
 - `stopEventName: 'Stop'`
 - `parseTranscript`: Codex JSONL envelope (`event_msg` items, last `agent_message` is the response)
-- No equivalent of `--session-id` for transcript filename — hook payload's `transcript_path` is the source of truth (may be `null` per Codex docs; rctrl falls back to dir-snapshot)
+- No equivalent of `--session-id` for transcript filename — hook payload's `transcript_path` is the source of truth (may be `null` per Codex docs; umbel falls back to dir-snapshot)
 
 ### GeminiProvider (`src/core/providers/gemini.ts`)
 - `buildLaunch` → writes `<cwd>/.gemini/settings.json` with `AfterAgent` hook
@@ -133,8 +133,8 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - `parseTranscript`: Gemini transcript JSONL envelope (`message_response` items, last one is the response)
 
 ### OpenCodeProvider (`src/core/providers/opencode.ts`) — verified against opencode v1.15.12 (2026-05-29)
-- `buildLaunch` → `bin: 'opencode', args: ['-m', model]`; model is ANY `provider/model` — free+keyless (`opencode/big-pickle`, `opencode/deepseek-v4-flash-free`), paid (`anthropic/…`, `openrouter/deepseek/…`), or local (`ollama/…`). Paid-model API keys reach the worker via the **inherited env** (the PR1 env passthrough) or `--env KEY=VAL`; custom providers (openrouter/ollama) also need a one-time provider block in the user's own opencode config. The free model is for rctrl's $0 smoke only — real use sets `--model`. MUST run in the tmux PTY — headless non-TTY `opencode run` hangs after bootstrap.
-- Hook delivery (no shell-hook equivalent): rctrl installs a bundled JS plugin ONCE as infrastructure (like `stop.sh`) — writes `~/.rctrl/hooks/opencode-stop.ts` and **idempotently merges** its path into the user's GLOBAL opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`, default `~/.config/opencode/`), preserving existing keys. VERIFIED: opencode honors `XDG_CONFIG_HOME` and MERGES global+project config, so the user's project model-config still loads. The plugin no-ops unless `RCTRL_SESSION_ID` is set → inert in normal use. On `session.status {type:"idle"}` it touches `events/stop` + writes the sessionID to `events/session-id`. NOT per-cwd / NOT per-session → no worktree mutation, no kill-restore, crash-safe, reversible. Tests isolate via `XDG_CONFIG_HOME` so the real `~/.config` is never touched.
+- `buildLaunch` → `bin: 'opencode', args: ['-m', model]`; model is ANY `provider/model` — free+keyless (`opencode/big-pickle`, `opencode/deepseek-v4-flash-free`), paid (`anthropic/…`, `openrouter/deepseek/…`), or local (`ollama/…`). Paid-model API keys reach the worker via the **inherited env** (the PR1 env passthrough) or `--env KEY=VAL`; custom providers (openrouter/ollama) also need a one-time provider block in the user's own opencode config. The free model is for umbel's $0 smoke only — real use sets `--model`. MUST run in the tmux PTY — headless non-TTY `opencode run` hangs after bootstrap.
+- Hook delivery (no shell-hook equivalent): umbel installs a bundled JS plugin ONCE as infrastructure (like `stop.sh`) — writes `~/.umbel/hooks/opencode-stop.ts` and **idempotently merges** its path into the user's GLOBAL opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`, default `~/.config/opencode/`), preserving existing keys. VERIFIED: opencode honors `XDG_CONFIG_HOME` and MERGES global+project config, so the user's project model-config still loads. The plugin no-ops unless `UMBEL_SESSION_ID` is set → inert in normal use. On `session.status {type:"idle"}` it touches `events/stop` + writes the sessionID to `events/session-id`. NOT per-cwd / NOT per-session → no worktree mutation, no kill-restore, crash-safe, reversible. Tests isolate via `XDG_CONFIG_HOME` so the real `~/.config` is never touched.
 - **No JSONL transcript** (SQLite-only). Read path: run `opencode export <sessionID>`; `parseTranscript`/`extractActions`/`extractTurns` parse that JSON (`info` + `messages[]` + `parts[]`). The one architectural extension vs codex/gemini: the provider declares the command via a PURE `exportTranscript(sid)` method; the operations layer execs it (side effect at the edge).
 - `stopEventName: 'session.status'` (informational; wait keys off `events/stop` mtime). `startupDialogs: []`; `readyMatch: /Ask anything\.\.\.|Build · /`. Spike-verified end-to-end: plugin loads from cwd config, `session.status idle` reaches the plugin, `opencode/big-pickle` completes a turn keyless in a tmux PTY.
 
@@ -149,7 +149,7 @@ Three lines + jq extraction. **Unchanged from v2.1.** Works for Claude, Codex, G
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-state="${RCTRL_STATE:?}/sessions/${RCTRL_SESSION_ID:?}"
+state="${UMBEL_STATE:?}/sessions/${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
 payload=$(cat || true)
 if command -v jq >/dev/null 2>&1; then
@@ -168,11 +168,11 @@ Identical to v2 (`booting → ready → busy → ready → dead`). The provider 
 ### CLI
 
 ```bash
-rctrl spawn --name reviewer --provider claude --model sonnet
-rctrl spawn --name fixer    --provider codex  --model o4-mini
-rctrl spawn --name docs     --provider gemini --model gemini-2.5-pro
+umbel spawn --name reviewer --provider claude --model sonnet
+umbel spawn --name fixer    --provider codex  --model o4-mini
+umbel spawn --name docs     --provider gemini --model gemini-2.5-pro
 
-rctrl -p --provider codex "summarize this PR"
+umbel -p --provider codex "summarize this PR"
 ```
 
 Default provider: `claude` (backward compat with v2).
@@ -202,20 +202,20 @@ steps:
 
 ### MCP
 
-`rctrl_spawn` tool gains `provider` and `env` fields. Same MCP server, same engine.
+`umbel_spawn` tool gains `provider` and `env` fields. Same MCP server, same engine.
 
 ### Worker environment
 
-A spawned worker inherits the rctrl process's environment by default — it should
+A spawned worker inherits the umbel process's environment by default — it should
 behave like running the CLI yourself, so exported proxies, API keys, and custom
 config dirs reach it. A denylist (`SHELL`, `PROMPT_COMMAND`, `BASH_ENV`,
 `ZDOTDIR`, `ENV`) is excluded: those trigger a shell startup byte that races the
 first send-keys. Override or add per-worker vars with `--env KEY=VAL`
-(repeatable), the MCP `rctrl_spawn` `env` object, or a worker `env:` map in YAML.
+(repeatable), the MCP `umbel_spawn` `env` object, or a worker `env:` map in YAML.
 Overrides are spawn-time only — **never persisted to `meta.json`** (no secrets on
 disk).
 
-Caveats: (1) GUI MCP hosts (e.g. Conductor) start `rctrl mcp` with a resolved
+Caveats: (1) GUI MCP hosts (e.g. Conductor) start `umbel mcp` with a resolved
 shell env, but a var exported *after* startup needs a server restart to appear;
 for host-independent injection set it in the MCP server's `env` config block.
 (2) Inheriting means a `*_API_KEY` in your shell reaches the worker — faithful to
@@ -225,7 +225,7 @@ don't export keys you don't want used.
 ## 9. State on disk (additions to v2)
 
 ```
-~/.rctrl/
+~/.umbel/
 ├─ sessions/<name>/
 │  ├─ meta.json                    # Session struct — NEW field: provider
 │  ├─ provider-files/              # NEW: provider-written files to clean up on kill
@@ -265,8 +265,8 @@ For Aider (and any future hookless CLI), `anchorStrategy` provides a workable bu
 
 ```ts
 anchorStrategy: {
-  sentinel: '<<<RCTRL_DONE_8e2a>>>',
-  promptSuffix: '\n\nWhen finished, emit exactly this string on its own line: <<<RCTRL_DONE_8e2a>>>',
+  sentinel: '<<<UMBEL_DONE_8e2a>>>',
+  promptSuffix: '\n\nWhen finished, emit exactly this string on its own line: <<<UMBEL_DONE_8e2a>>>',
 },
 ```
 
@@ -282,7 +282,7 @@ Deferred to v4 — focus v3 on the three hook-based providers first.
 
 ## 12. Migration from v2
 
-Existing rctrl users (Claude only) keep working because:
+Existing umbel users (Claude only) keep working because:
 1. `provider: claude` is the default everywhere
 2. Existing `Session` shape gains optional fields; old `meta.json` parses fine
 3. CLI verbs accept `--provider` as a new optional flag
@@ -309,7 +309,7 @@ Strict bottom-up. Each step gates on its tests passing.
 ## 14. Open questions (verify during implementation)
 
 1. **Codex `--config-dir` flag**: does Codex support overriding the hook config directory via a CLI flag? Would eliminate the file-write-and-cleanup path. (TBD during fake-codex research.)
-2. **Codex transcript_path nullability**: their docs say it "may be null". Under what circumstances? Does rctrl need a defensive code path that hits `discoverSessionJsonl`?
+2. **Codex transcript_path nullability**: their docs say it "may be null". Under what circumstances? Does umbel need a defensive code path that hits `discoverSessionJsonl`?
 3. **Gemini inline-config flag**: any way to pass settings without a file on disk?
 4. **Per-provider `--session-id` equivalents**: Codex and Gemini transcript filenames. Are they controllable?
 5. **Model enum vs string**: should `meta.model` be a free-form string (current proposal) or a discriminated union per provider? Free-form is simpler; provider-validated is stricter.
@@ -319,7 +319,7 @@ These get answered when we build each provider.
 ## 15. What v3 does NOT do
 
 - No remote/distributed sessions
-- No web UI; `rctrl status` / `rctrl logs` are the UI
+- No web UI; `umbel status` / `umbel logs` are the UI
 - No automatic worktree management
 - No keystone retry/circuit-breaker primitives
 - No automatic provider detection — user picks
@@ -328,6 +328,6 @@ These get answered when we build each provider.
 
 ## 16. The pricing context (unchanged from v2)
 
-Each major vendor priced their non-interactive (`-p`-style) mode at API rates while leaving interactive on subscription. This is the underlying reason rctrl exists. The trade-offs documented in `docs/tos.md` still apply per-provider — running automated workflows against a subscription is the gray zone; doing it commercially at scale is not defensible.
+Each major vendor priced their non-interactive (`-p`-style) mode at API rates while leaving interactive on subscription. This is the underlying reason umbel exists. The trade-offs documented in `docs/tos.md` still apply per-provider — running automated workflows against a subscription is the gray zone; doing it commercially at scale is not defensible.
 
 This is, plainly, a tool for solo developers parallelizing their own work. Multi-CLI doesn't change that — it just expands which subscription you're using.

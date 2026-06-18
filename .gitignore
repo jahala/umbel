@@ -2,7 +2,7 @@
 # does not, which let a build symlink get committed in #33 and broke CI on checkout)
 node_modules
 dist/
-.rctrl-state/
+.umbel-state/
 *.log
 .DS_Store
 .context/

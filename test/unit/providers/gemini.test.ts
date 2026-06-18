@@ -54,7 +54,7 @@ describe('GeminiProvider.buildLaunch', () => {
   });
 
   test('with notifyScriptPath, settings.json registers a Notification hook', () => {
-    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const notify = '/home/user/.umbel/hooks/notify.sh';
     const spec = GeminiProvider.buildLaunch({
       sessionId: 'test-session',
       cwd: '/tmp/test-project',
@@ -97,7 +97,7 @@ describe('GeminiProvider.buildLaunch', () => {
   });
 
   test('settings.json has AfterAgent hook block with hookScriptPath', () => {
-    const hookScriptPath = '/home/user/.rctrl/hooks/stop.sh';
+    const hookScriptPath = '/home/user/.umbel/hooks/stop.sh';
     const spec = GeminiProvider.buildLaunch({
       sessionId: 'test-session',
       cwd: '/tmp/test-project',
@@ -134,7 +134,7 @@ describe('GeminiProvider.buildLaunch', () => {
     expect(afterAgentGroup.matcher).toBe('*');
   });
 
-  test('settings.json hook has type=command, name=rctrl-stop, timeout=60000', () => {
+  test('settings.json hook has type=command, name=umbel-stop, timeout=60000', () => {
     const spec = GeminiProvider.buildLaunch({
       sessionId: 'test-session',
       cwd: '/tmp/test-project',
@@ -150,7 +150,7 @@ describe('GeminiProvider.buildLaunch', () => {
     };
     const hookEntry = settings.hooks.AfterAgent[0]!.hooks[0]!;
     expect(hookEntry.type).toBe('command');
-    expect(hookEntry.name).toBe('rctrl-stop');
+    expect(hookEntry.name).toBe('umbel-stop');
     expect(hookEntry.timeout).toBe(60000);
   });
 });

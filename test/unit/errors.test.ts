@@ -2,10 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import {
   HookTimeoutError,
   JsonlMalformedError,
-  RctrlUsageError,
   SessionDeadError,
   SessionNotFoundError,
   TmuxError,
+  UmbelUsageError,
   WaitTimeoutError,
   WorkflowCycleError,
 } from '../../src/core/errors.ts';
@@ -133,19 +133,19 @@ describe('WaitTimeoutError', () => {
   });
 });
 
-describe('RctrlUsageError', () => {
+describe('UmbelUsageError', () => {
   test('is instanceof Error', () => {
-    const err = new RctrlUsageError('missing --name');
+    const err = new UmbelUsageError('missing --name');
     expect(err instanceof Error).toBe(true);
   });
 
-  test('name is RctrlUsageError', () => {
-    const err = new RctrlUsageError('bad flag');
-    expect(err.name).toBe('RctrlUsageError');
+  test('name is UmbelUsageError', () => {
+    const err = new UmbelUsageError('bad flag');
+    expect(err.name).toBe('UmbelUsageError');
   });
 
   test('message propagates', () => {
-    const err = new RctrlUsageError('invalid model: turbo');
+    const err = new UmbelUsageError('invalid model: turbo');
     expect(err.message).toBe('invalid model: turbo');
   });
 });

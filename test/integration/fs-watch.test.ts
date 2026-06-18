@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 async function setup(): Promise<string> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-fs-watch-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-fs-watch-test-'));
   return tmpDir;
 }
 

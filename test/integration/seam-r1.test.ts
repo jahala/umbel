@@ -1,8 +1,8 @@
 /**
  * R1 seam-blocker tests — RED suite that drives five deliverables:
  *
- * D1. `rctrl wait --json [--since N]` — JSON stdout, exit 0 regardless of reason
- * D2. `rctrl send --json` — prints {"sinceMtime": N} to stdout
+ * D1. `umbel wait --json [--since N]` — JSON stdout, exit 0 regardless of reason
+ * D2. `umbel send --json` — prints {"sinceMtime": N} to stdout
  * D3. MCP sinceMtime wiring — VerbSchemas.wait accepts sinceMtime; mcp handler threads it
  * D4. allowedTools work-or-error — codex/gemini/opencode spawn throws AllowedToolsUnsupportedError
  * D5. Exit-code split — idle returns 123, not 126; HELP lists all codes
@@ -103,17 +103,17 @@ async function spawnCli(args: string[], env: Record<string, string> = {}): Promi
 // D1/D2/D5 — CLI JSON flags and exit-code split (subprocess tests)
 // ---------------------------------------------------------------------------
 
-describe('rctrl send --json + wait --json integration', () => {
+describe('umbel send --json + wait --json integration', () => {
   test('send --json prints {"sinceMtime": N} and wait --json exits 0 with JSON reason', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-sw-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-sw-'));
     const name = `r1sw${randomBytes(4).toString('hex')}`;
     const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
     const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
     await mkdir(jsonlDir, { recursive: true });
 
     const baseEnv = {
-      RCTRL_STATE: tmpDir,
-      RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
+      UMBEL_STATE: tmpDir,
+      UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
       FAKE_CLAUDE_JSONL_DIR: jsonlDir,
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
     };
@@ -168,7 +168,7 @@ describe('exit-code split: idle=123, HELP lists exit codes', () => {
 
 describe('D4: allowedTools with unsupported providers exits 2', () => {
   test('spawn codex --allowed-tools exits 2 before side effects', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-at-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-at-'));
     try {
       const r = await spawnCli(
         [
@@ -183,8 +183,8 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
           'Read,Write',
         ],
         {
-          RCTRL_STATE: tmpDir,
-          RCTRL_CODEX_BIN: FAKE_CODEX,
+          UMBEL_STATE: tmpDir,
+          UMBEL_CODEX_BIN: FAKE_CODEX,
         },
       );
       expect(r.code).toBe(2);
@@ -196,7 +196,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
 
   test('spawn gemini --allowed-tools exits 2 before side effects', async () => {
     const FAKE_GEMINI = join(import.meta.dir, '../fixtures/fake-gemini.sh');
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-atg-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-atg-'));
     try {
       const r = await spawnCli(
         [
@@ -211,8 +211,8 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
           'Read',
         ],
         {
-          RCTRL_STATE: tmpDir,
-          RCTRL_GEMINI_BIN: FAKE_GEMINI,
+          UMBEL_STATE: tmpDir,
+          UMBEL_GEMINI_BIN: FAKE_GEMINI,
         },
       );
       expect(r.code).toBe(2);
@@ -223,7 +223,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
   });
 
   test('spawn claude --allowed-tools succeeds (still supported)', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-atc-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-atc-'));
     const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
     const jsonlDir = join(homedir(), '.claude', 'projects', encodedCwd);
     await mkdir(jsonlDir, { recursive: true });
@@ -242,15 +242,15 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
           'Read,Write',
         ],
         {
-          RCTRL_STATE: tmpDir,
-          RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
+          UMBEL_STATE: tmpDir,
+          UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
           FAKE_CLAUDE_JSONL_DIR: jsonlDir,
           FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
         },
       );
       expect(r.code).toBe(0);
     } finally {
-      await spawnCli(['kill', name], { RCTRL_STATE: tmpDir }).catch(() => undefined);
+      await spawnCli(['kill', name], { UMBEL_STATE: tmpDir }).catch(() => undefined);
       await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }, 30_000);
@@ -262,9 +262,9 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
 
 describe('parser: boolean flags do not consume positionals', () => {
   test('status --json <name> targets the named session, not the whole list', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-bf-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-bf-'));
     try {
-      const r = await spawnCli(['status', '--json', 'noexist-bf'], { RCTRL_STATE: tmpDir });
+      const r = await spawnCli(['status', '--json', 'noexist-bf'], { UMBEL_STATE: tmpDir });
       // If --json swallowed the name, this would list all sessions and exit 0.
       expect(r.code).not.toBe(0);
       expect(r.stderr).toContain('noexist-bf');
@@ -274,9 +274,9 @@ describe('parser: boolean flags do not consume positionals', () => {
   });
 
   test('send --json <name> <prompt> resolves the name positionally', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-bs-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-bs-'));
     try {
-      const r = await spawnCli(['send', '--json', 'noexist-bs', 'hello'], { RCTRL_STATE: tmpDir });
+      const r = await spawnCli(['send', '--json', 'noexist-bs', 'hello'], { UMBEL_STATE: tmpDir });
       // Pre-fix the parser ate 'noexist-bs' as --json's value, making 'hello'
       // the name and the prompt missing. The error must name the session.
       expect(r.stderr).toContain('noexist-bs');
@@ -288,9 +288,9 @@ describe('parser: boolean flags do not consume positionals', () => {
 
 describe('wait --since validation', () => {
   test('non-numeric --since is a usage error, not a silent NaN baseline', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-r1-sn-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-sn-'));
     try {
-      const r = await spawnCli(['wait', '--since', 'abc', 'whatever'], { RCTRL_STATE: tmpDir });
+      const r = await spawnCli(['wait', '--since', 'abc', 'whatever'], { UMBEL_STATE: tmpDir });
       expect(r.code).toBe(2);
       expect(r.stderr).toContain('--since');
     } finally {

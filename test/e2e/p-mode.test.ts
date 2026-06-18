@@ -17,9 +17,9 @@ let tmpDir = '';
 let projectsDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-p-mode-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-p-mode-test-'));
   projectsDir = join(tmpDir, 'projects');
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionName(suffix: string): string {

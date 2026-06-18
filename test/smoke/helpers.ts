@@ -24,7 +24,7 @@ const PROVIDER_WHICH: Record<Provider, string> = {
 };
 
 export function smokeEnabledFor(provider: Provider): boolean {
-  if (process.env.RCTRL_SMOKE !== '1') return false;
+  if (process.env.UMBEL_SMOKE !== '1') return false;
   for (const bin of PROVIDER_BINS[provider]) {
     if (existsSync(bin)) return true;
   }
@@ -33,7 +33,7 @@ export function smokeEnabledFor(provider: Provider): boolean {
 }
 
 function skipReasonFor(provider: Provider): string {
-  if (process.env.RCTRL_SMOKE !== '1') return 'RCTRL_SMOKE != 1';
+  if (process.env.UMBEL_SMOKE !== '1') return 'UMBEL_SMOKE != 1';
   return `${provider} binary not found`;
 }
 

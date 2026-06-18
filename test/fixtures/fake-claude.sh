@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fake `claude` binary for e2e tests.
 # Env vars:
-#   RCTRL_STATE           (so hook can find session dir)
-#   RCTRL_SESSION_ID      (passed by rctrl when launching)
+#   UMBEL_STATE           (so hook can find session dir)
+#   UMBEL_SESSION_ID      (passed by umbel when launching)
 #   FAKE_CLAUDE_DELAY     optional, ms to sleep before responding (default 0)
 #   FAKE_CLAUDE_JSONL_DIR optional, write JSONL here instead of ~/.claude/projects/...
 #   FAKE_CLAUDE_HOOK      optional, exec this (stop.sh) when done
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 DELAY="${FAKE_CLAUDE_DELAY:-0}"
-SESSION_ID="${RCTRL_SESSION_ID:-fake-session}"
+SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
   mkdir -p "${FAKE_CLAUDE_JSONL_DIR}"

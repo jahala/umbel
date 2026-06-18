@@ -3,10 +3,10 @@
  *
  * Calls createMcpTools() directly — no subprocess, no stdio transport —
  * so Bun coverage instruments mcp.ts. Uses real fake-claude, real tmux,
- * real RCTRL_STATE in tmpdir.
+ * real UMBEL_STATE in tmpdir.
  *
- * Covers: rctrl_spawn, rctrl_send, rctrl_wait, rctrl_status, rctrl_ls,
- *         rctrl_kill, rctrl_read, rctrl_capture, rctrl_logs
+ * Covers: umbel_spawn, umbel_send, umbel_wait, umbel_status, umbel_ls,
+ *         umbel_kill, umbel_read, umbel_capture, umbel_logs
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
@@ -32,9 +32,9 @@ function sessionName(suffix: string): string {
 const CREATED: string[] = [];
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-mcp-inproc-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-mcp-inproc-'));
   projectsDir = join(tmpDir, 'projects');
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 afterEach(async () => {
@@ -74,29 +74,29 @@ function makeToolOpts(
 }
 
 // ---------------------------------------------------------------------------
-// rctrl_spawn
+// umbel_spawn
 // ---------------------------------------------------------------------------
 
-describe('rctrl_spawn', () => {
-  test('rctrl_spawn with bad name propagates RctrlUsageError', async () => {
+describe('umbel_spawn', () => {
+  test('umbel_spawn with bad name propagates UmbelUsageError', async () => {
     const env = await setup();
 
     const tools = createMcpTools({
       ...makeToolOpts(env, tmpDir),
     });
 
-    // Names with spaces are invalid — rctrl_spawn rejects them as RctrlUsageError
+    // Names with spaces are invalid — umbel_spawn rejects them as UmbelUsageError
     await expect(
-      tools.rctrl_spawn({ name: 'INVALID NAME WITH SPACES', cwd: tmpDir }),
+      tools.umbel_spawn({ name: 'INVALID NAME WITH SPACES', cwd: tmpDir }),
     ).rejects.toBeDefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_spawn with fake-claude via env
+// umbel_spawn with fake-claude via env
 // ---------------------------------------------------------------------------
 
-describe('rctrl_spawn — with fake claude', () => {
+describe('umbel_spawn — with fake claude', () => {
   test('spawn via tool returns JSON with session name', async () => {
     const env = await setup();
     const name = sessionName('spfk');
@@ -145,8 +145,8 @@ describe('rctrl_spawn — with fake claude', () => {
 
     expect(spawnResult.session.name as string).toBe(name);
 
-    // Now test rctrl_status which reads the spawned session
-    const statusResult = await tools.rctrl_status({ name });
+    // Now test umbel_status which reads the spawned session
+    const statusResult = await tools.umbel_status({ name });
     const entries = JSON.parse(statusResult.content[0]?.text ?? '[]') as Array<{ name: string }>;
     expect(entries.length).toBe(1);
     expect(entries[0]?.name).toBe(name);
@@ -154,55 +154,55 @@ describe('rctrl_spawn — with fake claude', () => {
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_send
+// umbel_send
 // ---------------------------------------------------------------------------
 
-describe('rctrl_send', () => {
+describe('umbel_send', () => {
   test('send to non-existent session propagates error', async () => {
     const env = await setup();
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
 
     await expect(
-      tools.rctrl_send({ name: `bogus-${RUN_ID}`, prompt: 'hello' }),
+      tools.umbel_send({ name: `bogus-${RUN_ID}`, prompt: 'hello' }),
     ).rejects.toBeDefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_status
+// umbel_status
 // ---------------------------------------------------------------------------
 
-describe('rctrl_status', () => {
+describe('umbel_status', () => {
   test('status with no name returns array (empty when no sessions)', async () => {
     const env = await setup();
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
 
-    const result = await tools.rctrl_status({});
+    const result = await tools.umbel_status({});
     const entries = JSON.parse(result.content[0]?.text ?? 'null');
     expect(Array.isArray(entries)).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_ls
+// umbel_ls
 // ---------------------------------------------------------------------------
 
-describe('rctrl_ls', () => {
+describe('umbel_ls', () => {
   test('ls returns array of sessions', async () => {
     const env = await setup();
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
 
-    const result = await tools.rctrl_ls({} as never);
+    const result = await tools.umbel_ls({} as never);
     const entries = JSON.parse(result.content[0]?.text ?? 'null');
     expect(Array.isArray(entries)).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_read (session with null jsonlPath returns empty string)
+// umbel_read (session with null jsonlPath returns empty string)
 // ---------------------------------------------------------------------------
 
-describe('rctrl_read', () => {
+describe('umbel_read', () => {
   test('read session with null jsonlPath and no transcript-path returns empty content', async () => {
     const env = await setup();
     const name = sessionName('readnull');
@@ -226,7 +226,7 @@ describe('rctrl_read', () => {
     await writeMeta(name, session, env);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.rctrl_read({ name });
+    const result = await tools.umbel_read({ name });
     // null jsonlPath AND no events/transcript-path → empty text
     expect(result.content[0]?.text).toBe('');
   });
@@ -274,16 +274,16 @@ describe('rctrl_read', () => {
     await writeMeta(name, session, env);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.rctrl_read({ name });
+    const result = await tools.umbel_read({ name });
     expect(result.content[0]?.text).toBe('Resolved from fallback.');
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_read (session with a real jsonlPath returns the last assistant message)
+// umbel_read (session with a real jsonlPath returns the last assistant message)
 // ---------------------------------------------------------------------------
 
-describe('rctrl_read — with jsonl', () => {
+describe('umbel_read — with jsonl', () => {
   test('read session with jsonlPath returns last assistant message', async () => {
     const env = await setup();
     const name = sessionName('readjsonl');
@@ -322,16 +322,16 @@ describe('rctrl_read — with jsonl', () => {
     await writeMeta(name, session, env);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.rctrl_read({ name });
+    const result = await tools.umbel_read({ name });
     expect(result.content[0]?.text).toContain('Hello from mcp-read test');
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_capture
+// umbel_capture
 // ---------------------------------------------------------------------------
 
-describe('rctrl_capture', () => {
+describe('umbel_capture', () => {
   test('capture returns pane content string', async () => {
     const env = await setup();
     const name = sessionName('captest');
@@ -341,33 +341,33 @@ describe('rctrl_capture', () => {
     CREATED.push(name);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.rctrl_capture({ name, lines: 10 });
+    const result = await tools.umbel_capture({ name, lines: 10 });
     // Content is a string (pane text)
     expect(typeof result.content[0]?.text).toBe('string');
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_logs
+// umbel_logs
 // ---------------------------------------------------------------------------
 
-describe('rctrl_logs', () => {
+describe('umbel_logs', () => {
   test('logs returns empty string when log file absent', async () => {
     const env = await setup();
     const name = sessionName('logstest');
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
     // No session created — log file doesn't exist — should return ''
-    const result = await tools.rctrl_logs({ name });
+    const result = await tools.umbel_logs({ name });
     expect(result.content[0]?.text).toBe('');
   });
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_kill
+// umbel_kill
 // ---------------------------------------------------------------------------
 
-describe('rctrl_kill', () => {
+describe('umbel_kill', () => {
   test('kill existing session returns "killed"', async () => {
     const env = await setup();
     const name = sessionName('killmcp');
@@ -390,7 +390,7 @@ describe('rctrl_kill', () => {
     await writeMeta(name, session, env);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.rctrl_kill({ name, keepState: false });
+    const result = await tools.umbel_kill({ name, keepState: false });
 
     expect(result.content[0]?.text).toBe('killed');
 
@@ -405,10 +405,10 @@ describe('rctrl_kill', () => {
 });
 
 // ---------------------------------------------------------------------------
-// rctrl_wait
+// umbel_wait
 // ---------------------------------------------------------------------------
 
-describe('rctrl_wait', () => {
+describe('umbel_wait', () => {
   test('wait with already-aborted signal returns reason=aborted', async () => {
     const env = await setup();
     const name = sessionName('waitmcp');
@@ -438,7 +438,7 @@ describe('rctrl_wait', () => {
       signal: ac.signal,
     });
 
-    const result = await tools.rctrl_wait({
+    const result = await tools.umbel_wait({
       name,
       until: 'stop',
     });

@@ -1,12 +1,12 @@
 name: Bug report
-description: Something rctrl does wrong, or differently than the docs say.
+description: Something umbel does wrong, or differently than the docs say.
 labels: ["bug"]
 body:
   - type: textarea
     id: what-happened
     attributes:
       label: What happened
-      description: What did rctrl do, and what did you expect instead?
+      description: What did umbel do, and what did you expect instead?
       placeholder: |
         Expected: ...
         Actual:   ...
@@ -19,7 +19,7 @@ body:
       label: Reproduction
       description: Minimal steps or commands. A short repo or a paste is fine.
       placeholder: |
-        1. `rctrl foo --bar`
+        1. `umbel foo --bar`
         2. Look at the output
       render: shell
     validations:
@@ -28,8 +28,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: rctrl version
-      placeholder: "Output of `rctrl --version`"
+      label: umbel version
+      placeholder: "Output of `umbel --version`"
     validations:
       required: true
 

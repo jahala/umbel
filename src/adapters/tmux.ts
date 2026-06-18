@@ -5,7 +5,7 @@ import { TmuxError } from '../core/errors.ts';
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const PREFIX = 'rctrl-';
+const PREFIX = 'umbel-';
 
 function prefixed(name: string): string {
   return `${PREFIX}${name}`;
@@ -88,7 +88,7 @@ export async function killSession(name: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// listSessions — returns bare names (rctrl- prefix stripped)
+// listSessions — returns bare names (umbel- prefix stripped)
 // ---------------------------------------------------------------------------
 
 export async function listSessions(): Promise<string[]> {
@@ -123,7 +123,7 @@ export async function sendText(name: string, text: string, opts?: SendTextOpts):
   const useBuffer = text.includes('\n') || text.length > 1000;
 
   if (useBuffer) {
-    const bufName = `rctrl-buf-${randomBytes(6).toString('hex')}`;
+    const bufName = `umbel-buf-${randomBytes(6).toString('hex')}`;
     // Write text to buffer via stdin (this call MUST pipe stdin)
     const loadProc = Bun.spawn(['tmux', 'load-buffer', '-b', bufName, '-'], {
       stdin: new TextEncoder().encode(text),

@@ -14,8 +14,8 @@ import { waitFor } from '../../src/operations/wait.ts';
 let tmpDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-waitdiag-'));
-  return { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-waitdiag-'));
+  return { UMBEL_STATE: tmpDir };
 }
 
 async function cleanup(): Promise<void> {

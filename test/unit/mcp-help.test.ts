@@ -4,7 +4,7 @@ import { HELP_TOPICS, helpForTopic } from '../../src/faces/mcp-help.ts';
 describe('helpForTopic', () => {
   test('no topic returns an index listing all topics', () => {
     const text = helpForTopic();
-    expect(text).toContain('rctrl_help topics');
+    expect(text).toContain('umbel_help topics');
     for (const topic of HELP_TOPICS) {
       expect(text).toContain(topic);
     }
@@ -14,10 +14,10 @@ describe('helpForTopic', () => {
     const text = helpForTopic('lifecycle');
     expect(text.length).toBeGreaterThan(500);
     expect(text).toContain('spawn');
-    expect(text).toContain('rctrl_send');
-    expect(text).toContain('rctrl_wait');
-    expect(text).toContain('rctrl_read');
-    expect(text).toContain('Pair every rctrl_send with a rctrl_wait');
+    expect(text).toContain('umbel_send');
+    expect(text).toContain('umbel_wait');
+    expect(text).toContain('umbel_read');
+    expect(text).toContain('Pair every umbel_send with a umbel_wait');
   });
 
   test('workflow topic contains the YAML schema markers', () => {
@@ -29,7 +29,7 @@ describe('helpForTopic', () => {
     expect(text).toContain('steps:');
     expect(text).toContain('needs:');
     expect(text).toContain('{{ steps.NAME.outputs.KEY }}');
-    expect(text).toContain('rctrl run');
+    expect(text).toContain('umbel run');
   });
 
   test('providers topic enumerates all three with stopEventName and hazards', () => {

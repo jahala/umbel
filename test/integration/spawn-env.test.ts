@@ -11,7 +11,7 @@ import { spawn } from '../../src/operations/spawn.ts';
 // ---------------------------------------------------------------------------
 // Worker env passthrough (TDD red)
 //
-// rctrl currently strips the worker's environment to a 7-var allowlist
+// umbel currently strips the worker's environment to a 7-var allowlist
 // (SAFE_INHERITED in src/operations/spawn.ts), so a user's exported env vars
 // (proxies, API keys, custom config dirs) silently never reach the worker.
 // These tests pin the intended behaviour: inherit the environment by default,
@@ -27,9 +27,9 @@ let tmpDir = '';
 let projectsDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-spawnenv-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-spawnenv-test-'));
   projectsDir = join(tmpDir, 'projects');
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionName(suffix: string): string {
@@ -97,7 +97,7 @@ describe('spawn — worker env passthrough', () => {
   // RED: arbitrary exported vars are stripped by the 7-var allowlist today.
   test('inherits an arbitrary exported env var into the worker', async () => {
     const env = await setup();
-    const KEY = 'RCTRL_ENVTEST_PASSTHRU';
+    const KEY = 'UMBEL_ENVTEST_PASSTHRU';
     process.env[KEY] = 'inherited-value';
     try {
       const captured = await captureWorkerEnv(makeOpts(env, '/tmp', { name: sessionName('inh') }));
@@ -114,10 +114,10 @@ describe('spawn — worker env passthrough', () => {
     // the cast documents the forthcoming SpawnOpts field. RED until then.
     const opts = {
       ...makeOpts(env, '/tmp', { name: sessionName('over') }),
-      workerEnv: { RCTRL_ENVTEST_OVERRIDE: 'explicit-value' },
+      workerEnv: { UMBEL_ENVTEST_OVERRIDE: 'explicit-value' },
     } as Parameters<typeof spawn>[0];
     const captured = await captureWorkerEnv(opts);
-    expect(captured.RCTRL_ENVTEST_OVERRIDE).toBe('explicit-value');
+    expect(captured.UMBEL_ENVTEST_OVERRIDE).toBe('explicit-value');
   });
 
   // Guard: the vars that break tmux send-keys must NEVER reach the worker,
@@ -143,7 +143,7 @@ describe('spawn — worker env passthrough', () => {
 describe('spawn — claude env reconciliation', () => {
   // RED: an inherited ANTHROPIC_API_KEY shadows a custom ANTHROPIC_AUTH_TOKEN and
   // triggers Claude Code's wedging "Detected a custom API key… use this key?"
-  // prompt. When a custom AUTH_TOKEN is set, rctrl must drop the conflicting
+  // prompt. When a custom AUTH_TOKEN is set, umbel must drop the conflicting
   // inherited API key (mutually-exclusive credentials).
   test('drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set', async () => {
     const env = await setup();
@@ -184,12 +184,12 @@ describe('spawn — claude env reconciliation', () => {
 });
 
 describe('spawn — env-by-reference ({fromEnv})', () => {
-  // RED: a {fromEnv} ref must resolve from the rctrl server's env into the
+  // RED: a {fromEnv} ref must resolve from the umbel server's env into the
   // worker, so callers pass a reference (not the literal secret) — keeping the
   // value out of the host's tool-call transcript.
   test('resolves a {fromEnv} reference into the worker env', async () => {
     const env = await setup();
-    const SRC = 'RCTRL_ENVTEST_FROMENV_SRC';
+    const SRC = 'UMBEL_ENVTEST_FROMENV_SRC';
     const prev = process.env[SRC];
     process.env[SRC] = 'resolved-secret-value';
     try {
@@ -211,15 +211,15 @@ describe('spawn — env-by-reference ({fromEnv})', () => {
     const env = await setup();
     const opts = {
       ...makeOpts(env, '/tmp', { name: sessionName('fromenvmiss') }),
-      workerEnv: { ANTHROPIC_AUTH_TOKEN: { fromEnv: 'RCTRL_ENVTEST_DEFINITELY_UNSET' } },
+      workerEnv: { ANTHROPIC_AUTH_TOKEN: { fromEnv: 'UMBEL_ENVTEST_DEFINITELY_UNSET' } },
     } as unknown as Parameters<typeof spawn>[0];
     await expect(captureWorkerEnv(opts)).rejects.toThrow(EnvRefUnresolvedError);
   });
 });
 
 describe('spawn — reserved provider launch env', () => {
-  // codex's CODEX_HOME is rctrl-controlled: a project .codex/hooks.json is ignored
-  // in linked worktrees, so the Stop hook only fires in rctrl's isolated
+  // codex's CODEX_HOME is umbel-controlled: a project .codex/hooks.json is ignored
+  // in linked worktrees, so the Stop hook only fires in umbel's isolated
   // <stateDir>/codex-home. The provider launch env must therefore win even over an
   // explicit --env and the operational env, or a worktree worker hangs forever.
   test('codex CODEX_HOME (provider launch env) overrides workerEnv and operational env', async () => {
@@ -227,7 +227,7 @@ describe('spawn — reserved provider launch env', () => {
     const opts = {
       ...makeOpts(env, '/tmp', { name: sessionName('codexhome'), provider: 'codex' }),
       // Both lower-precedence channels try to point CODEX_HOME elsewhere:
-      env: { RCTRL_STATE: tmpDir, CODEX_HOME: '/operational/override' },
+      env: { UMBEL_STATE: tmpDir, CODEX_HOME: '/operational/override' },
       workerEnv: { CODEX_HOME: '/explicit/override' },
     } as Parameters<typeof spawn>[0];
     const captured = await captureWorkerEnv(opts);

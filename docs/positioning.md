@@ -1,9 +1,9 @@
-# rctrl — positioning
+# umbel — positioning
 
-The strategic spine: what rctrl is, where it sits, and the rule that governs what gets
+The strategic spine: what umbel is, where it sits, and the rule that governs what gets
 built. Technical design lives in [`architecture-v3.md`](architecture-v3.md); this is the *why*.
 
-## What rctrl is
+## What umbel is
 
 The reliable execution boundary for **one unit of agent work**. It turns a stochastic
 agent — on any provider, that might crash, that returns prose — into a clean call:
@@ -15,12 +15,12 @@ result you can branch on.
 ```
 planner       what to build           (goal + acceptance criteria)
 orchestrator  which-next + branching  (the graph)              ← the caller
-rctrl         run ONE unit reliably + return a result          ← this
+umbel         run ONE unit reliably + return a result          ← this
 agent         the actual work         (stochastic)
 tmux          substrate
 ```
 
-rctrl runs one unit; **the caller owns the graph.** Done right, the orchestrator gets to
+umbel runs one unit; **the caller owns the graph.** Done right, the orchestrator gets to
 be pure control flow over trustworthy units — it never touches transport, completion
 detection, liveness, output parsing, retries, or provider quirks.
 
@@ -30,8 +30,8 @@ A typed call/return *signature* — one zod definition — projected over transp
 
 - **agent orchestrator** → MCP tool calls
 - **code orchestrator** → CLI verb + JSON stdout
-- **no orchestrator** → the YAML `run` mode (rctrl absorbs the orchestrator role; this is
-  the *only* place YAML belongs — a whole DAG means rctrl *is* the orchestrator)
+- **no orchestrator** → the YAML `run` mode (umbel absorbs the orchestrator role; this is
+  the *only* place YAML belongs — a whole DAG means umbel *is* the orchestrator)
 
 The signature the faces project from:
 
@@ -55,7 +55,7 @@ cosmetic (JSON on the wire, YAML as authoring sugar); the **signature** is the c
 - **NOT orchestration.** The DAG layer is crowded (n8n, Temporal, CAO) and belongs to the
   caller. Don't compete there.
 
-## Durability — rctrl is a driver layer
+## Durability — umbel is a driver layer
 
 Fragile in implementation (per-provider adapters churn with each vendor release), durable
 in value (the contract is stable). It is valuable *because* providers churn — a neutral
@@ -63,20 +63,20 @@ interface that absorbs the change so the caller's logic never moves. Two discipl
 it valid:
 
 1. **Anchor identity to the contract, not the substrate.** If a provider ships a clean
-   external worker API, that becomes a new adapter and rctrl gets *easier*. Identity
+   external worker API, that becomes a new adapter and umbel gets *easier*. Identity
    anchored to "the tmux subscription thing" dies on the next release; anchored to "the
    neutral worker contract" it rides the change.
 2. **Run real-binary smoke on a schedule** to catch provider drift early — the fake-binary
-   suite tests rctrl's *model*, not the provider's *current* behavior. Evals double as the
+   suite tests umbel's *model*, not the provider's *current* behavior. Evals double as the
    drift detector: a model/harness change shows up as eval regressions.
 
 ## Design filter — apply to every proposed feature
 
 - **Invest in the noun (the worker), not the verb (the orchestration).** A new capability
   must be a per-worker primitive on CLI **and** MCP, composable by the caller — not new
-  workflow syntax. If it can't be that, it probably doesn't belong in rctrl.
+  workflow syntax. If it can't be that, it probably doesn't belong in umbel.
 - **Guardrails must be enforced + external + looped** (generate → objective check →
-  reject + feedback + retry → halt + escalate), never advisory. rctrl's externality is
+  reject + feedback + retry → halt + escalate), never advisory. umbel's externality is
   what makes its checks credible — the verifier is outside the agent; cross-model
   verification is the strongest form.
 - **Keep the YAML face thin.** It gets no capability the primitives don't get first.
@@ -96,9 +96,9 @@ workstream: evals / observability / traces / guardrails / HITL):
 - **Typed returns** (`--schema`) — validate + retry until the worker's output fits a shape.
 - **Accept / eval gates** (`--accept "<cmd>"`) — a result isn't done until an objective
   check passes; bounded retry with feedback, then escalate.
-- **`rctrl trace` / replay** — surface the run record already on disk.
+- **`umbel trace` / replay** — surface the run record already on disk.
 - **Per-worker telemetry** — tokens, context-%, and a *compaction* flag (trust signal).
-- **`rctrl keys` / interrupt** — raw key sending (Esc/C-c/menus); already implemented
+- **`umbel keys` / interrupt** — raw key sending (Esc/C-c/menus); already implemented
   internally (`sendKeys`), just not exposed.
 - **Self-healing resume** — auto-restart-and-`--resume` a dead worker, built on the
   liveness detection now shipped.

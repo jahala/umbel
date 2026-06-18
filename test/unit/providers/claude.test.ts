@@ -39,7 +39,7 @@ describe('ClaudeProvider.buildLaunch', () => {
   });
 
   test('settings JSON contains Stop hook with hookScriptPath', () => {
-    const hookScriptPath = '/home/user/.rctrl/hooks/stop.sh';
+    const hookScriptPath = '/home/user/.umbel/hooks/stop.sh';
     const spec = ClaudeProvider.buildLaunch({
       sessionId: 'test-session',
       cwd: '/tmp',
@@ -104,7 +104,7 @@ describe('ClaudeProvider.buildLaunch', () => {
   });
 
   test('with notifyScriptPath, settings JSON registers a Notification hook', () => {
-    const notify = '/home/user/.rctrl/hooks/notify.sh';
+    const notify = '/home/user/.umbel/hooks/notify.sh';
     const spec = ClaudeProvider.buildLaunch({
       sessionId: 'test-session',
       cwd: '/tmp',

@@ -15,7 +15,7 @@ smokeDescribe('multiline prompt via paste-buffer', () => {
 
   test('three-line prompt sent via paste-buffer yields coherent response', async () => {
     // Validates: tmux load-buffer + paste-buffer path for prompts containing \n
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-ml-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-ml-'));
     const name = smokeName('ml');
     guard.register(name);
 

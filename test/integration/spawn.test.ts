@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
 import { killSession, listSessions } from '../../src/adapters/tmux.ts';
-import { RctrlUsageError } from '../../src/core/errors.ts';
+import { UmbelUsageError } from '../../src/core/errors.ts';
 import { spawn } from '../../src/operations/spawn.ts';
 
 // ---------------------------------------------------------------------------
@@ -18,9 +18,9 @@ let tmpDir = '';
 let projectsDir = '';
 
 async function setup(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-spawn-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-spawn-test-'));
   projectsDir = join(tmpDir, 'projects');
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionName(suffix: string): string {
@@ -142,17 +142,17 @@ describe('spawn — named', () => {
 // ---------------------------------------------------------------------------
 
 describe('spawn — invalid name', () => {
-  test('throws RctrlUsageError for invalid session name', async () => {
+  test('throws UmbelUsageError for invalid session name', async () => {
     const env = await setup();
     await expect(spawn(makeOpts(env, '/tmp', { name: 'INVALID_NAME!' }))).rejects.toBeInstanceOf(
-      RctrlUsageError,
+      UmbelUsageError,
     );
   });
 
-  test('throws RctrlUsageError for name starting with hyphen', async () => {
+  test('throws UmbelUsageError for name starting with hyphen', async () => {
     const env = await setup();
     await expect(spawn(makeOpts(env, '/tmp', { name: '-bad' }))).rejects.toBeInstanceOf(
-      RctrlUsageError,
+      UmbelUsageError,
     );
   });
 });

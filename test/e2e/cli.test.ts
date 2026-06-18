@@ -17,9 +17,9 @@ let tmpDir = '';
 let projectsDir = '';
 
 async function setup(): Promise<Record<string, string>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-cli-test-'));
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-cli-test-'));
   projectsDir = join(tmpDir, 'projects');
-  return { RCTRL_STATE: tmpDir };
+  return { UMBEL_STATE: tmpDir };
 }
 
 function sessionName(suffix: string): string {
@@ -78,20 +78,20 @@ describe('cli', () => {
   test('--help exits 0 with usage text', async () => {
     const r = await runCli(['--help']);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain('rctrl');
+    expect(r.stdout).toContain('umbel');
     expect(r.stdout).toContain('spawn');
   });
 
   test('-h exits 0 with usage text', async () => {
     const r = await runCli(['-h']);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain('rctrl');
+    expect(r.stdout).toContain('umbel');
   });
 
   test('--version exits 0', async () => {
     const r = await runCli(['--version']);
     expect(r.code).toBe(0);
-    expect(r.stdout).toMatch(/rctrl \d/);
+    expect(r.stdout).toMatch(/umbel \d/);
   });
 
   test('unknown verb exits 2', async () => {
@@ -103,7 +103,7 @@ describe('cli', () => {
   test('bare invocation exits 2 and shows help', async () => {
     const r = await runCli([]);
     expect(r.code).toBe(2);
-    expect(r.stdout).toContain('rctrl');
+    expect(r.stdout).toContain('umbel');
   });
 
   // actions/diff are real verbs (route to their operations), NOT unknown.
@@ -139,8 +139,8 @@ describe('cli', () => {
 
     const r = await runCli(['-p', 'hi', '--cwd', tmpDir], {
       ...env,
-      RCTRL_STATE: tmpDir,
-      RCTRL_CLAUDE_BIN: FAKE_CLAUDE,
+      UMBEL_STATE: tmpDir,
+      UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
       FAKE_CLAUDE_JSONL_DIR: jsonlDir,
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
     });
@@ -162,7 +162,7 @@ describe('cli', () => {
 
     const baseEnv = {
       ...env,
-      RCTRL_CLAUDE_BIN: join(import.meta.dir, '../fixtures/fake-claude.sh'),
+      UMBEL_CLAUDE_BIN: join(import.meta.dir, '../fixtures/fake-claude.sh'),
       FAKE_CLAUDE_JSONL_DIR: jsonlDir,
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
     };

@@ -15,7 +15,7 @@ smokeDescribeFor('gemini', 'gemini multiline prompt via paste-buffer', () => {
 
   test('gemini three-line prompt sent via paste-buffer yields coherent response', async () => {
     // Validates: tmux load-buffer + paste-buffer path for prompts containing \n
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-gem-ml-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-gem-ml-'));
     const name = smokeName('gem-ml');
     guard.register(name);
 

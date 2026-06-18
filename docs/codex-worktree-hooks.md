@@ -3,7 +3,7 @@
 ## Symptom
 
 A `codex` worker spawned in a **linked git worktree** (`git worktree add`) never
-fires its `Stop` hook. `events/stop` never advances, so `rctrl wait` hangs to the
+fires its `Stop` hook. `events/stop` never advances, so `umbel wait` hangs to the
 timeout (the original "stuck worker" — `pl-c8f14ad8` in the pleach proof). Plain
 dirs and the main checkout are unaffected.
 
@@ -25,7 +25,7 @@ Verified by elimination — in a worktree, the `Stop` hook does **not** fire for
 | `<main>/.codex/`     | trusted | **yes** | **yes** | ❌ |
 
 The pane shows the turn completing (`• ready`) every time — the model runs, the
-hook just never executes. A plain (non-worktree) dir with the *same* rctrl config
+hook just never executes. A plain (non-worktree) dir with the *same* umbel config
 fires `Stop` and auto-persists `[hooks.state."<dir>/.codex/hooks.json:stop:0:0"]`.
 
 ### Why the earlier hypotheses were wrong
@@ -38,30 +38,30 @@ fires `Stop` and auto-persists `[hooks.state."<dir>/.codex/hooks.json:stop:0:0"]
   hooks without persisted trust, but worktree project-hooks are never *enabled*, so
   the flag is a no-op here.
 
-## The fix (validated end-to-end through rctrl)
+## The fix (validated end-to-end through umbel)
 
 **Codex *does* load and run a global `$CODEX_HOME/hooks.json` inside a worktree.**
-So deliver rctrl's codex hooks via a **shared rctrl-managed `CODEX_HOME`** instead
+So deliver umbel's codex hooks via a **shared umbel-managed `CODEX_HOME`** instead
 of the project `.codex/`:
 
 ```
-$RCTRL_STATE/codex-home/
+$UMBEL_STATE/codex-home/
 ├─ auth.json     → symlink to <user CODEX_HOME>/auth.json   (no secret copy; shared token refresh)
 ├─ config.toml     copied once from the user's (carries model/endpoint/MCP); codex appends its own [projects]/[hooks.state] trust here, isolated from the user's real config
-└─ hooks.json      rctrl's Stop + PermissionRequest hooks (today's content, verbatim)
+└─ hooks.json      umbel's Stop + PermissionRequest hooks (today's content, verbatim)
 ```
 
-- Worker env gets `CODEX_HOME=$RCTRL_STATE/codex-home`.
-- rctrl's **existing** startup dialogs (`trust the contents…` → Enter, `hooks need
+- Worker env gets `CODEX_HOME=$UMBEL_STATE/codex-home`.
+- umbel's **existing** startup dialogs (`trust the contents…` → Enter, `hooks need
   review` → "Trust all and continue") trust it on first use; persisted, so later
   spawns fast-path.
 - **Stop fires in worktrees AND plain dirs** → one uniform mechanism.
 
-Validated: `spawn --provider codex --cwd <wt> --env CODEX_HOME=<rctrl-home>` →
+Validated: `spawn --provider codex --cwd <wt> --env CODEX_HOME=<umbel-home>` →
 `send` → `events/stop` written, `transcript-path` captured, `wait` settles `stop`.
 
 ### Bonus
-Eliminates the known hazard of rctrl overwriting a user's `<cwd>/.codex/hooks.json`,
+Eliminates the known hazard of umbel overwriting a user's `<cwd>/.codex/hooks.json`,
 and matches the architecture-v3 §"v4 plan is CODEX_HOME-style out-of-cwd config."
 
 ## Implementation (as built)
@@ -77,7 +77,7 @@ and matches the architecture-v3 §"v4 plan is CODEX_HOME-style out-of-cwd config
   (`copyFrom` ifAbsent). No more `<cwd>/.codex/hooks.json`. spawn injects `stateDir`
   and `userCodexHome` (= `$CODEX_HOME ?? ~/.codex`).
 - **Reserved env** (`operations/spawn.ts`): the worker's `CODEX_HOME` is applied as
-  reserved provider launch env (after operational + `--env`), so rctrl always owns it
+  reserved provider launch env (after operational + `--env`), so umbel always owns it
   — a stray `--env CODEX_HOME` can't silently re-break worktree hooks.
 - **Shared-infra semantics**: `shared` files are set up idempotently, NOT recorded in
   `meta.providerFiles`, NOT removed on kill (other live workers depend on them).
@@ -87,7 +87,7 @@ and matches the architecture-v3 §"v4 plan is CODEX_HOME-style out-of-cwd config
   smokes — all green.
 
 ## Decision log
-- **2026-06-13** — Codex worktree project-hooks are unrunnable; rctrl delivers codex
-  hooks via a shared `$RCTRL_STATE/codex-home` (global `hooks.json` + symlinked
+- **2026-06-13** — Codex worktree project-hooks are unrunnable; umbel delivers codex
+  hooks via a shared `$UMBEL_STATE/codex-home` (global `hooks.json` + symlinked
   `auth.json`). Supersedes the project-level `<cwd>/.codex/hooks.json` mechanism for
   codex. Auth is symlinked (not copied); trust handled by existing startup dialogs.

@@ -29,8 +29,8 @@ smokeDescribeFor('opencode', 'opencode supervisor spawn/send/wait/read/kill life
   test('opencode spawn → send → wait → read → kill (free model, plugin-based stop)', async () => {
     // Validates: tmux lifecycle, the global stop-plugin install + its firing on
     // session.status idle (no shell hook), and the `opencode export` read path.
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-oc-sup-'));
-    const cfgDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-oc-cfg-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-oc-sup-'));
+    const cfgDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-oc-cfg-'));
     prevXdg = process.env.XDG_CONFIG_HOME;
     restoreXdg = true;
     process.env.XDG_CONFIG_HOME = cfgDir; // isolate plugin install from real ~/.config

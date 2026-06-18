@@ -19,7 +19,7 @@ smokeDescribeFor('gemini', 'gemini supervisor spawn/send/wait/read/kill lifecycl
 
   test('gemini spawn → send → wait → read → kill completes cleanly', async () => {
     // Validates: tmux session lifecycle, send-keys delivery, AfterAgent hook via .gemini/settings.json, JSONL discovery
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-smoke-gem-sup-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-smoke-gem-sup-'));
     const name = smokeName('gem-sup');
     guard.register(name);
 

@@ -1,6 +1,6 @@
-# rctrl Workflow Guide
+# umbel Workflow Guide
 
-A workflow YAML file lets you declare a set of agent sessions (workers) and a sequence of prompts to send them, with dependencies and output capture. `rctrl run` executes the file, handles topological ordering, and tears everything down on exit. Each worker can use a different provider — claude, codex, gemini, or opencode — in the same run.
+A workflow YAML file lets you declare a set of agent sessions (workers) and a sequence of prompts to send them, with dependencies and output capture. `umbel run` executes the file, handles topological ordering, and tears everything down on exit. Each worker can use a different provider — claude, codex, gemini, or opencode — in the same run.
 
 For the schema source, see `src/core/types.ts` (`WorkflowSpecSchema`, `WorkflowStepSchema`, `WorkerSpecSchema`, `OutputSpecSchema`, `WaitConditionSchema`).
 
@@ -23,10 +23,10 @@ steps:
 Run it:
 
 ```bash
-rctrl run example.yaml
+umbel run example.yaml
 ```
 
-The output is captured to `~/.rctrl/workflows/<run-id>/outputs/assistant/result`.
+The output is captured to `~/.umbel/workflows/<run-id>/outputs/assistant/result`.
 
 ---
 
@@ -57,7 +57,7 @@ Declared under `workers:`. Specifies how a session is spawned.
 ```yaml
 workers:
   reviewer:
-    cwd: ./worktrees/review      # required; must exist before rctrl run
+    cwd: ./worktrees/review      # required; must exist before umbel run
     provider: claude             # optional: claude | codex | gemini | opencode (default: claude)
     model: sonnet                # optional: free-form; the provider validates at spawn time
     allowedTools: "Read,Bash"   # optional; forwarded to the provider's equivalent flag
@@ -67,11 +67,11 @@ workers:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `cwd` | yes | Working directory for the session. rctrl does not create worktrees; use `git worktree add` first. |
+| `cwd` | yes | Working directory for the session. umbel does not create worktrees; use `git worktree add` first. |
 | `provider` | no | Which CLI to launch. One of `claude`, `codex`, `gemini`, `opencode`. Defaults to `claude` — existing v2 YAML files work without changes. For `opencode`, model is a `provider/model` string (e.g. `opencode/big-pickle`, `ollama/qwen2.5-coder`, `openrouter/deepseek/deepseek-v4-flash`). OpenCode has no subscription; models are local, free-tier, or API-billed. |
 | `model` | no | Free-form model string. Each provider validates its own model names at spawn time; the YAML schema does not restrict values. |
-| `allowedTools` | no | Comma-separated tool list. Mirrors `rctrl spawn --allowed-tools`. |
-| `env` | no | Map of per-worker environment variables, merged over the inherited environment. Mirrors `rctrl spawn --env`. Not persisted to `meta.json`. |
+| `allowedTools` | no | Comma-separated tool list. Mirrors `umbel spawn --allowed-tools`. |
+| `env` | no | Map of per-worker environment variables, merged over the inherited environment. Mirrors `umbel spawn --env`. Not persisted to `meta.json`. |
 
 ---
 
@@ -208,26 +208,26 @@ outputs:
 
 ### assistant_last_message
 
-Read the last assistant message from the session's JSONL log. Equivalent to `rctrl read <name>`.
+Read the last assistant message from the session's JSONL log. Equivalent to `umbel read <name>`.
 
 ```yaml
 outputs:
   summary: assistant_last_message
 ```
 
-Captured outputs are written to `~/.rctrl/workflows/<run-id>/outputs/<worker-name>/<key>` and are available for substitution in downstream steps via `{{ steps.NAME.outputs.KEY }}`.
+Captured outputs are written to `~/.umbel/workflows/<run-id>/outputs/<worker-name>/<key>` and are available for substitution in downstream steps via `{{ steps.NAME.outputs.KEY }}`.
 
 ---
 
 ## Templating
 
-Prompt strings support `{{ }}` substitution. The template engine is intentionally minimal: variable substitution only. No expressions, no conditionals, no loops. If you need control flow, write a shell script that calls `rctrl`.
+Prompt strings support `{{ }}` substitution. The template engine is intentionally minimal: variable substitution only. No expressions, no conditionals, no loops. If you need control flow, write a shell script that calls `umbel`.
 
 ### Available variables
 
 | Variable | Resolves to |
 |----------|------------|
-| `{{ env.X }}` | The environment variable `X` at the time `rctrl run` is invoked. |
+| `{{ env.X }}` | The environment variable `X` at the time `umbel run` is invoked. |
 | `{{ steps.NAME.outputs.KEY }}` | The captured output `KEY` from the step that ran on worker `NAME`. Only available in steps that declare `needs: [NAME]` or run after `NAME` in topological order. |
 | `{{ $session }}` | The name of the current step's worker. Used primarily in `wait:` blocks. |
 
@@ -279,30 +279,30 @@ Cycles in `needs:` are detected at parse time and cause a `WorkflowCycleError` (
 
 ## Session lifecycle in workflows
 
-Each step spawns or reuses the session for its declared worker. Workers persist across steps within a single `rctrl run` invocation:
+Each step spawns or reuses the session for its declared worker. Workers persist across steps within a single `umbel run` invocation:
 
-1. `rctrl run` reads the YAML and validates it against `WorkflowSpecSchema`.
+1. `umbel run` reads the YAML and validates it against `WorkflowSpecSchema`.
 2. Workers are spawned (one tmux session per worker name).
 3. Steps execute in dependency-wave order. Within a wave, steps run concurrently.
 4. Each step: sends prompt, waits for condition, captures outputs.
 5. On completion (success or failure), all worker sessions are killed and state is cleaned up.
 
-Workers are not shared between separate `rctrl run` invocations.
+Workers are not shared between separate `umbel run` invocations.
 
 ---
 
 ## State on disk
 
-Each `rctrl run` generates a run ID and persists state at:
+Each `umbel run` generates a run ID and persists state at:
 
 ```
-~/.rctrl/workflows/<run-id>/
+~/.umbel/workflows/<run-id>/
   workflow.yaml          copy of the input file
   status.json            current run status
   outputs/<worker>/<key> captured output files
 ```
 
-Override the base directory with `$RCTRL_STATE`.
+Override the base directory with `$UMBEL_STATE`.
 
 ---
 
@@ -363,5 +363,5 @@ steps:
 Run with:
 
 ```bash
-PR_NUMBER=42 rctrl run pr-pipeline.yaml
+PR_NUMBER=42 umbel run pr-pipeline.yaml
 ```

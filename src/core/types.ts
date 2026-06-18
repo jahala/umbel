@@ -49,7 +49,7 @@ export type Session = z.infer<typeof SessionSchema>;
 // ---------------------------------------------------------------------------
 
 // A worker env value is either a literal string or a reference to a variable in
-// the rctrl server's own environment ({fromEnv}). References are resolved at
+// the umbel server's own environment ({fromEnv}). References are resolved at
 // spawn time (see core/env.ts), so a secret can be passed by reference and never
 // appears in the caller's tool-call transcript.
 export const EnvValueSchema = z.union([z.string(), z.object({ fromEnv: z.string() }).strict()]);

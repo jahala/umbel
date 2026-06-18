@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Fake `gemini` binary for e2e tests.
-# Env: RCTRL_SESSION_ID, FAKE_GEMINI_DELAY (ms), FAKE_GEMINI_TRANSCRIPT_DIR, FAKE_GEMINI_HOOK
+# Env: UMBEL_SESSION_ID, FAKE_GEMINI_DELAY (ms), FAKE_GEMINI_TRANSCRIPT_DIR, FAKE_GEMINI_HOOK
 set -euo pipefail
 
 DELAY="${FAKE_GEMINI_DELAY:-0}"
-SESSION_ID="${RCTRL_SESSION_ID:-fake-gemini-session}"
+SESSION_ID="${UMBEL_SESSION_ID:-fake-gemini-session}"
 
 if [[ -n "${FAKE_GEMINI_TRANSCRIPT_DIR:-}" ]]; then
   mkdir -p "${FAKE_GEMINI_TRANSCRIPT_DIR}"

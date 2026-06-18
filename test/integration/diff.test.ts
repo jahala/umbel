@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RctrlUsageError } from '../../src/core/errors.ts';
+import { UmbelUsageError } from '../../src/core/errors.ts';
 import { SessionSchema } from '../../src/core/types.ts';
 import { diff } from '../../src/operations/diff.ts';
 
@@ -24,8 +24,8 @@ async function setupClaudeSession(opts: {
   turns?: string[];
   jsonlPath?: string | null;
 }): Promise<{ env: Record<string, string | undefined> }> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-diff-test-'));
-  const env = { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-diff-test-'));
+  const env = { UMBEL_STATE: tmpDir };
 
   const sessionDir = join(tmpDir, 'sessions', opts.name);
   await mkdir(join(sessionDir, 'events'), { recursive: true });
@@ -136,20 +136,20 @@ describe('diff operation', () => {
     expect(out).toBe('(no changes between turn 0 and turn 1)');
   });
 
-  test('out-of-range `to` throws RctrlUsageError', async () => {
+  test('out-of-range `to` throws UmbelUsageError', async () => {
     const { env } = await setupClaudeSession({
       name: 's8',
       turns: ['a', 'b'],
     });
-    await expect(diff({ name: 's8', env, to: 5 })).rejects.toBeInstanceOf(RctrlUsageError);
+    await expect(diff({ name: 's8', env, to: 5 })).rejects.toBeInstanceOf(UmbelUsageError);
   });
 
-  test('out-of-range negative `from` throws RctrlUsageError', async () => {
+  test('out-of-range negative `from` throws UmbelUsageError', async () => {
     const { env } = await setupClaudeSession({
       name: 's9',
       turns: ['a', 'b'],
     });
-    await expect(diff({ name: 's9', env, from: -10 })).rejects.toBeInstanceOf(RctrlUsageError);
+    await expect(diff({ name: 's9', env, from: -10 })).rejects.toBeInstanceOf(UmbelUsageError);
   });
 
   // ---------------------------------------------------------------------------
@@ -186,8 +186,8 @@ describe('diff operation', () => {
     });
     const jsonl = [turn0, turn0reply, turn1, turn1reply].join('\n');
 
-    tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-diff-fallback-'));
-    const env = { RCTRL_STATE: tmpDir };
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-diff-fallback-'));
+    const env = { UMBEL_STATE: tmpDir };
     const name = 'sfallback';
     const sessionDir = join(tmpDir, 'sessions', name);
     await mkdir(join(sessionDir, 'events'), { recursive: true });

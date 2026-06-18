@@ -21,8 +21,8 @@ afterEach(async () => {
 });
 
 async function makeEnv(): Promise<Record<string, string | undefined>> {
-  tmpDir = await mkdtemp(join(tmpdir(), 'rctrl-resolve-transcript-test-'));
-  return { RCTRL_STATE: tmpDir };
+  tmpDir = await mkdtemp(join(tmpdir(), 'umbel-resolve-transcript-test-'));
+  return { UMBEL_STATE: tmpDir };
 }
 
 async function makeSession(

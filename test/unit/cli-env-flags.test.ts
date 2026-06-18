@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { RctrlUsageError } from '../../src/core/errors.ts';
+import { UmbelUsageError } from '../../src/core/errors.ts';
 import { WorkerSpecSchema } from '../../src/core/types.ts';
 import { parseEnvFlags } from '../../src/faces/cli.ts';
 import { VerbSchemas } from '../../src/faces/verbs.ts';
@@ -30,12 +30,12 @@ describe('parseEnvFlags', () => {
     expect(parseEnvFlags(['EMPTY='])).toEqual({ EMPTY: '' });
   });
 
-  test('throws RctrlUsageError on a missing = (no silent drop)', () => {
-    expect(() => parseEnvFlags(['NOEQUALS'])).toThrow(RctrlUsageError);
+  test('throws UmbelUsageError on a missing = (no silent drop)', () => {
+    expect(() => parseEnvFlags(['NOEQUALS'])).toThrow(UmbelUsageError);
   });
 
-  test('throws RctrlUsageError on an empty key', () => {
-    expect(() => parseEnvFlags(['=value'])).toThrow(RctrlUsageError);
+  test('throws UmbelUsageError on an empty key', () => {
+    expect(() => parseEnvFlags(['=value'])).toThrow(UmbelUsageError);
   });
 });
 
