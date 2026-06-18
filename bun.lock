@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "rctrl",
+      "name": "umbel",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.0",
         "chokidar": "^5.0.0",
