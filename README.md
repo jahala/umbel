@@ -87,7 +87,7 @@ umbel -p "summarise $FILE" --provider opencode --model opencode/big-pickle   # f
 umbel -p "summarise $FILE" --provider opencode --model ollama/qwen2.5-coder  # local
 ```
 
-`--provider` defaults to `claude` for backward compatibility. Cold-start ~3–5s on first call; use `--name` / `--resume` to keep a session warm:
+`--provider` defaults to `claude` (so `umbel -p` mirrors `claude -p`). Cold-start ~3–5s on first call; use `--name` / `--resume` to keep a session warm:
 
 ```bash
 umbel -p --name analyst --provider claude "first question"
