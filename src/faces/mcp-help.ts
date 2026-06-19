@@ -55,6 +55,12 @@ umbel_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
 
 For poll-style control of a fleet, umbel_status carries needsInput + needsInputReason (permission/idle/question) per worker — the same disambiguation without a blocking wait. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
 
+## Interrupt discipline
+
+A single expected reason:input can be answered with umbel_send, then umbel_wait again. Repeated input prompts during one turn are usually a permission storm or nested workflow asking for supervision; do not keep approving blindly. Pause, inspect umbel_status/umbel_capture, narrow the prompt or allowedTools, or kill and use a simpler worker/host tool.
+
+Treat reason:dead, "Connection closed", or a vanished tmux session as failure, not completion. Inspect umbel_logs and umbel_capture/status before moving on.
+
 ## Critical rule
 
 Pair every umbel_send with a umbel_wait. Sending without waiting causes your next umbel_read to return the previous turn's response, not the current one. The Stop hook is the only deterministic end-of-turn signal — do not infer completion from tmux pane content.

@@ -30,7 +30,7 @@ USE umbel when you need: a persistent worker across many turns (review→fix→v
 
 USE your host's subagent/Task tool instead for single-shot research, specialized agent types (Explore, debugger), or context-isolated one-shot results.
 
-Lifecycle: spawn → send → wait → read → (loop or kill). umbel_send does NOT wait — always pair with umbel_wait. Call umbel_help for workflow YAML, provider quirks, or examples.`;
+Lifecycle: spawn → send → wait → read → (loop or kill). umbel_send does NOT wait — always pair with umbel_wait. Treat wait reason:input as an interrupt, not progress: answer once when expected, but repeated input prompts in one turn usually mean a permission storm or nested workflow — inspect, simplify the task, or kill. Treat dead/connection-closed as failure: capture/logs/status before continuing. Call umbel_help for workflow YAML, provider quirks, or examples.`;
 
 // Per-tool descriptions. Narrow + specific. Lifecycle hints where they
 // prevent bugs (send→wait pairing, capture-vs-read).
