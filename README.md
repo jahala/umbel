@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/jahala/umbel/ci.yml?branch=master)](https://github.com/jahala/umbel/actions)
 
+🌱 **[What is umbel? →](https://jahala.github.io/umbel/)** &nbsp;·&nbsp; the visual overview
+
 **Spawn other-provider agent workers from inside your agent session.** Drive `claude`, `codex`, `gemini`, or `opencode` interactively in tmux from a CLI, MCP server, or YAML workflow. One binary, one provider abstraction — subscription-billed for claude/codex/gemini, bring-any-model for opencode.
 
 ## Claude Code orchestrating Codex (and Gemini, in parallel)
