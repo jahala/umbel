@@ -1,5 +1,6 @@
 # umbel
 
+[![Live site](https://img.shields.io/badge/live_site-E89227?logo=githubpages&logoColor=white)](https://jahala.github.io/umbel/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/jahala/umbel/ci.yml?branch=master)](https://github.com/jahala/umbel/actions)
 
