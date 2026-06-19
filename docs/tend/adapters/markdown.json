@@ -1,0 +1,16 @@
+{
+  "adapter_id": "markdown",
+  "name": "Markdown Spec",
+  "target": "markdown",
+  "generator": "tend-cli/adapters/markdown",
+  "step_type_support": [
+    "agent",
+    "command",
+    "worktree",
+    "integration"
+  ],
+  "model_support": [],
+  "status_sync": {
+    "mode": "manual"
+  }
+}
