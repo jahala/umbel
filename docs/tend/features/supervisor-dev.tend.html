@@ -2502,7 +2502,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "kind": "feature",
   "tend_version": "0.4.0",
   "generated_at": "2026-06-21T16:26:52.018Z",
-  "project_name": "Project Garden"
+  "project_name": "umbel"
 }
 </script>
 
@@ -2519,6 +2519,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
     ],
     "description": "The supervisor is a developer who runs agents at arm's length. Not interactively — from scripts, cron jobs, CI, or a shell session they close and reopen. They might be fanning five workers across five worktrees, or scheduling a nightly review pipeline, or wiring umbel into a Makefile target. Their concern is reliability: did the worker finish, did it succeed, and is there a result they can act on — without babysitting a pane or watching a terminal scroll.\n\nAisha runs agent pipelines from cron. She has three claude subscriptions and a codex license. Monday night at midnight, cron spawns a worker per feature branch, sends each a review prompt, waits for completion, collects transcripts. By morning, the results are sitting in her inbox. She never opened a terminal. She knows the workers finished because umbel status reports each one, and she knows the sessions cleaned up because kill tears down the tmux session and state directory without a trace — idempotently, whether the worker exited cleanly or crashed mid-turn."
+  },
+  "thumbnail": {
+    "kind": "svg",
+    "alt": "Developer bust at a terminal driving agent workers",
+    "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><circle class=\"tc-bg tc-frame\" cx=\"26\" cy=\"24\" r=\"11\"/><path class=\"tc-bg tc-frame\" d=\"M4 62 a22 20 0 0 1 44 0 Z\"/><rect class=\"tc-wh tc-frame\" x=\"58\" y=\"12\" width=\"54\" height=\"56\" rx=\"3\"/><rect class=\"tc-bg\" x=\"58\" y=\"12\" width=\"54\" height=\"10\" rx=\"3\"/><circle class=\"tc-fg\" cx=\"65\" cy=\"17\" r=\"2\"/><circle class=\"tc-fg\" cx=\"73\" cy=\"17\" r=\"2\"/><rect class=\"tc-ac\" x=\"64\" y=\"29\" width=\"7\" height=\"3\" rx=\"1\"/><line class=\"tc-la\" x1=\"73\" y1=\"30.5\" x2=\"104\" y2=\"30.5\"/><line class=\"tc-la\" x1=\"64\" y1=\"39\" x2=\"100\" y2=\"39\"/><line class=\"tc-la\" x1=\"64\" y1=\"46\" x2=\"94\" y2=\"46\"/><line class=\"tc-la\" x1=\"64\" y1=\"53\" x2=\"98\" y2=\"53\"/><line class=\"tc-la\" x1=\"64\" y1=\"60\" x2=\"88\" y2=\"60\"/><line class=\"tc-ln\" x1=\"46\" y1=\"46\" x2=\"58\" y2=\"38\"/></svg>"
+  },
+  "progress": {
+    "implementation": 0,
+    "verification": 0
   }
 }
 </script>

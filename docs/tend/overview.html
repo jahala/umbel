@@ -2508,7 +2508,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
           "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
         ],
-        "description": "The host agent is an agent session — claude code, codex, gemini, or opencode — that has taken on an orchestration role: it breaks down a complex task, decides which tools and workers to involve, and synthesizes the results. Its constraint is token budget. Every line of raw output it reads, every execution it runs inline, competes with its capacity to hold the full picture of the work.\n\nMarco is running a code review pipeline at 11pm. He has a claude code session open on his laptop. He wants codex to review the diff while gemini runs the tests — two providers, parallel worktrees, each with their own subscription. His claude session can't spawn codex or gemini directly. Without umbel, he'd open two more terminals, set each up manually, and paste output back. With umbel, his claude session calls umbel_spawn for each worker, sends prompts, waits for verdicts, and reads back just the last assistant message — sized for synthesis, not for reading a wall of pane text. His claude session stays lean. The bill goes to the workers."
+        "description": "The host agent is an agent session — claude code, codex, gemini, or opencode — that has taken on an orchestration role: it breaks down a complex task, decides which tools and workers to involve, and synthesizes the results. Its constraint is token budget. Every line of raw output it reads, every execution it runs inline, competes with its capacity to hold the full picture of the work.\n\nMarco is running a code review pipeline at 11pm. He has a claude code session open on his laptop. He wants codex to review the diff while gemini runs the tests — two providers, parallel worktrees, each with their own subscription. His claude session can't spawn codex or gemini directly. Without umbel, he'd open two more terminals, set each up manually, and paste output back. With umbel, his claude session calls umbel_spawn for each worker, sends prompts, waits for verdicts, and reads back just the last assistant message — sized for synthesis, not for reading a wall of pane text. His claude session stays lean. The bill goes to the workers.",
+        "thumbnail": {
+          "kind": "svg",
+          "alt": "Central AI orchestrator hexagon fanning to six worker boxes",
+          "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><polygon class=\"tc-ac\" points=\"60,16 74,24 74,40 60,48 46,40 46,24\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"8\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"32\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"56\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"8\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"32\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"56\" width=\"28\" height=\"16\" rx=\"2\"/><line class=\"tc-ln\" x1=\"46\" y1=\"26\" x2=\"34\" y2=\"16\"/><line class=\"tc-ln\" x1=\"46\" y1=\"32\" x2=\"34\" y2=\"40\"/><line class=\"tc-ln\" x1=\"46\" y1=\"40\" x2=\"34\" y2=\"64\"/><line class=\"tc-ln\" x1=\"74\" y1=\"26\" x2=\"86\" y2=\"16\"/><line class=\"tc-ln\" x1=\"74\" y1=\"32\" x2=\"86\" y2=\"40\"/><line class=\"tc-ln\" x1=\"74\" y1=\"40\" x2=\"86\" y2=\"64\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"16\" r=\"2\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"40\" r=\"2\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"64\" r=\"2\"/></svg>"
+        }
       },
       {
         "id": "supervisor-dev",
@@ -2520,7 +2525,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
           "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
         ],
-        "description": "The supervisor is a developer who runs agents at arm's length. Not interactively — from scripts, cron jobs, CI, or a shell session they close and reopen. They might be fanning five workers across five worktrees, or scheduling a nightly review pipeline, or wiring umbel into a Makefile target. Their concern is reliability: did the worker finish, did it succeed, and is there a result they can act on — without babysitting a pane or watching a terminal scroll.\n\nAisha runs agent pipelines from cron. She has three claude subscriptions and a codex license. Monday night at midnight, cron spawns a worker per feature branch, sends each a review prompt, waits for completion, collects transcripts. By morning, the results are sitting in her inbox. She never opened a terminal. She knows the workers finished because umbel status reports each one, and she knows the sessions cleaned up because kill tears down the tmux session and state directory without a trace — idempotently, whether the worker exited cleanly or crashed mid-turn."
+        "description": "The supervisor is a developer who runs agents at arm's length. Not interactively — from scripts, cron jobs, CI, or a shell session they close and reopen. They might be fanning five workers across five worktrees, or scheduling a nightly review pipeline, or wiring umbel into a Makefile target. Their concern is reliability: did the worker finish, did it succeed, and is there a result they can act on — without babysitting a pane or watching a terminal scroll.\n\nAisha runs agent pipelines from cron. She has three claude subscriptions and a codex license. Monday night at midnight, cron spawns a worker per feature branch, sends each a review prompt, waits for completion, collects transcripts. By morning, the results are sitting in her inbox. She never opened a terminal. She knows the workers finished because umbel status reports each one, and she knows the sessions cleaned up because kill tears down the tmux session and state directory without a trace — idempotently, whether the worker exited cleanly or crashed mid-turn.",
+        "thumbnail": {
+          "kind": "svg",
+          "alt": "Developer bust at a terminal driving agent workers",
+          "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><circle class=\"tc-bg tc-frame\" cx=\"26\" cy=\"24\" r=\"11\"/><path class=\"tc-bg tc-frame\" d=\"M4 62 a22 20 0 0 1 44 0 Z\"/><rect class=\"tc-wh tc-frame\" x=\"58\" y=\"12\" width=\"54\" height=\"56\" rx=\"3\"/><rect class=\"tc-bg\" x=\"58\" y=\"12\" width=\"54\" height=\"10\" rx=\"3\"/><circle class=\"tc-fg\" cx=\"65\" cy=\"17\" r=\"2\"/><circle class=\"tc-fg\" cx=\"73\" cy=\"17\" r=\"2\"/><rect class=\"tc-ac\" x=\"64\" y=\"29\" width=\"7\" height=\"3\" rx=\"1\"/><line class=\"tc-la\" x1=\"73\" y1=\"30.5\" x2=\"104\" y2=\"30.5\"/><line class=\"tc-la\" x1=\"64\" y1=\"39\" x2=\"100\" y2=\"39\"/><line class=\"tc-la\" x1=\"64\" y1=\"46\" x2=\"94\" y2=\"46\"/><line class=\"tc-la\" x1=\"64\" y1=\"53\" x2=\"98\" y2=\"53\"/><line class=\"tc-la\" x1=\"64\" y1=\"60\" x2=\"88\" y2=\"60\"/><line class=\"tc-ln\" x1=\"46\" y1=\"46\" x2=\"58\" y2=\"38\"/></svg>"
+        }
       }
     ],
     "opportunities": [
@@ -2534,7 +2544,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "host-agent"
         ],
         "outcome_metric": "A host session stands up and drives workers on at least two other providers in one orchestration.",
-        "riskiest_assumption": "That driving interactive TUIs through tmux stays robust across provider UI changes — the four provider-specific behaviors stay abstractable."
+        "riskiest_assumption": "That driving interactive TUIs through tmux stays robust across provider UI changes — the four provider-specific behaviors stay abstractable.",
+        "thumbnail": {
+          "kind": "svg",
+          "alt": "Two provider silos with a broken gap between them",
+          "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><circle class=\"tc-wh tc-frame\" cx=\"28\" cy=\"40\" r=\"22\"/><circle class=\"tc-fg\" cx=\"28\" cy=\"32\" r=\"5\"/><line class=\"tc-la\" x1=\"28\" y1=\"37\" x2=\"28\" y2=\"50\"/><circle class=\"tc-bg tc-frame\" cx=\"92\" cy=\"40\" r=\"22\"/><circle class=\"tc-fg\" cx=\"92\" cy=\"32\" r=\"5\"/><line class=\"tc-la\" x1=\"92\" y1=\"37\" x2=\"92\" y2=\"50\"/><rect class=\"tc-ac\" x=\"57\" y=\"35\" width=\"6\" height=\"10\" rx=\"1\"/><line class=\"tc-ln\" x1=\"50\" y1=\"40\" x2=\"57\" y2=\"40\"/><line class=\"tc-ln\" x1=\"63\" y1=\"40\" x2=\"70\" y2=\"40\"/></svg>"
+        }
       },
       {
         "id": "silent-workers",
@@ -2547,7 +2562,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "supervisor-dev"
         ],
         "outcome_metric": "wait resolves done vs needs-input (with reason) without polling heuristics wedging.",
-        "riskiest_assumption": "That provider hook lifecycles (notify/stop) remain precise enough to beat the idle-net fallback in practice."
+        "riskiest_assumption": "That provider hook lifecycles (notify/stop) remain precise enough to beat the idle-net fallback in practice.",
+        "thumbnail": {
+          "kind": "svg",
+          "alt": "A lone worker rect emitting a question mark with no output signal",
+          "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect class=\"tc-wh tc-frame\" x=\"32\" y=\"34\" width=\"56\" height=\"30\" rx=\"3\"/><line class=\"tc-la\" x1=\"40\" y1=\"44\" x2=\"60\" y2=\"44\"/><line class=\"tc-la\" x1=\"40\" y1=\"52\" x2=\"54\" y2=\"52\"/><rect class=\"tc-bg tc-frame\" x=\"44\" y=\"10\" width=\"32\" height=\"20\" rx=\"3\"/><path class=\"tc-ac\" d=\"M55 14 a5 5 0 0 1 10 0 c0 3 -4 4 -4 8 M60 26 v2\" stroke-width=\"2\" fill=\"none\"/><circle class=\"tc-ac\" cx=\"60\" cy=\"30\" r=\"1.5\"/><line class=\"tc-ln\" x1=\"60\" y1=\"30\" x2=\"60\" y2=\"34\"/></svg>"
+        }
       },
       {
         "id": "context-bloat",
@@ -2559,7 +2579,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "host-agent"
         ],
         "outcome_metric": "Host context spent on orchestration stays a small fraction of worker output consumed via read.",
-        "riskiest_assumption": "That read/capture summaries are good enough for synthesis without the host re-reading whole transcripts."
+        "riskiest_assumption": "That read/capture summaries are good enough for synthesis without the host re-reading whole transcripts.",
+        "thumbnail": {
+          "kind": "svg",
+          "alt": "Tall wall of dense output lines on left distilled to a small block on right",
+          "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect class=\"tc-bg tc-frame\" x=\"8\" y=\"8\" width=\"46\" height=\"64\" rx=\"2\"/><line class=\"tc-la\" x1=\"14\" y1=\"18\" x2=\"48\" y2=\"18\"/><line class=\"tc-la\" x1=\"14\" y1=\"24\" x2=\"44\" y2=\"24\"/><line class=\"tc-la\" x1=\"14\" y1=\"30\" x2=\"50\" y2=\"30\"/><line class=\"tc-la\" x1=\"14\" y1=\"36\" x2=\"46\" y2=\"36\"/><line class=\"tc-la\" x1=\"14\" y1=\"42\" x2=\"42\" y2=\"42\"/><line class=\"tc-la\" x1=\"14\" y1=\"48\" x2=\"48\" y2=\"48\"/><line class=\"tc-la\" x1=\"14\" y1=\"54\" x2=\"44\" y2=\"54\"/><line class=\"tc-la\" x1=\"14\" y1=\"60\" x2=\"40\" y2=\"60\"/><line class=\"tc-la\" x1=\"14\" y1=\"66\" x2=\"46\" y2=\"66\"/><path class=\"tc-ln\" d=\"M60 28 L70 40 L60 52\" fill=\"none\"/><rect class=\"tc-ac\" x=\"76\" y=\"28\" width=\"36\" height=\"24\" rx=\"3\"/><line class=\"tc-wh\" x1=\"82\" y1=\"36\" x2=\"106\" y2=\"36\"/><line class=\"tc-wh\" x1=\"82\" y1=\"42\" x2=\"100\" y2=\"42\"/></svg>"
+        }
       }
     ]
   },
@@ -2750,27 +2775,52 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     {
       "id": "host-agent",
       "title": "The Host Agent",
-      "status": "planned"
+      "status": "planned",
+      "thumbnail": {
+        "kind": "svg",
+        "alt": "Central AI orchestrator hexagon fanning to six worker boxes",
+        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><polygon class=\"tc-ac\" points=\"60,16 74,24 74,40 60,48 46,40 46,24\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"8\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"32\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"56\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"8\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"32\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"56\" width=\"28\" height=\"16\" rx=\"2\"/><line class=\"tc-ln\" x1=\"46\" y1=\"26\" x2=\"34\" y2=\"16\"/><line class=\"tc-ln\" x1=\"46\" y1=\"32\" x2=\"34\" y2=\"40\"/><line class=\"tc-ln\" x1=\"46\" y1=\"40\" x2=\"34\" y2=\"64\"/><line class=\"tc-ln\" x1=\"74\" y1=\"26\" x2=\"86\" y2=\"16\"/><line class=\"tc-ln\" x1=\"74\" y1=\"32\" x2=\"86\" y2=\"40\"/><line class=\"tc-ln\" x1=\"74\" y1=\"40\" x2=\"86\" y2=\"64\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"16\" r=\"2\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"40\" r=\"2\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"64\" r=\"2\"/></svg>"
+      }
     },
     {
       "id": "supervisor-dev",
       "title": "The Supervisor",
-      "status": "planned"
+      "status": "planned",
+      "thumbnail": {
+        "kind": "svg",
+        "alt": "Developer bust at a terminal driving agent workers",
+        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><circle class=\"tc-bg tc-frame\" cx=\"26\" cy=\"24\" r=\"11\"/><path class=\"tc-bg tc-frame\" d=\"M4 62 a22 20 0 0 1 44 0 Z\"/><rect class=\"tc-wh tc-frame\" x=\"58\" y=\"12\" width=\"54\" height=\"56\" rx=\"3\"/><rect class=\"tc-bg\" x=\"58\" y=\"12\" width=\"54\" height=\"10\" rx=\"3\"/><circle class=\"tc-fg\" cx=\"65\" cy=\"17\" r=\"2\"/><circle class=\"tc-fg\" cx=\"73\" cy=\"17\" r=\"2\"/><rect class=\"tc-ac\" x=\"64\" y=\"29\" width=\"7\" height=\"3\" rx=\"1\"/><line class=\"tc-la\" x1=\"73\" y1=\"30.5\" x2=\"104\" y2=\"30.5\"/><line class=\"tc-la\" x1=\"64\" y1=\"39\" x2=\"100\" y2=\"39\"/><line class=\"tc-la\" x1=\"64\" y1=\"46\" x2=\"94\" y2=\"46\"/><line class=\"tc-la\" x1=\"64\" y1=\"53\" x2=\"98\" y2=\"53\"/><line class=\"tc-la\" x1=\"64\" y1=\"60\" x2=\"88\" y2=\"60\"/><line class=\"tc-ln\" x1=\"46\" y1=\"46\" x2=\"58\" y2=\"38\"/></svg>"
+      }
     },
     {
       "id": "cross-provider-gap",
       "title": "Cross Provider Gap",
-      "status": "planned"
+      "status": "planned",
+      "thumbnail": {
+        "kind": "svg",
+        "alt": "Two provider silos with a broken gap between them",
+        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><circle class=\"tc-wh tc-frame\" cx=\"28\" cy=\"40\" r=\"22\"/><circle class=\"tc-fg\" cx=\"28\" cy=\"32\" r=\"5\"/><line class=\"tc-la\" x1=\"28\" y1=\"37\" x2=\"28\" y2=\"50\"/><circle class=\"tc-bg tc-frame\" cx=\"92\" cy=\"40\" r=\"22\"/><circle class=\"tc-fg\" cx=\"92\" cy=\"32\" r=\"5\"/><line class=\"tc-la\" x1=\"92\" y1=\"37\" x2=\"92\" y2=\"50\"/><rect class=\"tc-ac\" x=\"57\" y=\"35\" width=\"6\" height=\"10\" rx=\"1\"/><line class=\"tc-ln\" x1=\"50\" y1=\"40\" x2=\"57\" y2=\"40\"/><line class=\"tc-ln\" x1=\"63\" y1=\"40\" x2=\"70\" y2=\"40\"/></svg>"
+      }
     },
     {
       "id": "silent-workers",
       "title": "Silent Workers",
-      "status": "planned"
+      "status": "planned",
+      "thumbnail": {
+        "kind": "svg",
+        "alt": "A lone worker rect emitting a question mark with no output signal",
+        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect class=\"tc-wh tc-frame\" x=\"32\" y=\"34\" width=\"56\" height=\"30\" rx=\"3\"/><line class=\"tc-la\" x1=\"40\" y1=\"44\" x2=\"60\" y2=\"44\"/><line class=\"tc-la\" x1=\"40\" y1=\"52\" x2=\"54\" y2=\"52\"/><rect class=\"tc-bg tc-frame\" x=\"44\" y=\"10\" width=\"32\" height=\"20\" rx=\"3\"/><path class=\"tc-ac\" d=\"M55 14 a5 5 0 0 1 10 0 c0 3 -4 4 -4 8 M60 26 v2\" stroke-width=\"2\" fill=\"none\"/><circle class=\"tc-ac\" cx=\"60\" cy=\"30\" r=\"1.5\"/><line class=\"tc-ln\" x1=\"60\" y1=\"30\" x2=\"60\" y2=\"34\"/></svg>"
+      }
     },
     {
       "id": "context-bloat",
       "title": "Context Bloat",
-      "status": "planned"
+      "status": "planned",
+      "thumbnail": {
+        "kind": "svg",
+        "alt": "Tall wall of dense output lines on left distilled to a small block on right",
+        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect class=\"tc-bg tc-frame\" x=\"8\" y=\"8\" width=\"46\" height=\"64\" rx=\"2\"/><line class=\"tc-la\" x1=\"14\" y1=\"18\" x2=\"48\" y2=\"18\"/><line class=\"tc-la\" x1=\"14\" y1=\"24\" x2=\"44\" y2=\"24\"/><line class=\"tc-la\" x1=\"14\" y1=\"30\" x2=\"50\" y2=\"30\"/><line class=\"tc-la\" x1=\"14\" y1=\"36\" x2=\"46\" y2=\"36\"/><line class=\"tc-la\" x1=\"14\" y1=\"42\" x2=\"42\" y2=\"42\"/><line class=\"tc-la\" x1=\"14\" y1=\"48\" x2=\"48\" y2=\"48\"/><line class=\"tc-la\" x1=\"14\" y1=\"54\" x2=\"44\" y2=\"54\"/><line class=\"tc-la\" x1=\"14\" y1=\"60\" x2=\"40\" y2=\"60\"/><line class=\"tc-la\" x1=\"14\" y1=\"66\" x2=\"46\" y2=\"66\"/><path class=\"tc-ln\" d=\"M60 28 L70 40 L60 52\" fill=\"none\"/><rect class=\"tc-ac\" x=\"76\" y=\"28\" width=\"36\" height=\"24\" rx=\"3\"/><line class=\"tc-wh\" x1=\"82\" y1=\"36\" x2=\"106\" y2=\"36\"/><line class=\"tc-wh\" x1=\"82\" y1=\"42\" x2=\"100\" y2=\"42\"/></svg>"
+      }
     }
   ],
   "source_dirs": [

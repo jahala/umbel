@@ -2502,7 +2502,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "kind": "feature",
   "tend_version": "0.4.0",
   "generated_at": "2026-06-21T16:26:52.016Z",
-  "project_name": "Project Garden"
+  "project_name": "umbel"
 }
 </script>
 
@@ -2520,6 +2520,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
     ],
     "description": "The host agent is an agent session — claude code, codex, gemini, or opencode — that has taken on an orchestration role: it breaks down a complex task, decides which tools and workers to involve, and synthesizes the results. Its constraint is token budget. Every line of raw output it reads, every execution it runs inline, competes with its capacity to hold the full picture of the work.\n\nMarco is running a code review pipeline at 11pm. He has a claude code session open on his laptop. He wants codex to review the diff while gemini runs the tests — two providers, parallel worktrees, each with their own subscription. His claude session can't spawn codex or gemini directly. Without umbel, he'd open two more terminals, set each up manually, and paste output back. With umbel, his claude session calls umbel_spawn for each worker, sends prompts, waits for verdicts, and reads back just the last assistant message — sized for synthesis, not for reading a wall of pane text. His claude session stays lean. The bill goes to the workers."
+  },
+  "thumbnail": {
+    "kind": "svg",
+    "alt": "Central AI orchestrator hexagon fanning to six worker boxes",
+    "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><polygon class=\"tc-ac\" points=\"60,16 74,24 74,40 60,48 46,40 46,24\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"8\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"32\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-wh tc-frame\" x=\"6\" y=\"56\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"8\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"32\" width=\"28\" height=\"16\" rx=\"2\"/><rect class=\"tc-bg tc-frame\" x=\"86\" y=\"56\" width=\"28\" height=\"16\" rx=\"2\"/><line class=\"tc-ln\" x1=\"46\" y1=\"26\" x2=\"34\" y2=\"16\"/><line class=\"tc-ln\" x1=\"46\" y1=\"32\" x2=\"34\" y2=\"40\"/><line class=\"tc-ln\" x1=\"46\" y1=\"40\" x2=\"34\" y2=\"64\"/><line class=\"tc-ln\" x1=\"74\" y1=\"26\" x2=\"86\" y2=\"16\"/><line class=\"tc-ln\" x1=\"74\" y1=\"32\" x2=\"86\" y2=\"40\"/><line class=\"tc-ln\" x1=\"74\" y1=\"40\" x2=\"86\" y2=\"64\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"16\" r=\"2\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"40\" r=\"2\"/><circle class=\"tc-fg\" cx=\"14\" cy=\"64\" r=\"2\"/></svg>"
+  },
+  "progress": {
+    "implementation": 0,
+    "verification": 0
   }
 }
 </script>
