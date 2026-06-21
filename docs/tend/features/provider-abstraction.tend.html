@@ -2521,8 +2521,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "host-agent",
       "name": "The Host Agent",
       "jobs": [
-        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+        "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+        "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
       ]
     }
   ],
@@ -2562,7 +2564,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "call getProvider('claude') and assert result === ClaudeProvider; repeat for each provider name; assert all four have .name matching the lookup key"
+      "verification_recipe": "call getProvider('claude') and assert result === ClaudeProvider; repeat for each provider name; assert all four have .name matching the lookup key",
+      "validates_job": "host-agent:0"
     },
     {
       "id": "c002",
@@ -2570,7 +2573,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "call getProvider('bogus'); catch error; assert instanceof ProviderUnknownError; assert message contains 'bogus' and each of Object.keys(PROVIDERS)"
+      "verification_recipe": "call getProvider('bogus'); catch error; assert instanceof ProviderUnknownError; assert message contains 'bogus' and each of Object.keys(PROVIDERS)",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c003",
@@ -2578,7 +2582,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "call buildLaunch on each of ClaudeProvider, CodexProvider, GeminiProvider, OpenCodeProvider with a hookScriptPath; assert spec.bin matches provider name; assert hook script path appears in args (claude) or files[0].content (codex/gemini)"
+      "verification_recipe": "call buildLaunch on each of ClaudeProvider, CodexProvider, GeminiProvider, OpenCodeProvider with a hookScriptPath; assert spec.bin matches provider name; assert hook script path appears in args (claude) or files[0].content (codex/gemini)",
+      "validates_job": "host-agent:0"
     },
     {
       "id": "c004",
@@ -2586,7 +2591,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "where",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "assert ClaudeProvider.stopEventName === 'Stop'; CodexProvider.stopEventName === 'Stop'; GeminiProvider.stopEventName === 'AfterAgent'; OpenCodeProvider.stopEventName === 'session.status'"
+      "verification_recipe": "assert ClaudeProvider.stopEventName === 'Stop'; CodexProvider.stopEventName === 'Stop'; GeminiProvider.stopEventName === 'AfterAgent'; OpenCodeProvider.stopEventName === 'session.status'",
+      "validates_job": "host-agent:1"
     },
     {
       "id": "c005",
@@ -2594,7 +2600,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "call each provider's parseTranscript('') and parseTranscript('\\n\\n'); assert returns ''; call with malformed JSON line mixed with valid entry; assert returns valid entry text and does not throw"
+      "verification_recipe": "call each provider's parseTranscript('') and parseTranscript('\\n\\n'); assert returns ''; call with malformed JSON line mixed with valid entry; assert returns valid entry text and does not throw",
+      "validates_job": "host-agent:2"
     },
     {
       "id": "c006",
@@ -2602,7 +2609,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "spawn with provider='codex' via fake-codex.sh; assert session.provider === 'codex'; spawn with provider='opencode' via fake-opencode.sh; assert session.provider === 'opencode'"
+      "verification_recipe": "spawn with provider='codex' via fake-codex.sh; assert session.provider === 'codex'; spawn with provider='opencode' via fake-opencode.sh; assert session.provider === 'opencode'",
+      "validates_job": "host-agent:0"
     }
   ],
   "smoke": {
@@ -2650,7 +2658,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "evidence_sha": "92fedb28d552ef084c1f9c92d66a9803647c41ff"
       }
     ],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "## The problem it solves\n\nYour agent session runs inside claude, codex, gemini, or opencode. Each of those TUIs has its own hook schema, its own transcript format, its own lifecycle event names, its own startup dialogs — and the differences land in exactly the places that break automation. claude delivers hooks via `--settings '<inline-json>'`; codex via a `hooks.json` at a global `CODEX_HOME`; gemini by writing `.gemini/settings.json` into the worker's cwd before launch. Claude's end-of-turn event is named `Stop`; gemini's is `AfterAgent`; opencode fires `session.status`. Without a single contract, every spawn/send/wait verb would fork per provider and the non-claude paths would quietly rot.\n\n## The contract\n\n`AgentProvider` is the answer — a TypeScript interface in `src/core/providers/types.ts` that every provider must satisfy. Its required surface is small: `buildLaunch` returns a `ProviderLaunchSpec` (the binary name, launch flags, env vars to merge, and any files to materialise before launch), `stopEventName` declares which hook event marks end-of-turn, and `parseTranscript` extracts the final assistant text from whatever JSONL or JSON envelope the provider emits.\n\nOptional methods extend the contract without burdening providers that don't need them: `extractActions` returns a normalized `ActionManifest` (tool call counts, files touched, bash commands, errors, turn count); `extractTurns` splits the transcript into completed turns for inter-turn diff; `exportTranscript` provides the argv to export the transcript for providers whose state lives outside a plain file (opencode uses a SQLite-backed store and exports via `opencode export <sessionId>`); `reconcileEnv` lets a provider clean up mutually exclusive credential vars before launch (claude drops an inherited `ANTHROPIC_API_KEY` when a custom `ANTHROPIC_AUTH_TOKEN` is set, to prevent a prompt that would wedge the worker).\n\nThe registry in `src/core/providers/registry.ts` is two dozen lines: a plain object keyed by name, and `getProvider(name)` which throws a typed `ProviderUnknownError` — carrying the bad name and the full list of valid ones — on any unknown lookup. The provider name is recorded in `meta.json` at spawn, so every subsequent verb (`send`, `wait`, `status`, `kill`) routes to the right implementation without a `--provider` flag.\n\n## Four concrete implementations\n\nclaude, codex, gemini, and opencode each live in their own module under `src/core/providers/`. The per-provider churn is entirely contained there: codex symlinks `auth.json` from the user's real `CODEX_HOME` (no secret copy) and copies `config.toml` once into an umbel-managed home so codex's trust writes don't pollute the user's global config; gemini writes its hook config as a file into the worker's cwd (the only mechanism that binary supports); opencode installs a bundled JS plugin once as global infrastructure.\n\n## The design decision\n\numbel's identity is anchored to the worker contract, not to tmux or to any subscription. Per-provider adapters absorb the vendor churn; the verbs and the MCP tools stay stable. Adding a new provider is a single new module plus a one-line registry entry — the operations layer is untouched.\n\n## Honest edges\n\nCodex documents that its transcript path may be `null` in the hook payload; the codex provider falls back to a directory snapshot when that happens. Gemini's `stopEventName` is `AfterAgent`, not `Stop` — a distinction that matters for tests and for the Stop hook's generic payload capture. opencode is the bring-any-model lane: `ollama/…` local, free keyless Zen, or your own key — the same verbs, the same contract, no subscription required."
 }

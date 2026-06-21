@@ -2522,8 +2522,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "host-agent",
       "name": "The Host Agent",
       "jobs": [
-        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+        "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+        "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
       ]
     }
   ],
@@ -2556,7 +2558,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "Start `umbel mcp` as subprocess, send JSON-RPC initialize + tools/list, assert each of the 12 names is present in result.tools[].name."
+      "verification_recipe": "Start `umbel mcp` as subprocess, send JSON-RPC initialize + tools/list, assert each of the 12 names is present in result.tools[].name.",
+      "validates_job": "host-agent:0"
     },
     {
       "id": "c002",
@@ -2564,7 +2567,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "why",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "Import SERVER_INSTRUCTIONS; assert length > 200 and < 1500; assert each required substring is present."
+      "verification_recipe": "Import SERVER_INSTRUCTIONS; assert length > 200 and < 1500; assert each required substring is present.",
+      "validates_job": "host-agent:3"
     },
     {
       "id": "c003",
@@ -2572,7 +2576,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "Call umbel_help via JSON-RPC tools/call with no args; assert index text contains 'lifecycle', 'workflow', 'providers'. Then call with topic='workflow'; assert content contains workers:/steps:/output substitution syntax."
+      "verification_recipe": "Call umbel_help via JSON-RPC tools/call with no args; assert index text contains 'lifecycle', 'workflow', 'providers'. Then call with topic='workflow'; assert content contains workers:/steps:/output substitution syntax.",
+      "validates_job": "host-agent:3"
     },
     {
       "id": "c004",
@@ -2580,7 +2585,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "fit",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "Call helpForTopic('lifecycle'), helpForTopic('workflow'), helpForTopic('providers') and assert topic-specific substrings; assert HELP_TOPICS is exactly ['lifecycle','providers','workflow']."
+      "verification_recipe": "Call helpForTopic('lifecycle'), helpForTopic('workflow'), helpForTopic('providers') and assert topic-specific substrings; assert HELP_TOPICS is exactly ['lifecycle','providers','workflow'].",
+      "validates_job": "host-agent:3"
     },
     {
       "id": "c005",
@@ -2588,7 +2594,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "Assert all 12 tool names have entries in TOOL_DESCRIPTIONS, each length > 20 and < 260. In the live server, assert tools/list descriptions match the constant values."
+      "verification_recipe": "Assert all 12 tool names have entries in TOOL_DESCRIPTIONS, each length > 20 and < 260. In the live server, assert tools/list descriptions match the constant values.",
+      "validates_job": "host-agent:3"
     },
     {
       "id": "c006",
@@ -2596,7 +2603,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "where",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "Spawn `umbel mcp`, complete initialize handshake, close stdin, race proc.exited against a 4 s timeout; assert the process exits (not the timeout symbol)."
+      "verification_recipe": "Spawn `umbel mcp`, complete initialize handshake, close stdin, race proc.exited against a 4 s timeout; assert the process exits (not the timeout symbol).",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
@@ -2646,7 +2654,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
       }
     ],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "## The problem it solves\n\nAn agent host — claude code, codex, gemini, opencode — mounts `umbel mcp` and gains the worker verbs as MCP tools. That much is straightforward. The harder problem is context: the host agent needs enough upfront orientation to know *when* to reach for a worker (versus its own subagent), but the full lifecycle reference, YAML schema, and per-provider quirks would tax every session with a wall of docs it almost never needs.\n\nProgressively disclosing that context is the design problem the MCP face solves.\n\n## The mechanism\n\nRunning `umbel mcp` starts a standard MCP server — `McpServer` from the `@modelcontextprotocol/sdk`, over stdio — and registers twelve tools: `umbel_spawn`, `umbel_send`, `umbel_wait`, `umbel_status`, `umbel_ls`, `umbel_kill`, `umbel_read`, `umbel_actions`, `umbel_diff`, `umbel_capture`, `umbel_logs`, and `umbel_help`. These are thin wrappers: each tool handler calls the matching operation directly, formats the result as a JSON text block, and returns.\n\nThe always-on layer is `SERVER_INSTRUCTIONS` — a compact string attached to the `McpServer` at construction time that every compliant MCP host renders into the agent's system prompt. It carries the fork decision: use umbel for a persistent worker, a different provider, or parallel workers in separate cwds; use the host's own subagent for single-shot research or context-isolated one-offs. It also carries the lifecycle one-liner (`spawn → send → wait → read → kill`) and the critical send/wait pairing rule. The whole block is kept under a hard 1500-character ceiling — enforced by a unit test — because every token here competes with the agent's working context on unrelated turns.\n\nDeeper material is behind `umbel_help`. Calling it with no argument returns an index of three topics; with `topic: 'lifecycle'`, `'workflow'`, or `'providers'`, it returns the full reference for that topic. Content is embedded directly in `src/faces/mcp-help.ts` at compile time — no runtime file I/O, no path resolution, no missing-file failure — which makes the single-binary build entirely self-contained.\n\n## The worker is the noun\n\nEach tool's description is also bounded in length — no tool description exceeds 260 characters — and carries a specific lifecycle hint where one prevents bugs. `umbel_send` says \"returns immediately — pair with umbel_wait.\" `umbel_capture` says \"human inspection only — use umbel_read to parse agent output.\" `umbel_actions` explains when to prefer a structured digest over the verbatim transcript. Orchestration stays with the caller; the tools give the caller enough signal to orchestrate correctly without pre-loading everything.\n\n## The clean exit\n\nWhen the MCP client dies, stdin hits EOF. The MCP SDK's `StdioServerTransport` registers only `data` and `error` listeners on stdin — it does not watch for `end` or `close`, and its `onclose` fires only on an explicit `transport.close()` call. Without intervention, the process would stay alive on its pending `Promise` and leave stdin flowing on an EOF'd pipe, busy-looping a CPU core indefinitely.\n\n`runMcpServer` races four termination signals: `stdin` `end`, `stdin` `close`, `SIGINT`, and `SIGTERM`. Whichever fires first settles a single `Promise`; a settled flag prevents double-resolution. Control returns to `main.ts`, which calls `process.exit()`. The transport is closed best-effort before exit so its stdin listeners are removed and the fd stops being polled. The result is a clean exit with no orphan process and no CPU spin — verified by an e2e test that spawns `umbel mcp`, completes the JSON-RPC handshake, closes stdin, and asserts the process exits within four seconds."
 }

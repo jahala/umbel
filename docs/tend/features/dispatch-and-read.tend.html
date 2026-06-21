@@ -2524,15 +2524,19 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "host-agent",
       "name": "The Host Agent",
       "jobs": [
-        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+        "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+        "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
       ]
     },
     {
       "id": "supervisor-dev",
       "name": "The Supervisor",
       "jobs": [
-        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle and the transcript is sitting there in the morning."
+        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+        "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+        "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
       ]
     }
   ],
@@ -2569,7 +2573,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Spawn a fake-claude session; call send with a newline-containing prompt; assert resolves with { sinceMtime: 0 } (no prior Stop) and does not throw. See test/integration/send.test.ts 'multi-line prompt does not throw' and 'sinceMtime is 0 when stop has never fired before first send'."
+      "verification_recipe": "Spawn a fake-claude session; call send with a newline-containing prompt; assert resolves with { sinceMtime: 0 } (no prior Stop) and does not throw. See test/integration/send.test.ts 'multi-line prompt does not throw' and 'sinceMtime is 0 when stop has never fired before first send'.",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c002",
@@ -2577,7 +2582,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "why",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "After spawn, call send; assert sinceMtime===0 (events/stop absent). After a Stop fires, sinceMtime > 0 on the next call. See test/integration/send.test.ts 'sinceMtime is 0 when stop has never fired before first send'."
+      "verification_recipe": "After spawn, call send; assert sinceMtime===0 (events/stop absent). After a Stop fires, sinceMtime > 0 on the next call. See test/integration/send.test.ts 'sinceMtime is 0 when stop has never fired before first send'.",
+      "validates_job": "host-agent:1"
     },
     {
       "id": "c003",
@@ -2585,7 +2591,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Write a JSONL with two turns; call lastAssistantMessage; assert result equals second answer only. See test/integration/jsonl.test.ts 'returns only the last turn (ignores earlier assistant turns)' line 211."
+      "verification_recipe": "Write a JSONL with two turns; call lastAssistantMessage; assert result equals second answer only. See test/integration/jsonl.test.ts 'returns only the last turn (ignores earlier assistant turns)' line 211.",
+      "validates_job": "host-agent:2"
     },
     {
       "id": "c004",
@@ -2593,7 +2600,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Create session with jsonlPath=null; write events/transcript-path pointing to a JSONL file; call resolveTranscriptContent; assert returned content equals file contents. See test/integration/resolve-transcript.test.ts 'returns file contents when events/transcript-path points to file (meta.jsonlPath=null)' line 195."
+      "verification_recipe": "Create session with jsonlPath=null; write events/transcript-path pointing to a JSONL file; call resolveTranscriptContent; assert returned content equals file contents. See test/integration/resolve-transcript.test.ts 'returns file contents when events/transcript-path points to file (meta.jsonlPath=null)' line 195.",
+      "validates_job": "host-agent:2"
     },
     {
       "id": "c005",
@@ -2601,7 +2609,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "Call unifiedDiff with two versions of a string; assert header lines '--- a/…', '+++ b/…', hunk '@@ -N,M +N,M @@', and +/- content lines. Identical inputs must return ''. See test/unit/diff.test.ts lines 5-105."
+      "verification_recipe": "Call unifiedDiff with two versions of a string; assert header lines '--- a/…', '+++ b/…', hunk '@@ -N,M +N,M @@', and +/- content lines. Identical inputs must return ''. See test/unit/diff.test.ts lines 5-105.",
+      "validates_job": "host-agent:2"
     },
     {
       "id": "c006",
@@ -2609,7 +2618,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "Call truncateAssistantText with text >2000 tokens (no opts); assert contains 'elided' and 'call umbel_read with full=true'. With section='## Findings', assert returns only that section. With full=true, assert identity. See test/unit/truncate.test.ts lines 17-31, 100-107, 34-43."
+      "verification_recipe": "Call truncateAssistantText with text >2000 tokens (no opts); assert contains 'elided' and 'call umbel_read with full=true'. With section='## Findings', assert returns only that section. With full=true, assert identity. See test/unit/truncate.test.ts lines 17-31, 100-107, 34-43.",
+      "validates_job": "host-agent:2"
     }
   ],
   "smoke": {
@@ -2660,7 +2670,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       }
     ],
     "drift": [],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "Each agent CLI has its own idea of how to accept input. claude treats a pasted newline as immediate submission, so multi-line prompts must arrive via the tmux paste-buffer rather than keystroke-by-keystroke. codex has its own submit timing. gemini has another. Getting that detail wrong on any provider means the worker either never runs the prompt or runs a partial one — neither error is obvious, and both are silent.\n\nThen there is the transcript. The provider writes it to disk, but not until the first message lands. Trying to resolve it at spawn time, before any exchange has happened, returns nothing — or worse, a path from a prior session that happened to live in the same directory.\n\nThe two operations that make up this feature handle both problems cleanly, in the right order.\n\n**send** snapshots the mtime of `events/stop` before it does anything else. That number — zero when the file does not yet exist — becomes the `sinceMtime` in its return value, which the caller holds and passes to `wait`. send then routes the prompt through the provider's adapter: multi-line text goes via the tmux paste-buffer, single-line via `send-keys`. The per-provider `submitDelayMs` quirk is applied. send returns immediately. It does not wait. The caller pairs it with `wait`, which watches for the stop file's mtime to advance past the snapshot.\n\n**read** (via `lastAssistantMessage`) pulls the worker's last assistant message from the provider's JSONL transcript, never from `capture-pane`. Transcript resolution is lazy and follows three strategies in order: the cached `jsonlPath` stored in `meta.json` from a prior call (O(1)); the path written into `events/transcript-path` by `stop.sh` from the Stop hook payload; and a directory snapshot that scans `~/.claude/projects/<encoded-cwd>/` for JSONL files created after the session started. Whichever strategy succeeds writes the result back to `meta.json`, so subsequent calls are immediate.\n\nOnce the content is in hand, `lastAssistantMessage` walks the JSONL backward from the end to find the last assistant entry's index, then walks backward again collecting the contiguous assistant run — skipping trailing metadata entries that claude 2.1 appends after the response. The result is the text of that turn only, not the full transcript.\n\nTwo tools shape the result for the host's context budget. `truncateAssistantText` applies a head-and-tail window by default (800 + 800 approximate tokens, snapped to line boundaries), with a `section` opt for extracting a named markdown heading and a `full` opt for bypassing truncation entirely. `unifiedDiff` runs a pure Myers line-diff between any two turns in the transcript, returning a `diff -u`-shaped string — useful when a review loop wants to know what changed between the worker's draft and its revision, not both versions in full.\n\nThe design decision behind all of this is the same one that runs through everything in umbel: files are IPC, JSONL is truth. The host's question — \"what did the worker produce?\" — is answered from the provider's own structured record of the conversation, not from the terminal's scrollback. The answer is shaped — head/tail/section, or a Myers diff of what changed across turns — sized for synthesis, not for reading a wall of pane text. The lazy transcript resolution (it cannot exist until the first message) is the honest edge: `read` called before `wait` has resolved may return empty, which is why the `wait → read` order is the contract, not a suggestion."
 }

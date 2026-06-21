@@ -2522,7 +2522,9 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "supervisor-dev",
       "name": "The Supervisor",
       "jobs": [
-        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle and the transcript is sitting there in the morning."
+        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+        "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+        "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
       ]
     }
   ],
@@ -2555,7 +2557,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('parseWorkflow') block: 7 tests covering valid parse, malformed YAML, missing workers, missing steps, empty steps, multi-worker parse, wait-condition parse, step-missing-prompt."
+      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('parseWorkflow') block: 7 tests covering valid parse, malformed YAML, missing workers, missing steps, empty steps, multi-worker parse, wait-condition parse, step-missing-prompt.",
+      "validates_job": "supervisor-dev:2"
     },
     {
       "id": "c002",
@@ -2563,7 +2566,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('topoSort') block: 6 tests covering single step, two independent steps in one wave, linear chain (3 waves), fan-out parallel wave, direct cycle, self-dependency, 3-node cycle."
+      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('topoSort') block: 6 tests covering single step, two independent steps in one wave, linear chain (3 waves), fan-out parallel wave, direct cycle, self-dependency, 3-node cycle.",
+      "validates_job": "supervisor-dev:2"
     },
     {
       "id": "c003",
@@ -2571,7 +2575,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('substitute') block: 11 tests covering no-op, env, steps output, $session, multiple occurrences, unresolved env, missing step, missing output key, unresolved $session, malformed prefix, whitespace trimming."
+      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('substitute') block: 11 tests covering no-op, env, steps output, $session, multiple occurrences, unresolved env, missing step, missing output key, unresolved $session, malformed prefix, whitespace trimming.",
+      "validates_job": "supervisor-dev:2"
     },
     {
       "id": "c004",
@@ -2579,7 +2584,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "bun test test/e2e/workflow.test.ts — 'two-step sequential workflow (needs) runs step1 then step2' + 'assistant_last_message output substitution works': result.status='completed', result.outputs[step1].result contains 'Response to: step one prompt', result.outputs[step2].result contains substituted value."
+      "verification_recipe": "bun test test/e2e/workflow.test.ts — 'two-step sequential workflow (needs) runs step1 then step2' + 'assistant_last_message output substitution works': result.status='completed', result.outputs[step1].result contains 'Response to: step one prompt', result.outputs[step2].result contains substituted value.",
+      "validates_job": "supervisor-dev:2"
     },
     {
       "id": "c005",
@@ -2587,7 +2593,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "bun test test/e2e/workflow.test.ts — 'parallel: two independent steps run in the same wave concurrently', 'step failure returns status=failed and remaining steps not run', 'workflow aborted via AbortSignal returns failed status': all 3 pass."
+      "verification_recipe": "bun test test/e2e/workflow.test.ts — 'parallel: two independent steps run in the same wave concurrently', 'step failure returns status=failed and remaining steps not run', 'workflow aborted via AbortSignal returns failed status': all 3 pass.",
+      "validates_job": "supervisor-dev:2"
     }
   ],
   "smoke": {
@@ -2632,7 +2639,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       }
     ],
     "drift": [],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "## The orchestration as a file\n\nSome orchestrations are meant to run once and be forgotten. Others need to run every night, be committed alongside the code they review, be handed to a colleague, or be reproduced exactly next month. Prompting a host agent through the same dance each time is the wrong tool for this: the host's context is spent on execution instead of synthesis, the steps live nowhere durable, and reproducing them means reconstructing the instructions from memory.\n\n`umbel run workflow.yaml` is the answer for that second class. The same spawn/send/wait operations that the [MCP face](mcp-face.tend.html) exposes conversationally become a declaration in a YAML file — versioned, auditable, runnable by anyone with the binary.\n\n## YAML in, parallel waves out\n\nA workflow file names its workers once and composes them across steps. Each worker declares a `provider:`, an optional `model:`, and a `cwd:`. Steps declare which worker to `run:` and which prior steps they `needs:`. The rest is a prompt and an output spec.\n\n`parseWorkflow` in `src/core/workflow.ts` reads the YAML text and hands it to `WorkflowSpecSchema` — a zod schema that is the single source of truth for the format. Malformed YAML, missing workers, missing steps, and empty step arrays all throw `UmbelUsageError` before any session is spawned. The schema rejects bad workflows at the door.\n\nOnce the spec is in hand, `topoSort` applies Kahn's algorithm to emit *waves* — groups of steps whose `needs` are all satisfied. Two steps with no `needs` land in the same wave and run concurrently. A step that depends on one of those lands in the next wave. A three-step linear chain emits three waves of one. The algorithm detects cycles — including self-loops and three-node cycles — and throws `WorkflowCycleError` before execution starts. The wave structure is deterministic: the same spec always produces the same ordering.\n\n`runWorkflow` in `src/faces/workflow.ts` drives the waves with `Promise.allSettled`, so every step in a wave runs concurrently and the first failure halts subsequent waves cleanly. Active sessions are tracked in `activeSessions`; on failure, all of them are killed via `Promise.allSettled` (best-effort, never throws) before returning `status: 'failed'` with `failedStep` naming the worker that broke. The run state — `status.json`, the original YAML, and each step's outputs — persists under `~/.umbel/workflows/<run-id>/` so failures can be inspected after the fact.\n\n## Output substitution flows downstream\n\nThe bridge between steps is `substitute` in `src/core/workflow.ts`. It resolves `{{ steps.NAME.outputs.KEY }}` into the named step's captured output, `{{ env.X }}` into an environment variable, and `{{ $session }}` into the current worker's session name. The regex is `TEMPLATE_RE = /\\{\\{([^}]+)\\}\\}/g`; expressions are whitespace-trimmed before matching. Every unresolved or malformed reference throws `UmbelUsageError` immediately — there is no silent empty substitution.\n\nOutputs are declared per-step as a map from key to capture spec. The only spec today is `assistant_last_message`, which calls `resolveTranscriptContent` and then the provider's `parseTranscript` to extract the last assistant turn from the JSONL. A `file:path` spec reads a file written by the worker into its cwd. Both write their values into `stepOutputs[workerName]`, which becomes the substitution context for downstream steps.\n\nA two-step workflow where step two substitutes `{{ steps.step1.outputs.result }}` into its prompt is the common case: a reviewer worker consumes the output of a writer worker without the host agent relaying the text. The [dispatch and read](dispatch-and-read.tend.html) primitives handle the send/wait/read per step; workflow's job is to compose them in the right order.\n\n## The thin YAML face is deliberate\n\nThe workflow face has no conditionals, no loops, and no retry syntax. This is a design position, not a gap: the [provider abstraction](provider-abstraction.tend.html) and positioning thesis both say to invest in the worker (the noun), not in orchestration syntax (the verb). Variable substitution is the ceiling because it covers the composition primitive that matters — passing one worker's output to the next — without building a second scripting language on top of the shell.\n\nWhen an orchestration needs branching on a step's output, the right tool is the script or host agent that calls `umbel run`, not a conditional in the YAML. The workflow face is convenience over the same spawn/send/wait/kill primitives, not a new engine."
 }

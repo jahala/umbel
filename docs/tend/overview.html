@@ -2502,8 +2502,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "status": "approved",
         "archetype": "An agent session (Claude Code, usually) orchestrating real work: it plans and synthesizes, but cannot spawn other providers' CLIs itself, and every token it spends doing work is a token not spent thinking.",
         "jobs": [
-          "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-          "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+          "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+          "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+          "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+          "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
         ]
       },
       {
@@ -2512,7 +2514,9 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "status": "approved",
         "archetype": "A developer driving long agent runs from the shell, scripts, or cron — multiple subscriptions, multiple worktrees, zero appetite for babysitting terminals.",
         "jobs": [
-          "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle and the transcript is sitting there in the morning."
+          "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+          "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+          "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
         ]
       }
     ],
@@ -2557,31 +2561,6 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     ]
   },
   "features_aggregate": [
-    {
-      "id": "host-agent",
-      "title": "The Host Agent",
-      "status": "planned"
-    },
-    {
-      "id": "supervisor-dev",
-      "title": "The Supervisor",
-      "status": "planned"
-    },
-    {
-      "id": "cross-provider-gap",
-      "title": "Cross Provider Gap",
-      "status": "planned"
-    },
-    {
-      "id": "silent-workers",
-      "title": "Silent Workers",
-      "status": "planned"
-    },
-    {
-      "id": "context-bloat",
-      "title": "Context Bloat",
-      "status": "planned"
-    },
     {
       "id": "provider-abstraction",
       "title": "Provider Abstraction",
@@ -2764,6 +2743,31 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "alt": "A shell prompt driving verbs",
         "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='14' y='14' width='92' height='52' rx='4' fill='#20251B'/><text x='24' y='38' font-size='14' font-family='monospace' fill='#8FCB63'>$ umbel</text><text x='24' y='54' font-size='11' font-family='monospace' fill='#8A8A86'>spawn · wait · read</text></svg>"
       }
+    },
+    {
+      "id": "host-agent",
+      "title": "The Host Agent",
+      "status": "planned"
+    },
+    {
+      "id": "supervisor-dev",
+      "title": "The Supervisor",
+      "status": "planned"
+    },
+    {
+      "id": "cross-provider-gap",
+      "title": "Cross Provider Gap",
+      "status": "planned"
+    },
+    {
+      "id": "silent-workers",
+      "title": "Silent Workers",
+      "status": "planned"
+    },
+    {
+      "id": "context-bloat",
+      "title": "Context Bloat",
+      "status": "planned"
     }
   ],
   "source_dirs": [
@@ -2821,25 +2825,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       }
     },
     "coherence": {
-      "total": 30,
-      "groups": [
-        {
-          "kind": "every_check_validates_job",
-          "label": "persona-job anchors",
-          "count": 23,
-          "route": "/tend change",
-          "section": "spine"
-        },
-        {
-          "kind": "narrative_missing",
-          "label": "narratives",
-          "count": 7,
-          "route": "/tend narrate",
-          "section": "content"
-        }
-      ]
+      "total": 0,
+      "groups": []
     },
-    "computed_at": "2026-06-21T15:25:44.870Z"
+    "computed_at": "2026-06-21T16:04:25.088Z"
   }
 }
 </script>

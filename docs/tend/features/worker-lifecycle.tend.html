@@ -2522,15 +2522,19 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "host-agent",
       "name": "The Host Agent",
       "jobs": [
-        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+        "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+        "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
       ]
     },
     {
       "id": "supervisor-dev",
       "name": "The Supervisor",
       "jobs": [
-        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle and the transcript is sitting there in the morning."
+        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+        "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+        "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
       ]
     }
   ],
@@ -2569,7 +2573,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Call spawn(); assert listSessions() contains session.name; assert meta.json exists at $UMBEL_STATE/sessions/<name>/meta.json."
+      "verification_recipe": "Call spawn(); assert listSessions() contains session.name; assert meta.json exists at $UMBEL_STATE/sessions/<name>/meta.json.",
+      "validates_job": "host-agent:0"
     },
     {
       "id": "c002",
@@ -2577,7 +2582,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Call spawn() with no name; assert session.name matches /^anon-[a-z0-9]{6}$/ and session.anonymous===true."
+      "verification_recipe": "Call spawn() with no name; assert session.name matches /^anon-[a-z0-9]{6}$/ and session.anonymous===true.",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c003",
@@ -2585,7 +2591,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Set PROMPT_COMMAND and BASH_ENV in process.env; capture the env handed to newSession; assert denylist vars absent, arbitrary inherited var present, and explicit workerEnv override wins."
+      "verification_recipe": "Set PROMPT_COMMAND and BASH_ENV in process.env; capture the env handed to newSession; assert denylist vars absent, arbitrary inherited var present, and explicit workerEnv override wins.",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c004",
@@ -2593,7 +2600,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "spawn() then kill(); assert hasSession()===false and session dir absent. Also kill a ghost name; assert resolves without error."
+      "verification_recipe": "spawn() then kill(); assert hasSession()===false and session dir absent. Also kill a ghost name; assert resolves without error.",
+      "validates_job": "supervisor-dev:1"
     },
     {
       "id": "c005",
@@ -2601,7 +2609,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "spawn() → status() → alive=true; kill(removeState=false) → status() → alive=false; write permission_prompt notification → status() → needsInput=true, needsInputReason='permission'."
+      "verification_recipe": "spawn() → status() → alive=true; kill(removeState=false) → status() → alive=false; write permission_prompt notification → status() → needsInput=true, needsInputReason='permission'.",
+      "validates_job": "supervisor-dev:1"
     },
     {
       "id": "c006",
@@ -2609,7 +2618,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "Unit tests in test/unit/id.test.ts: assert format regex, length, base36 chars, validity checks."
+      "verification_recipe": "Unit tests in test/unit/id.test.ts: assert format regex, length, base36 chars, validity checks.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
@@ -2659,7 +2669,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "evidence_sha": "bbd755a2f7f3a9183073115f231d1a68c92350c2"
       }
     ],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "A cron job needs a codex reviewer running in a worktree by morning. A host agent needs a gemini tester standing beside it while it writes. Both reach for `umbel spawn` — and the fiddly edges that make standing up an interactive CLI programmatically fragile (trust dialogs blocking the pane, shell-init scripts racing the first keystroke, a session you spawned and can no longer locate) are handled before the caller gets control back.\n\n## One named session per worker, one file per identity\n\nEvery spawn creates a tmux session named `umbel-<name>`, using the `umbel-` prefix so umbel sessions stay distinct from the user's own tmux namespace (`src/adapters/tmux.ts:prefixed`). If no name is provided, `generateSessionName` in `src/core/id.ts` produces `anon-XXXXXX` — a six-character base36 suffix chosen at random — and the session is marked `anonymous: true` so the faces layer knows to kill it on exit rather than leave an orphan.\n\nBefore the tmux session starts, `spawn` writes `meta.json` to `~/.umbel/sessions/<name>/` (the state dir created by `src/adapters/fs-state.ts`). The meta records the provider name, cwd, model, and any provider-written files — so every subsequent verb (`send`, `wait`, `status`, `kill`) can route correctly from the session name alone, with no `--provider` flag required. The [provider abstraction](provider-abstraction.tend.html) handles what each provider needs at launch; spawn's job is to own the session identity and keep that identity findable.\n\n## The env denylist keeps it like running it yourself\n\nThe worker inherits the full `process.env` of the umbel process — proxies, API keys, config paths, everything that makes the CLI behave like the user expects — with one exception: five shell-init variables are stripped before the environment reaches the tmux session.\n\n```\nSHELL, PROMPT_COMMAND, BASH_ENV, ZDOTDIR, ENV\n```\n\nThese five are the ones that cause a login shell to emit startup bytes into the pane's stdin. When a tmux session opens with those set, the shell's init scripts run and can produce output (or consume input) before the provider's TUI is ready — which races against the first `send` and gets consumed as a spurious empty prompt. The denylist is narrow by design: an earlier version used an allowlist of known-safe vars and silently stripped proxies, API keys, and custom config paths that the worker needed. The denylist approach keeps the `like running it yourself` semantics (d001) while removing only what causes the race.\n\nExplicit per-worker overrides (`--env KEY=VAL` on the CLI, `workerEnv` in MCP) layer on top of the inherited env. Provider launch env layers on top of those — reserved, so umbel can always force `UMBEL_STATE` and `UMBEL_SESSION_ID` into the worker regardless of what the caller passed.\n\n## Startup dialogs are dismissed before the caller gets control\n\nSome provider TUIs block on interactive prompts at first launch in a fresh directory — claude's workspace-trust dialog, codex's hook-review screen. A supervisor that sends a prompt before these clear gets no response; the pane is waiting on a keystroke, not an agent turn.\n\n`dismissStartupDialogs` in `src/operations/spawn.ts` handles this with a capture-pane poll loop: it captures the last 40 lines of the tmux pane every 150ms, matches each provider's declared dialog patterns (defined in `src/core/startup-dialogs.ts` as `StartupDialog` objects with a regex and a key sequence), sends the keystrokes to dismiss, and exits once all known dialogs have fired or the provider's `readyMatch` pattern confirms the main UI is up. The loop is best-effort — it never throws — and is gated to real provider binaries. When a test fixture injects `fake-claude.sh` via `opts.claudeBin`, the dialog loop is skipped entirely and replaced with an 800ms warm-up so the fixture has time to start.\n\n## Kill is idempotent; a ghost session doesn't throw\n\n`kill` in `src/operations/kill.ts` tears down two things: the tmux session and the state directory. `killSession` in `src/adapters/tmux.ts` swallows \"no such session\" errors — the regex in `NO_SESSION_RE` matches tmux's several phrasings of that condition — so killing a session that already exited, or a name that was never spawned, resolves cleanly. This matters in practice: a worker can crash between a `wait` returning `dead` and the caller issuing `kill`; the kill must not fail.\n\nBefore removing the state dir, `kill` reads `meta.providerFiles` — the list of provider-specific files written into the project cwd at spawn time (gemini's `.gemini/settings.json`, for instance). Each is unlinked best-effort, so a failed unlink never blocks the session cleanup. The codex provider's shared `CODEX_HOME` is excluded from this list (`shared: true` on its file specs) because it is reused across workers and is never cleaned per-session.\n\n## Status disambiguates alive from blocked\n\n`status` in `src/operations/status.ts` answers two questions the caller actually needs: is the session alive, and if it is, is the worker responding or waiting on input?\n\nAlive is a tmux probe (`hasSession`). Needs-input is read from the `events/notification` file: if a notification event is newer than the last `events/stop` timestamp, the latest line is classified by `classifyNotification` in `src/core/notification.ts`. The classifier distinguishes a `permission_prompt` or `idle_prompt` (real awaiting events, reported as `needsInput: true` with a `needsInputReason`) from informational pings like `auth_success` (not awaiting, `needsInput` stays false). When a permission prompt names a tool, `pendingTool` carries it so the caller can decide whether to approve or reject without reading the raw pane.\n\nThis disambiguation is what lets [dispatch and read](dispatch-and-read.tend.html) avoid hanging: a worker that has not fired its stop event is either still thinking or blocked on a prompt. Status tells which.\n\n## tmux is the daemon; the filesystem is the state\n\nEvery `umbel` invocation is short-lived. There is no umbel process running between calls — tmux holds the sessions, and `~/.umbel/sessions/<name>/` holds the identity. A supervisor can close its laptop, come back hours later, and `umbel status` reconstructs the picture from `meta.json` files and live tmux probes. The sessions that survived are still running; the ones that didn't show `alive: false`.\n\nThis is a deliberate stance: a long-running daemon would own state that only it understands, require health-checks, and become a dependency to restart when it crashes. The tmux-as-daemon, filesystem-as-store shape means any `umbel` call can observe and act on the full session set with no coordination overhead — and it means the [supervisor CLI](cli-face.tend.html) and the [MCP face](mcp-face.tend.html) are thin surfaces over the same shared state, not separate views of a central server's memory."
 }

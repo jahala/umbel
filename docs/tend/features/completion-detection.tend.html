@@ -2523,15 +2523,19 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "host-agent",
       "name": "The Host Agent",
       "jobs": [
-        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+        "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+        "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+        "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+        "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
       ]
     },
     {
       "id": "supervisor-dev",
       "name": "The Supervisor",
       "jobs": [
-        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle and the transcript is sitting there in the morning."
+        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+        "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+        "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
       ]
     }
   ],
@@ -2568,7 +2572,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Spawn fake-claude, send a prompt, call waitFor with the sinceMtime from send; assert result.reason==='stop' and result.stopped===true."
+      "verification_recipe": "Spawn fake-claude, send a prompt, call waitFor with the sinceMtime from send; assert result.reason==='stop' and result.stopped===true.",
+      "validates_job": "host-agent:1"
     },
     {
       "id": "c002",
@@ -2576,7 +2581,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "why",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Call waitFor on a session name that has no tmux session; assert result.reason==='dead' and elapsed < 1500ms with a 3s defaultTimeoutMs."
+      "verification_recipe": "Call waitFor on a session name that has no tmux session; assert result.reason==='dead' and elapsed < 1500ms with a 3s defaultTimeoutMs.",
+      "validates_job": "host-agent:1"
     },
     {
       "id": "c003",
@@ -2584,7 +2590,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Start a live bash session (never fires stop), write a permission_prompt JSON line to events/notification after 300ms; assert result.reason==='input', result.inputReason==='permission', result.message contains the prompt text."
+      "verification_recipe": "Start a live bash session (never fires stop), write a permission_prompt JSON line to events/notification after 300ms; assert result.reason==='input', result.inputReason==='permission', result.message contains the prompt text.",
+      "validates_job": "host-agent:1"
     },
     {
       "id": "c004",
@@ -2592,7 +2599,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "Unit test classifyNotification with each provider's hook payload shape; assert correct reason and tool extraction; confirm last-line-wins by prepending a permission_prompt then appending idle_prompt and asserting reason==='idle'."
+      "verification_recipe": "Unit test classifyNotification with each provider's hook payload shape; assert correct reason and tool extraction; confirm last-line-wins by prepending a permission_prompt then appending idle_prompt and asserting reason==='idle'.",
+      "validates_job": "host-agent:1"
     },
     {
       "id": "c005",
@@ -2600,7 +2608,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "fit",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Case A: live bash session with static prompt, idleTimeoutMs=800 → assert result.reason==='idle'. Case B: bash -c 'while true; do echo $RANDOM; sleep 0.1; done', idleTimeoutMs=800, condition timeout 2.5s → assert result.reason==='timeout' (not idle)."
+      "verification_recipe": "Case A: live bash session with static prompt, idleTimeoutMs=800 → assert result.reason==='idle'. Case B: bash -c 'while true; do echo $RANDOM; sleep 0.1; done', idleTimeoutMs=800, condition timeout 2.5s → assert result.reason==='timeout' (not idle).",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c006",
@@ -2608,7 +2617,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "where",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Call ensureGlobalHooks, exec stop.sh with UMBEL_STATE+UMBEL_SESSION_ID set; assert events/stop exists and events/log has a numeric line. Exec notify.sh twice with different payloads; assert events/notification has 2 lines, each parseable, in order."
+      "verification_recipe": "Call ensureGlobalHooks, exec stop.sh with UMBEL_STATE+UMBEL_SESSION_ID set; assert events/stop exists and events/log has a numeric line. Exec notify.sh twice with different payloads; assert events/notification has 2 lines, each parseable, in order.",
+      "validates_job": "host-agent:1"
     }
   ],
   "smoke": {
@@ -2658,7 +2668,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "evidence_sha": "7129a5b7ef0aca19145da5a8821d2cc0a23e41bd"
       }
     ],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "From outside, a worker that has finished, a worker that is thinking, and a worker wedged on a permission prompt all look identical. Silence is the hardest signal in interactive CLIs — and unattended runs die on it.\n\n`waitFor` answers the question. It settles on five reasons and returns a result a program can branch on: `stop` (the turn ended), `input` (the worker is waiting on you), `idle` (the pane stopped moving), `dead` (the session vanished mid-turn), `timeout`. Never a guess, never a screen-scrape.\n\n**The keystone: mtime snapshot before send, watch for advance**\n\nBefore `send` hands the prompt to the worker, it records the mtime of `events/stop`. After send, `waitFor` watches for that mtime to advance past the snapshot. When it does, the turn is done — even if the stop hook fired in the gap between send and the watch starting, because the mtime snapshot was taken before either. Concurrent waiters work the same way: the file mtime is monotone, so any waiter that reads a higher value wins cleanly.\n\nThe stop signal itself comes from the provider's own lifecycle, not from parsing terminal output. claude fires a `Stop` hook; gemini fires `AfterAgent`. The global `stop.sh` receives the hook payload on stdin, writes `transcript-path` first, then touches `events/stop` — so a waiter that wakes on the mtime advance is guaranteed to find the transcript path already on disk.\n\n**Needs-input: the notify hook and its classifier**\n\nA worker blocked on a permission prompt is alive, has not fired stop, and will hang to the timeout unless something intervenes. The `notify.sh` hook is the intervention. It fires on the provider's blocking event — claude's `Notification` (with `permission_prompt` or `idle_prompt` matcher), codex's `PermissionRequest`, gemini's `ToolPermission`, opencode's `permission.updated` — and appends one JSON line to `events/notification`.\n\n`waitFor` tracks the mtime of that file independently, checking it before the liveness probe on every wake. When the mtime advances past the baseline recorded at wait-start, `classifyNotification` reads the latest line from the append-only JSONL and maps it to a sub-reason: `permission` (blocked on a tool prompt), `idle` (done and waiting), or `question` (an elicitation dialog). Informational events — `auth_success`, elicitation completion — advance the baseline and keep waiting. The result carries the message text and, where the provider exposes it, the pending tool name, so a supervisor can answer without inspecting the pane.\n\n**Two backstops for the providers that go silent**\n\nNo provider exposes an idle event in the sense of \"I am done and no longer producing output\". The opt-in idle net fills the gap: when `idleTimeoutMs` is set, `waitFor` polls the tmux pane on a sub-interval; if the captured text stops changing for the configured duration, it settles `reason: 'idle'` with a pane snapshot. A worker running a long silent tool call won't trigger it — only a genuinely static pane does.\n\nThe liveness probe is the other backstop. A worker can crash mid-turn without firing the stop hook: the session vanishes, no file advances, no wake source fires. Without the probe, `waitFor` would block until the default timeout — formerly up to thirty minutes. Now, a 500ms poll on `tmux has-session` detects the vanished session and returns `reason: 'dead'` promptly. The real condition is always evaluated once after liveness is confirmed dead, so a turn that fired stop in the instant before the crash still resolves as `stop`.\n\n**The order of checks is intentional**\n\nOn every wake, `waitFor` evaluates the compiled condition first. If unsatisfied, it checks the notification mtime before the liveness probe — a blocked worker is alive, and reporting it as `input` is more useful than reporting it as `dead`. Liveness is the last resort. Informational pings that don't classify to a blocking reason advance the notification baseline and fall through to the liveness check. The real condition is always given priority."
 }

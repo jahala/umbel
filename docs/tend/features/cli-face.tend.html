@@ -2524,7 +2524,9 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "id": "supervisor-dev",
       "name": "The Supervisor",
       "jobs": [
-        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle and the transcript is sitting there in the morning."
+        "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+        "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+        "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
       ]
     }
   ],
@@ -2562,7 +2564,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Run runCli(['-p', 'hello from test', '--cwd', tmpDir]) via fake-claude; assert stdout contains 'Response to: hello from test' (proves -p received the prompt string, not undefined)."
+      "verification_recipe": "Run runCli(['-p', 'hello from test', '--cwd', tmpDir]) via fake-claude; assert stdout contains 'Response to: hello from test' (proves -p received the prompt string, not undefined).",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c002",
@@ -2570,7 +2573,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "runCli(['bogus-verb-xyz']) → exit 2, stderr contains unknown verb; runCli(['spawn', '--name', validName]) → exit 0."
+      "verification_recipe": "runCli(['bogus-verb-xyz']) → exit 2, stderr contains unknown verb; runCli(['spawn', '--name', validName]) → exit 0.",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c003",
@@ -2578,7 +2582,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
-      "verification_recipe": "VerbSchemas.send.safeParse({name:'foo', prompt:'hi'}) succeeds; VerbSchemas.send.safeParse({name:'foo'}) fails with issues[0].path=['prompt']. Same pattern for all 11 other verbs."
+      "verification_recipe": "VerbSchemas.send.safeParse({name:'foo', prompt:'hi'}) succeeds; VerbSchemas.send.safeParse({name:'foo'}) fails with issues[0].path=['prompt']. Same pattern for all 11 other verbs.",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c004",
@@ -2586,7 +2591,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "impact",
       "method": "synthetic-test",
       "integration_level": "e2e",
-      "verification_recipe": "runP({prompt:'hi', claudeBin:'fake-claude.sh', env}) → result.text contains 'Response to: hi', result.sessionName is set and tmux session is gone (anonymous)."
+      "verification_recipe": "runP({prompt:'hi', claudeBin:'fake-claude.sh', env}) → result.text contains 'Response to: hi', result.sessionName is set and tmux session is gone (anonymous).",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c005",
@@ -2594,7 +2600,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "fit",
       "method": "code-review",
       "integration_level": "unit",
-      "verification_recipe": "Inspect src/operations/deps.ts: defaultDeps exports exactly {tmux, fs, hooks, jsonl, exec, watch} from their adapter modules; no business logic, no side effects."
+      "verification_recipe": "Inspect src/operations/deps.ts: defaultDeps exports exactly {tmux, fs, hooks, jsonl, exec, watch} from their adapter modules; no business logic, no side effects.",
+      "validates_job": "supervisor-dev:0"
     },
     {
       "id": "c006",
@@ -2602,7 +2609,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "actions({name:'sess3', env}) over a JSONL with Read/Edit/Bash tool_use blocks returns string containing 'Tools: Read×1, Edit×1, Bash×1' and 'Files read: /repo/foo.ts'."
+      "verification_recipe": "actions({name:'sess3', env}) over a JSONL with Read/Edit/Bash tool_use blocks returns string containing 'Tools: Read×1, Edit×1, Bash×1' and 'Files read: /repo/foo.ts'.",
+      "validates_job": "host-agent:2"
     }
   ],
   "smoke": {
@@ -2652,7 +2660,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "evidence_sha": "26c7e343519949303c6a02b3f01d2ab5346aca6c"
       }
     ],
-    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
+    "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
   },
   "narrative": "## The gap it fills\n\nScripts, cron jobs, and CI pipelines need umbel's verbs — and there's no MCP host in those environments to reach for. The CLI face is the answer: a thin shell over the same operations layer the MCP tools call, so every verb available to an agent is equally available from your shell. And for the common case of a one-shot prompt, `umbel -p` is a drop-in for `claude -p` and `codex -p` — same flags, same contract, routed through the interactive TUI rather than the API.\n\n## How the parser works\n\nEvery invocation enters through a single `parseArgv` call. The key design decision in that function is spelled out in the source: **short flags are always boolean**. No short flag ever consumes the next argument as a value. This is the v2 fix — the earlier parser used the conventional \"if the next token doesn't start with `-`, treat it as the flag's value\" rule, which silently swallowed the `-p` prompt. `umbel -p \"my prompt\"` would set `-p` to `\"my prompt\"` as a string, leaving the prompt field empty. The repair is a BOOLEAN_FLAGS set that covers every current short flag, and a hard rule that any future flag needing a value must use the long form (`--flag value`), not a short alias.\n\nAfter parsing, `runCli` routes on the first positional. Fourteen verbs are dispatched via a switch — spawn, send, wait, status, ls, kill, attach, read, actions, diff, capture, logs, run, mcp — plus the `-p`/`--print` flag which is detected before the verb switch and handed to `runPMode`. An unknown verb exits with code 2 and prints help to stderr.\n\n## VerbSchemas: one source, two faces\n\n`verbs.ts` exports `VerbSchemas` — a plain object of zod schemas, one per verb. The CLI parses flags and positionals with `parseArgv`, then builds the input record and validates it against the right schema. The MCP face does the same thing from an incoming JSON call. Neither face defines its own types: the schemas are shared, and `z.infer<>` produces the TypeScript types both faces use. Changing a verb's shape in one place changes it everywhere.\n\n`parseDuration` lives in the same file — it converts `'5m'`, `'30s'`, `'1h'`, `'500ms'` to milliseconds and is used by the `wait` verb's `--timeout` and `--idle-timeout` flags. If the format is wrong, it throws a typed `UmbelUsageError` which the face layer maps to exit code 2.\n\n## The -p lifecycle\n\n`runP` in `p.ts` implements the full spawn→send→wait→read cycle that `umbel -p` runs. For an anonymous prompt (no `--name`), it generates a session name with the `anon-` prefix, spawns, sends the prompt, waits for a `stop` condition, reads the transcript via the provider's `parseTranscript`, and kills the session on any exit path — success or error. The `sinceMtime` value from `send` is threaded through to `waitFor` so the stop-file baseline is captured before the send returns, making the wait race-free even when send and wait run in different processes.\n\nIf the worker exits without firing its stop hook, `waitFor` returns `reason: 'dead'` and `runP` throws a `SessionDeadError`. If the worker blocks on a permission prompt, `waitFor` returns `reason: 'input'` and `runP` throws a `WorkerBlockedError` — both carry the session name so the caller can report what happened. The `--json` flag writes the result as JSON on stdout; without it, only the assistant's text is printed, making `umbel -p` pipe-safe.\n\n## The binary and its install\n\n`scripts/build.ts` compiles umbel to a standalone binary via `bun build --compile --minify`. Four targets cover the supported platforms (darwin-arm64, darwin-x64, linux-x64, linux-arm64); without `--all`, only the current platform is built. Install (`--install`) uses a three-step sequence — write to a temp path, chmod, then rename over the destination — rather than writing in place. The reason is documented in the source: replacing a code-signed binary on macOS in place invalidates the kernel's cached signature, and the next exec returns Killed: 9. The atomic rename produces a fresh inode each time, which the kernel treats as a new file.\n\n`--version` after install is run immediately as a smoke check. If the binary exits non-zero or prints nothing, the install step throws — a non-running binary is a failure, not a success to be discovered later."
 }

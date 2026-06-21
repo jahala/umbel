@@ -1075,6 +1075,26 @@ nav.toc a.active {
 .detail-rel-item__title { color: var(--text-muted); font-family: var(--sans); flex: 1; }
 .detail-rel-item .pill { margin-left: auto; }
 
+/* Persona journey: the persona's path THROUGH the product — its bound features
+   grouped by journey_phase, entry phase first, exit phase last. */
+.persona-journey { display: flex; flex-direction: column; gap: var(--sp-3); }
+.persona-journey__step { border-left: 2px solid var(--accent-weak); padding-left: var(--sp-2); }
+.persona-journey__step--enter,
+.persona-journey__step--exit { border-left-color: var(--accent); }
+.persona-journey__phase {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.persona-journey__edge {
+  font-size: 9px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 2px;
+  padding: 0 var(--sp-1); letter-spacing: 0.04em; text-transform: lowercase;
+}
+.persona-journey .detail-rel-list { margin-top: 2px; }
+.persona-journey .detail-rel-item { padding: 2px 0; }
+
 /* Chips — pill labels for persona / opportunity rail blocks.
    Three variants keyed to severity: strong (critical/high), mid (medium),
    muted (low / null). Used standalone or wrapped in .chip-group-tend. */
@@ -2481,7 +2501,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "schema_version": "1",
   "kind": "feature",
   "tend_version": "0.4.0",
-  "generated_at": "2026-06-12T10:40:37.470Z",
+  "generated_at": "2026-06-21T16:04:25.040Z",
   "project_name": "Project Garden"
 }
 </script>
@@ -2494,8 +2514,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "persona": {
     "archetype": "An agent session (Claude Code, usually) orchestrating real work: it plans and synthesizes, but cannot spawn other providers' CLIs itself, and every token it spends doing work is a token not spent thinking.",
     "jobs": [
-      "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session orchestrates two providers in parallel and synthesizes their output without doing the work itself.",
-      "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt?), we believe wait should distinguish done from needs-input and name the reason. We'll know we got it right when wait returns needs-input with the blocking question and the host answers it programmatically instead of wedging."
+      "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
+      "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
+      "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
+      "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
     ],
     "bound_features": [
       {
@@ -2629,7 +2651,118 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         }
       }
     ],
-    "bound_checks": [],
+    "bound_checks": [
+      {
+        "feature_id": "cli-face",
+        "check_id": "c006",
+        "job_index": 2
+      },
+      {
+        "feature_id": "completion-detection",
+        "check_id": "c001",
+        "job_index": 1
+      },
+      {
+        "feature_id": "completion-detection",
+        "check_id": "c002",
+        "job_index": 1
+      },
+      {
+        "feature_id": "completion-detection",
+        "check_id": "c003",
+        "job_index": 1
+      },
+      {
+        "feature_id": "completion-detection",
+        "check_id": "c004",
+        "job_index": 1
+      },
+      {
+        "feature_id": "completion-detection",
+        "check_id": "c006",
+        "job_index": 1
+      },
+      {
+        "feature_id": "dispatch-and-read",
+        "check_id": "c002",
+        "job_index": 1
+      },
+      {
+        "feature_id": "dispatch-and-read",
+        "check_id": "c003",
+        "job_index": 2
+      },
+      {
+        "feature_id": "dispatch-and-read",
+        "check_id": "c004",
+        "job_index": 2
+      },
+      {
+        "feature_id": "dispatch-and-read",
+        "check_id": "c005",
+        "job_index": 2
+      },
+      {
+        "feature_id": "dispatch-and-read",
+        "check_id": "c006",
+        "job_index": 2
+      },
+      {
+        "feature_id": "mcp-face",
+        "check_id": "c001",
+        "job_index": 0
+      },
+      {
+        "feature_id": "mcp-face",
+        "check_id": "c002",
+        "job_index": 3
+      },
+      {
+        "feature_id": "mcp-face",
+        "check_id": "c003",
+        "job_index": 3
+      },
+      {
+        "feature_id": "mcp-face",
+        "check_id": "c004",
+        "job_index": 3
+      },
+      {
+        "feature_id": "mcp-face",
+        "check_id": "c005",
+        "job_index": 3
+      },
+      {
+        "feature_id": "provider-abstraction",
+        "check_id": "c001",
+        "job_index": 0
+      },
+      {
+        "feature_id": "provider-abstraction",
+        "check_id": "c003",
+        "job_index": 0
+      },
+      {
+        "feature_id": "provider-abstraction",
+        "check_id": "c004",
+        "job_index": 1
+      },
+      {
+        "feature_id": "provider-abstraction",
+        "check_id": "c005",
+        "job_index": 2
+      },
+      {
+        "feature_id": "provider-abstraction",
+        "check_id": "c006",
+        "job_index": 0
+      },
+      {
+        "feature_id": "worker-lifecycle",
+        "check_id": "c001",
+        "job_index": 0
+      }
+    ],
     "felt_opportunities": [
       "cross-provider-gap",
       "silent-workers",
@@ -3599,7 +3732,11 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   }
 
   function renderJourney(data) {
-    if (!data) return '';
+    // Catalog-description polyglots (persona / opportunity) are not features at a
+    // phase — their journey is rendered from bound_features (renderPersonaJourney).
+    // journey_phase / personas / solves are feature-only fields; a stray
+    // journey_phase on an anchor used to leak this whole section onto it.
+    if (!data || isCatalogDescription(data)) return '';
     var rows = '';
     if (isNonEmptyString(data.journey_phase)) {
       rows += '<div class="journey-row"><span class="journey-row__key">phase</span><span class="journey-row__val"><a class="dep-link" href="../overview.html#phase-' + esc(data.journey_phase) + '">' + esc(data.journey_phase) + '</a></span></div>';
@@ -4163,9 +4300,59 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     return railSection(label, '<ul class="detail-rel-list">' + rows + '</ul>', { collapsible: true, count: ids.length });
   }
 
+  // The persona's journey THROUGH the product: the top-level features that serve
+  // this persona, grouped by journey_phase and laid out in the project's phase
+  // order — entry phase first, exit phase last. Answers "where do they enter,
+  // which features do they touch, where do they exit", derived from the
+  // bound_features snapshot (each carries journey_phase). Phase order comes from
+  // the snapshotted journey_phases; falls back to first-seen so it still renders
+  // before a re-aggregate. Subpages are excluded — the journey is through
+  // capabilities, not their drill-downs.
+  function renderPersonaJourney(persona) {
+    if (!persona) return '';
+    var feats = isNonEmptyArray(persona.bound_features) ? persona.bound_features : [];
+    var topLevel = feats.filter(function (f) { return f && f.is_subpage !== true; });
+    if (!topLevel.length) return '';
+    function featItem(f) {
+      var status = f.status || 'draft';
+      var title = f.title ? '<span class="detail-rel-item__title">' + esc(f.title) + '</span>' : '';
+      return '<li class="detail-rel-item">' +
+        glyphSpan(f.status_glyph || glyphFor(status), glyphClassFor(status)) +
+        '<a class="dep-link" href="' + esc(f.id) + '.tend.html">' + esc(f.id) + '</a>' + title +
+      '</li>';
+    }
+    var byPhase = {};
+    var unphased = [];
+    topLevel.forEach(function (f) {
+      if (isNonEmptyString(f.journey_phase)) (byPhase[f.journey_phase] = byPhase[f.journey_phase] || []).push(f);
+      else unphased.push(f);
+    });
+    var ordered = (isNonEmptyArray(persona.journey_phases) ? persona.journey_phases : [])
+      .filter(function (p) { return byPhase[p]; });
+    Object.keys(byPhase).forEach(function (p) { if (ordered.indexOf(p) === -1) ordered.push(p); });
+    var steps = ordered.map(function (phase, i) {
+      var edge = i === 0 ? 'enter' : (i === ordered.length - 1 && ordered.length > 1 ? 'exit' : '');
+      var edgeTag = edge ? '<span class="persona-journey__edge">' + edge + '</span>' : '';
+      return '<div class="persona-journey__step' + (edge ? ' persona-journey__step--' + edge : '') + '">' +
+        '<div class="persona-journey__phase">' + esc(phase) + edgeTag + '</div>' +
+        '<ul class="detail-rel-list">' + byPhase[phase].map(featItem).join('') + '</ul>' +
+      '</div>';
+    }).join('');
+    // Top-level features with no journey_phase yet are still the persona's — show
+    // them in a trailing group so nothing is dropped before the map is fully phased.
+    if (unphased.length) {
+      steps += '<div class="persona-journey__step persona-journey__step--unphased">' +
+        '<div class="persona-journey__phase">unphased</div>' +
+        '<ul class="detail-rel-list">' + unphased.map(featItem).join('') + '</ul>' +
+      '</div>';
+    }
+    if (!steps) return '';
+    return railSection('journey', '<div class="persona-journey">' + steps + '</div>', { collapsible: true, count: topLevel.length });
+  }
+
   // Returns { identity, graph }: the persona's identity meta (jobs count,
-  // archetype, jobs list) goes in the IDENTITY band; its outward links
-  // (bound features, felt opportunities) go in the GRAPH band.
+  // archetype, jobs list) goes in the IDENTITY band; its journey through the
+  // product (bound features by phase) + felt opportunities go in the GRAPH band.
   function renderPersonaRail(persona) {
     if (!persona) return { identity: '', graph: '' };
     var identity = '';
@@ -4205,7 +4392,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     }
 
     // 4 + 5. Outward links — bound features + felt opportunities (GRAPH band).
-    var graph = renderFeatureSummaryList(persona.bound_features, 'bound features', '#bound-features') +
+    var graph = renderPersonaJourney(persona) +
       renderIdList('opportunities felt', persona.felt_opportunities);
 
     return { identity: identity, graph: graph };
