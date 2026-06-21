@@ -2482,14 +2482,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "kind": "garden",
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:38:12.319Z",
-  "project_name": "Umbel"
+  "project_name": "Umbel",
+  "dek_sha": "2f55126a24ef437e55aba915e89bcb07bfa87f03"
 }
 </script>
 
 <script id="oo-data" type="application/json">
 {
   "id": "garden",
-  "title": "Project Garden",
+  "title": "umbel",
   "status": "planned",
   "catalog": {
     "schema_version": "1",
@@ -2776,10 +2777,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "src",
     "scripts"
   ],
-  "what": "umbel drives interactive agent CLIs — claude, codex, gemini, opencode — inside tmux from three faces: an MCP server for host agents, a supervisor CLI for humans and scripts, and YAML workflows. One binary, one provider abstraction, subscription-billed.",
+  "what": "umbel drives interactive agent CLIs — claude, codex, gemini, opencode — inside tmux through four faces: an MCP server host agents mount, a supervisor CLI for humans and scripts, declarative YAML workflows, and `umbel -p` — a drop-in for `claude -p` / `codex -p` / `gemini -p` routed through the interactive TUI. One binary, one provider contract, subscription-billed.",
   "why": "Agent sessions cannot spawn other providers' CLIs, and interactive CLIs are silent about doneness — so multi-provider orchestration today is a human switching terminals and guessing when output stopped.",
   "impact": "A host session stands up cross-provider workers, dispatches, waits on real completion signals (done vs needs-input with reason), and synthesizes — context spent on thinking, work billed to worker subscriptions.",
-  "fit": "The execution muscle of the toolchain: tend plans the bets, umbel runs the workers that build them. Sibling of tend and petals in spirit, not branding — umbel is a temp name.",
+  "fit": "The execution layer of plotplot — the family of small, sharp agent tools (sibling of tilth, tend, petals, pleach). umbel is the worker-as-contract layer: it runs one unit of agent work reliably and returns a result the caller can branch on. tend plans the bets; umbel runs the workers that build them.",
   "where": "src/faces (cli, mcp, workflow) over src/operations (spawn, send, wait, status, kill, diff) over src/core (providers, wait, notification, env) and src/adapters (tmux, hooks, jsonl, fs).",
   "how": "tmux sessions per worker with meta.json provider routing; provider hooks (notify/stop) plus an idle net for completion; lazy JSONL transcript resolution; environment inherited minus a shell-init denylist; Bun-compiled single binary.",
   "progress": {
@@ -2830,8 +2831,10 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "total": 0,
       "groups": []
     },
-    "computed_at": "2026-06-21T16:26:52.024Z"
-  }
+    "computed_at": "2026-06-21T16:37:21.463Z"
+  },
+  "dek": "Your agent session can plan and write, but it can't reach the other agents — it can't pick up a codex reviewer or run a gemini tester in parallel, and every vendor prices its `-p` mode at API rates while the interactive TUI you already pay for sits idle. umbel makes that TUI programmable: spawn a worker, send it a prompt, wait on a real completion signal, read back a structured result. One unit of agent work, run reliably, returned as something the caller can branch on.",
+  "narrative": "## the gap: your agent can't reach the other agents\n\nA claude session plans and writes. It cannot pick up a codex session, or run a gemini tester beside it in a second worktree. The [cross-provider gap](features/cross-provider-gap.tend.html) is structural: no vendor's CLI can spawn a competitor's, so multi-provider work today is a human switching terminals. And there's a cost edge underneath it — every vendor prices its `-p` / `--print` mode at API rates while the interactive TUI you already pay for sits idle. You're billed for an interactive subscription, but that surface is a terminal, not an API: a script can't drive it, and your agent can't fan work out to a sibling.\n\numbel closes both. It is the execution layer of [plotplot](../overview.html) — the worker an orchestrator commands and reads results back from — and it runs *one unit of agent work* reliably, then hands back a result the caller can branch on.\n\n## the mechanism: spawn, send, wait, read\n\nFour verbs carry the whole loop. **spawn** starts a worker — a named tmux session running a provider's TUI in its own directory, a git worktree if you like, so several run in parallel without stepping on each other. **send** enqueues a prompt and returns immediately. **wait** blocks until the turn ends. **read** hands back the result. Then you loop, or kill.\n\nThere is no daemon: tmux is the daemon, and the filesystem is the store. Every `umbel` call is short-lived; session state lives under `~/.umbel/`. The [worker lifecycle](features/worker-lifecycle.tend.html) covers spawn/inspect/kill — named identity in `meta.json`, environment inherited minus a shell-init denylist, startup dialogs dismissed — and [dispatch and read](features/dispatch-and-read.tend.html) covers the send/read half, returning the last assistant message, or a diff of what changed across turns, sized for the host's context rather than a wall of pane text.\n\nThe hard part is **wait**. A quiet worker is ambiguous — done, thinking, blocked on a permission prompt, or crashed all look the same in a terminal. [Completion detection](features/completion-detection.tend.html) settles it from the provider's own end-of-turn event — claude's `Stop`, gemini's `AfterAgent` — never by scraping the pane. It resolves `stop` when the turn truly ends, `needs-input` (with the blocking question) so the caller answers instead of hanging, `dead` when the session vanished, or `idle` as a backstop. That solves the [silent-workers](features/silent-workers.tend.html) problem at the root.\n\nHolding the four providers behind one contract is the [provider abstraction](features/provider-abstraction.tend.html): each vendor's startup dialogs, prompt submission, hook lifecycle, and model flags live behind a single `AgentProvider` interface. The contract is what stays stable while the per-provider adapters absorb each vendor's churn.\n\n## four faces, one worker\n\nThe same worker is reached through whichever surface fits the caller. The [MCP face](features/mcp-face.tend.html) is what a host agent mounts — `umbel_spawn`/`send`/`wait`/`read`/`kill` plus an on-demand `umbel_help`, so it learns when to reach for a worker without drowning in upfront context. The [supervisor CLI](features/cli-face.tend.html) is the same verbs from a shell, a script, or cron. The [workflow runner](features/workflow-runner.tend.html) is `umbel run` over a declarative YAML pipeline — multiple workers, mixed providers per step, no host agent in the loop. And `umbel -p` is a drop-in for `claude -p` / `codex -p` / `gemini -p`, the same flags with provider as a parameter, defaulting to claude.\n\nBehind all four: claude, codex, and gemini on the subscription you already hold, and opencode opening a second lane — any model, local via `ollama/…`, free via keyless Zen, or your own key — so a free worker can labour beside the paid ones.\n\n## who hires umbel\n\nTwo people pull this off the shelf. The [host agent](features/host-agent.tend.html) is a session — usually claude code — that orchestrates real work but can't spawn other providers' CLIs and can't afford to burn its own context on execution; it hires umbel to stand up cross-provider workers and read back results sized for synthesis, which is the [context-bloat](features/context-bloat.tend.html) win — tokens spent on thinking, work billed to the worker's subscription. The [supervisor](features/supervisor-dev.tend.html) is a developer running agents unattended from scripts and cron, who needs every worker findable, stoppable, and reliably finished without babysitting a pane.\n\n## the thesis\n\numbel runs one unit of agent work reliably and returns a result the caller can branch on. Orchestration — the graph, the which-next, the branching — belongs to the caller, not to umbel. So the rule that governs what gets built here is simple: invest in the worker (the noun), not in orchestration syntax (the verb). A new capability has to be a per-worker primitive on CLI *and* MCP, composable by the caller. If it can't be that, it probably doesn't belong in umbel."
 }
 </script>
 <!-- OO:DATA:END -->
