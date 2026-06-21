@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# tend garden artifact: garden
+# tend feature artifact: supervisor-dev
 : << 'OO_HTML'
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>garden · tend</title>
+<title>supervisor-dev · tend</title>
 
 <!-- OO:STYLE:START -->
 <!-- template_version: 1 -->
@@ -1074,6 +1074,26 @@ nav.toc a.active {
 .detail-rel-item .dep-link { font-weight: 600; }
 .detail-rel-item__title { color: var(--text-muted); font-family: var(--sans); flex: 1; }
 .detail-rel-item .pill { margin-left: auto; }
+
+/* Persona journey: the persona's path THROUGH the product — its bound features
+   grouped by journey_phase, entry phase first, exit phase last. */
+.persona-journey { display: flex; flex-direction: column; gap: var(--sp-3); }
+.persona-journey__step { border-left: 2px solid var(--accent-weak); padding-left: var(--sp-2); }
+.persona-journey__step--enter,
+.persona-journey__step--exit { border-left-color: var(--accent); }
+.persona-journey__phase {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.persona-journey__edge {
+  font-size: 9px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 2px;
+  padding: 0 var(--sp-1); letter-spacing: 0.04em; text-transform: lowercase;
+}
+.persona-journey .detail-rel-list { margin-top: 2px; }
+.persona-journey .detail-rel-item { padding: 2px 0; }
 
 /* Chips — pill labels for persona / opportunity rail blocks.
    Three variants keyed to severity: strong (critical/high), mid (medium),
@@ -2426,7 +2446,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     <span class="bed-top-header__sep" data-top-header-garden-sep>/</span>
     <a class="bed-top-header__garden" data-top-header-garden href="#">garden</a>
     <span class="bed-top-header__sep" data-top-header-crumb-sep>/</span>
-    <span class="bed-top-header__crumb" data-top-header-crumb>garden</span>
+    <span class="bed-top-header__crumb" data-top-header-crumb>supervisor-dev</span>
     <span class="bed-top-header__stats">
       <span class="bed-top-header__health" data-top-header-health></span>
       <span class="bed-top-header__stat" data-top-header-status></span>
@@ -2457,7 +2477,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   <main class="center-col">
     <header class="article-head">
       <div class="article-head__text">
-        <h1 class="article-title" data-article-title>Project Garden</h1>
+        <h1 class="article-title" data-article-title>The Supervisor</h1>
       </div>
       <div class="article-head__thumb" data-article-thumb></div>
     </header>
@@ -2479,358 +2499,26 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 <script id="oo-meta" type="application/json">
 {
   "schema_version": "1",
-  "kind": "garden",
+  "kind": "feature",
   "tend_version": "0.4.0",
-  "generated_at": "2026-06-12T10:38:12.319Z",
-  "project_name": "Umbel"
+  "generated_at": "2026-06-21T16:26:52.018Z",
+  "project_name": "Project Garden"
 }
 </script>
 
 <script id="oo-data" type="application/json">
 {
-  "id": "garden",
-  "title": "Project Garden",
+  "id": "supervisor-dev",
+  "title": "The Supervisor",
   "status": "planned",
-  "catalog": {
-    "schema_version": "1",
-    "project_id": "umbel",
-    "status": "draft",
-    "personas": [
-      {
-        "id": "host-agent",
-        "name": "The Host Agent",
-        "status": "approved",
-        "archetype": "An agent session (claude code, usually) orchestrating real work: it plans and synthesizes, but cannot spawn other providers' CLIs itself, and every token it spends doing execution is a token not spent thinking.",
-        "jobs": [
-          "When my session needs another provider's strengths — a codex reviewer, a gemini tester — because I cannot spawn their CLIs directly, we believe umbel's spawn/send/wait/read verbs let me stand up and drive cross-provider workers. We'll know we got it right when a host session spawns workers on two different providers in parallel worktrees and reads back both their outputs without doing the work itself.",
-          "When a worker goes quiet, because silence is ambiguous (done? thinking? blocked on a permission prompt? crashed?), we believe wait should resolve a verdict I can branch on and name the blocking reason. We'll know we got it right when wait returns needs-input with the permission question (so I answer it), stop when the turn truly ends, and dead when the session vanished — never a guess and never a wedge to the timeout.",
-          "When I delegate execution to a worker, because every token I spend reading raw output is a token not spent planning and synthesizing, we believe read should hand me the worker's actual answer sized for synthesis — not the whole pane. We'll know we got it right when read returns just the last assistant message, a diff of what changed across turns, and head/tail truncation keeps a long response from flooding my context.",
-          "When I first reach for umbel in a fresh session, because I will only use a tool I understand and I cannot afford docs that bloat every unrelated turn, we believe the MCP server should signal when to spawn a worker and teach the lifecycle only on request. We'll know we got it right when a server-level instructions block under 1500 chars tells me when to fork to umbel and umbel_help delivers the how on demand, so unrelated turns pay no umbel-doc tax."
-        ],
-        "description": "The host agent is an agent session — claude code, codex, gemini, or opencode — that has taken on an orchestration role: it breaks down a complex task, decides which tools and workers to involve, and synthesizes the results. Its constraint is token budget. Every line of raw output it reads, every execution it runs inline, competes with its capacity to hold the full picture of the work.\n\nMarco is running a code review pipeline at 11pm. He has a claude code session open on his laptop. He wants codex to review the diff while gemini runs the tests — two providers, parallel worktrees, each with their own subscription. His claude session can't spawn codex or gemini directly. Without umbel, he'd open two more terminals, set each up manually, and paste output back. With umbel, his claude session calls umbel_spawn for each worker, sends prompts, waits for verdicts, and reads back just the last assistant message — sized for synthesis, not for reading a wall of pane text. His claude session stays lean. The bill goes to the workers."
-      },
-      {
-        "id": "supervisor-dev",
-        "name": "The Supervisor",
-        "status": "approved",
-        "archetype": "A developer driving long agent runs from the shell, scripts, or cron — multiple subscriptions, multiple worktrees, zero appetite for babysitting terminals.",
-        "jobs": [
-          "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
-          "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
-          "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
-        ],
-        "description": "The supervisor is a developer who runs agents at arm's length. Not interactively — from scripts, cron jobs, CI, or a shell session they close and reopen. They might be fanning five workers across five worktrees, or scheduling a nightly review pipeline, or wiring umbel into a Makefile target. Their concern is reliability: did the worker finish, did it succeed, and is there a result they can act on — without babysitting a pane or watching a terminal scroll.\n\nAisha runs agent pipelines from cron. She has three claude subscriptions and a codex license. Monday night at midnight, cron spawns a worker per feature branch, sends each a review prompt, waits for completion, collects transcripts. By morning, the results are sitting in her inbox. She never opened a terminal. She knows the workers finished because umbel status reports each one, and she knows the sessions cleaned up because kill tears down the tmux session and state directory without a trace — idempotently, whether the worker exited cleanly or crashed mid-turn."
-      }
+  "persona": {
+    "archetype": "A developer driving long agent runs from the shell, scripts, or cron — multiple subscriptions, multiple worktrees, zero appetite for babysitting terminals.",
+    "jobs": [
+      "When I run agents unattended from scripts or cron, because babysitting tmux panes does not scale and I would rather spend the subscription than the API bill, we believe the CLI verbs give spawn-to-read control with sessions that survive me closing the laptop. We'll know we got it right when a cron job completes a full spawn-send-wait-read cycle, the -p drop-in prints the assistant answer on stdout and exits 0, and the transcript is sitting there in the morning.",
+      "When I fan several workers out across providers and worktrees, because an agent I can't find or can't stop is a leaked tmux session and a runaway subscription, we believe status and kill must make every worker findable and stoppable. We'll know we got it right when status reports a live worker as alive and a killed one as not, and kill tears down the tmux session and state dir idempotently — killing a session twice never throws.",
+      "When the same multi-worker orchestration runs again and again, because re-prompting a host agent to repeat the identical dance is waste, we believe umbel run should make that dance a YAML file I can version and re-run with no agent in the loop. We'll know we got it right when a workflow runs independent steps in the same wave, threads one step's output into the next via {{ steps.NAME.outputs.KEY }}, returns completed on success, and returns failed with the failing step named when a step dies."
     ],
-    "opportunities": [
-      {
-        "id": "cross-provider-gap",
-        "status": "approved",
-        "description": "An agent session cannot spawn other providers' interactive CLIs — claude can't start codex, codex can't start gemini. Multi-provider work means a human switching terminals.",
-        "value": "high",
-        "confidence": "medium",
-        "personas": [
-          "host-agent"
-        ],
-        "outcome_metric": "A host session stands up and drives workers on at least two other providers in one orchestration.",
-        "riskiest_assumption": "That driving interactive TUIs through tmux stays robust across provider UI changes — the four provider-specific behaviors stay abstractable."
-      },
-      {
-        "id": "silent-workers",
-        "status": "approved",
-        "description": "Interactive agent CLIs do not say when they are done or stuck: no exit code mid-session, output pauses look identical to completion, and permission prompts wedge unattended runs silently.",
-        "value": "high",
-        "confidence": "medium",
-        "personas": [
-          "host-agent",
-          "supervisor-dev"
-        ],
-        "outcome_metric": "wait resolves done vs needs-input (with reason) without polling heuristics wedging.",
-        "riskiest_assumption": "That provider hook lifecycles (notify/stop) remain precise enough to beat the idle-net fallback in practice."
-      },
-      {
-        "id": "context-bloat",
-        "status": "approved",
-        "description": "A host doing the work itself burns its own context on execution instead of planning and synthesis; delegating keeps the host lean and bills the work to the worker's subscription.",
-        "value": "medium",
-        "confidence": "medium",
-        "personas": [
-          "host-agent"
-        ],
-        "outcome_metric": "Host context spent on orchestration stays a small fraction of worker output consumed via read.",
-        "riskiest_assumption": "That read/capture summaries are good enough for synthesis without the host re-reading whole transcripts."
-      }
-    ]
-  },
-  "features_aggregate": [
-    {
-      "id": "provider-abstraction",
-      "title": "Provider Abstraction",
-      "status": "verified",
-      "priority": "high",
-      "enables": [
-        "worker-lifecycle",
-        "dispatch-and-read",
-        "completion-detection"
-      ],
-      "personas": [
-        "host-agent"
-      ],
-      "solves": [
-        "cross-provider-gap"
-      ],
-      "journey_phase": "build",
-      "what": "A pluggable provider interface (claude, codex, gemini, opencode) isolating the four provider-specific behaviors — startup dialogs, prompt submission, hook lifecycles, model flags — behind one AgentPro",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "Four provider plugs feeding one socket",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='44' y='28' width='32' height='24' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><circle cx='14' cy='14' r='5' fill='#D97757'/><circle cx='14' cy='36' r='5' fill='#587383'/><circle cx='14' cy='58' r='5' fill='#C9923C'/><circle cx='106' cy='40' r='5' fill='#46913C'/><path d='M19 14 C32 14 36 34 44 36 M19 36 L44 39 M19 58 C32 58 36 46 44 43 M76 40 L101 40' stroke='#8A8A86' stroke-width='1.5' fill='none'/></svg>"
-      }
-    },
-    {
-      "id": "worker-lifecycle",
-      "title": "Worker Lifecycle",
-      "status": "verified",
-      "priority": "high",
-      "dependencies": [
-        "provider-abstraction"
-      ],
-      "enables": [
-        "dispatch-and-read"
-      ],
-      "personas": [
-        "host-agent",
-        "supervisor-dev"
-      ],
-      "solves": [
-        "cross-provider-gap"
-      ],
-      "journey_phase": "build",
-      "what": "Spawn, inspect, and kill tmux-hosted workers: named/anon sessions with meta.json identity, env inheritance minus a 5-var shell-init denylist, startup-dialog dismissal.",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "A tmux pane with spawn and kill controls",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='20' y='14' width='80' height='52' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><rect x='20' y='14' width='80' height='10' fill='#4C5E3C'/><circle cx='27' cy='19' r='2' fill='#fff'/><circle cx='34' cy='19' r='2' fill='#fff'/><path d='M48 40 l12 7 -12 7 Z' fill='#46913C'/><rect x='68' y='40' width='12' height='14' fill='#B85C3E'/></svg>"
-      }
-    },
-    {
-      "id": "dispatch-and-read",
-      "title": "Dispatch and Read",
-      "status": "verified",
-      "priority": "high",
-      "dependencies": [
-        "worker-lifecycle",
-        "provider-abstraction"
-      ],
-      "enables": [
-        "completion-detection"
-      ],
-      "personas": [
-        "host-agent",
-        "supervisor-dev"
-      ],
-      "solves": [
-        "cross-provider-gap",
-        "context-bloat"
-      ],
-      "journey_phase": "build",
-      "what": "Send a prompt into a running worker and read back its last assistant message from the provider's JSONL transcript — with Myers line-diff across turns and head/tail/section truncation for host-context ",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "A prompt arrow in, an answer arrow out",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='38' y='18' width='44' height='44' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><path d='M8 32 H32 M26 26 l8 6 -8 6' stroke='#D97757' stroke-width='2.5' fill='none'/><path d='M88 48 H112 M104 42 l8 6 -8 6' stroke='#46913C' stroke-width='2.5' fill='none'/><line x1='45' y1='32' x2='72' y2='32' stroke='#8A8A86' stroke-width='2'/><line x1='45' y1='42' x2='66' y2='42' stroke='#8A8A86' stroke-width='2'/></svg>"
-      }
-    },
-    {
-      "id": "completion-detection",
-      "title": "Completion Detection",
-      "status": "verified",
-      "priority": "high",
-      "dependencies": [
-        "dispatch-and-read",
-        "provider-abstraction"
-      ],
-      "enables": [
-        "workflow-runner"
-      ],
-      "personas": [
-        "host-agent",
-        "supervisor-dev"
-      ],
-      "solves": [
-        "silent-workers"
-      ],
-      "journey_phase": "verify",
-      "what": "waitFor settles what a quiet worker means: done (stop hook mtime advance), needs-input (notify hook + blocking reason: permission/idle/question), idle (pane-activity backstop), dead (session vanished ",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "A quiet pane resolved into done or needs-input",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='10' y='22' width='42' height='36' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><text x='31' y='46' font-size='16' text-anchor='middle' fill='#8A8A86'>…</text><path d='M56 32 C68 26 74 26 84 28 M56 48 C68 54 74 54 84 52' stroke='#8A8A86' stroke-width='1.5' fill='none'/><path d='M90 22 l5 6 9 -10' stroke='#46913C' stroke-width='3' fill='none'/><rect x='90' y='44' width='18' height='14' rx='3' fill='none' stroke='#C9923C' stroke-width='2'/><text x='99' y='55' font-size='11' text-anchor='middle' fill='#C9923C'>?</text></svg>"
-      }
-    },
-    {
-      "id": "workflow-runner",
-      "title": "Workflow Runner",
-      "status": "verified",
-      "priority": "medium",
-      "dependencies": [
-        "worker-lifecycle",
-        "dispatch-and-read",
-        "completion-detection"
-      ],
-      "personas": [
-        "supervisor-dev"
-      ],
-      "solves": [
-        "cross-provider-gap",
-        "context-bloat"
-      ],
-      "journey_phase": "build",
-      "what": "umbel run executes YAML workflows: multiple named workers across providers, steps of send/wait/read, deterministic orchestration without a host agent in the loop.",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "Three workflow steps in sequence",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='8' y='30' width='26' height='20' rx='3' fill='none' stroke='#4C5E3C' stroke-width='2'/><rect x='47' y='30' width='26' height='20' rx='3' fill='none' stroke='#4C5E3C' stroke-width='2'/><rect x='86' y='30' width='26' height='20' rx='3' fill='none' stroke='#4C5E3C' stroke-width='2'/><path d='M34 40 H47 M73 40 H86' stroke='#D97757' stroke-width='2'/><text x='21' y='24' font-size='9' text-anchor='middle' fill='#8A8A86'>yaml</text></svg>"
-      }
-    },
-    {
-      "id": "mcp-face",
-      "title": "MCP Face",
-      "status": "verified",
-      "priority": "high",
-      "dependencies": [
-        "worker-lifecycle",
-        "dispatch-and-read",
-        "completion-detection"
-      ],
-      "personas": [
-        "host-agent"
-      ],
-      "solves": [
-        "cross-provider-gap",
-        "context-bloat"
-      ],
-      "journey_phase": "orient",
-      "what": "The MCP server host agents mount: umbel_spawn/send/wait/read/kill/status/ls/actions/diff/capture/logs plus umbel_help (lifecycle, workflow, providers topics) and a server-level instructions block — te",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "A toolbelt of verbs an agent mounts",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='14' y='34' width='92' height='12' rx='6' fill='none' stroke='#4C5E3C' stroke-width='2'/><circle cx='30' cy='40' r='4' fill='#D97757'/><circle cx='48' cy='40' r='4' fill='#587383'/><circle cx='66' cy='40' r='4' fill='#46913C'/><circle cx='84' cy='40' r='4' fill='#C9923C'/><path d='M60 14 v14' stroke='#8A8A86' stroke-width='2'/><circle cx='60' cy='12' r='5' fill='none' stroke='#8A8A86' stroke-width='2'/></svg>"
-      }
-    },
-    {
-      "id": "cli-face",
-      "title": "Supervisor CLI",
-      "status": "verified",
-      "priority": "medium",
-      "dependencies": [
-        "worker-lifecycle",
-        "dispatch-and-read",
-        "completion-detection"
-      ],
-      "enables": [
-        "workflow-runner"
-      ],
-      "personas": [
-        "supervisor-dev"
-      ],
-      "solves": [
-        "silent-workers",
-        "cross-provider-gap"
-      ],
-      "journey_phase": "build",
-      "what": "The umbel binary's verb surface — spawn, send, wait, status, ls, kill, attach, read, capture, logs, run, mcp — argv parsing with boolean-only short flags, human and --json output.",
-      "thumbnail": {
-        "kind": "svg",
-        "alt": "A shell prompt driving verbs",
-        "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='14' y='14' width='92' height='52' rx='4' fill='#20251B'/><text x='24' y='38' font-size='14' font-family='monospace' fill='#8FCB63'>$ umbel</text><text x='24' y='54' font-size='11' font-family='monospace' fill='#8A8A86'>spawn · wait · read</text></svg>"
-      }
-    },
-    {
-      "id": "host-agent",
-      "title": "The Host Agent",
-      "status": "planned"
-    },
-    {
-      "id": "supervisor-dev",
-      "title": "The Supervisor",
-      "status": "planned"
-    },
-    {
-      "id": "cross-provider-gap",
-      "title": "Cross Provider Gap",
-      "status": "planned"
-    },
-    {
-      "id": "silent-workers",
-      "title": "Silent Workers",
-      "status": "planned"
-    },
-    {
-      "id": "context-bloat",
-      "title": "Context Bloat",
-      "status": "planned"
-    }
-  ],
-  "source_dirs": [
-    "src",
-    "scripts"
-  ],
-  "what": "umbel drives interactive agent CLIs — claude, codex, gemini, opencode — inside tmux from three faces: an MCP server for host agents, a supervisor CLI for humans and scripts, and YAML workflows. One binary, one provider abstraction, subscription-billed.",
-  "why": "Agent sessions cannot spawn other providers' CLIs, and interactive CLIs are silent about doneness — so multi-provider orchestration today is a human switching terminals and guessing when output stopped.",
-  "impact": "A host session stands up cross-provider workers, dispatches, waits on real completion signals (done vs needs-input with reason), and synthesizes — context spent on thinking, work billed to worker subscriptions.",
-  "fit": "The execution muscle of the toolchain: tend plans the bets, umbel runs the workers that build them. Sibling of tend and petals in spirit, not branding — umbel is a temp name.",
-  "where": "src/faces (cli, mcp, workflow) over src/operations (spawn, send, wait, status, kill, diff) over src/core (providers, wait, notification, env) and src/adapters (tmux, hooks, jsonl, fs).",
-  "how": "tmux sessions per worker with meta.json provider routing; provider hooks (notify/stop) plus an idle net for completion; lazy JSONL transcript resolution; environment inherited minus a shell-init denylist; Bun-compiled single binary.",
-  "progress": {
-    "implementation": 0,
-    "verification": 0
-  },
-  "health_snapshot": {
-    "verdict": "green",
-    "reason_codes": [
-      "clean"
-    ],
-    "truth": {
-      "verified": 7,
-      "total": 12,
-      "stale": 0,
-      "mock_only": 0,
-      "false_done": 0,
-      "auditable": 7,
-      "audited": 7
-    },
-    "flow": {
-      "ready_now": 0,
-      "blocked": 0
-    },
-    "value": {
-      "weakest_opportunity_coverage": "silent-workers"
-    },
-    "lifecycle": {
-      "total": 7,
-      "planned": {
-        "count": 0,
-        "blocked": 0
-      },
-      "building": {
-        "count": 0,
-        "blocked": 0
-      },
-      "built": {
-        "count": 0,
-        "blocked": 0
-      },
-      "verified": {
-        "count": 7,
-        "at_risk": 0
-      }
-    },
-    "coherence": {
-      "total": 0,
-      "groups": []
-    },
-    "computed_at": "2026-06-21T16:26:52.024Z"
+    "description": "The supervisor is a developer who runs agents at arm's length. Not interactively — from scripts, cron jobs, CI, or a shell session they close and reopen. They might be fanning five workers across five worktrees, or scheduling a nightly review pipeline, or wiring umbel into a Makefile target. Their concern is reliability: did the worker finish, did it succeed, and is there a result they can act on — without babysitting a pane or watching a terminal scroll.\n\nAisha runs agent pipelines from cron. She has three claude subscriptions and a codex license. Monday night at midnight, cron spawns a worker per feature branch, sends each a review prompt, waits for completion, collects transcripts. By morning, the results are sitting in her inbox. She never opened a terminal. She knows the workers finished because umbel status reports each one, and she knows the sessions cleaned up because kill tears down the tmux session and state directory without a trace — idempotently, whether the worker exited cleanly or crashed mid-turn."
   }
 }
 </script>
@@ -3795,7 +3483,11 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   }
 
   function renderJourney(data) {
-    if (!data) return '';
+    // Catalog-description polyglots (persona / opportunity) are not features at a
+    // phase — their journey is rendered from bound_features (renderPersonaJourney).
+    // journey_phase / personas / solves are feature-only fields; a stray
+    // journey_phase on an anchor used to leak this whole section onto it.
+    if (!data || isCatalogDescription(data)) return '';
     var rows = '';
     if (isNonEmptyString(data.journey_phase)) {
       rows += '<div class="journey-row"><span class="journey-row__key">phase</span><span class="journey-row__val"><a class="dep-link" href="../overview.html#phase-' + esc(data.journey_phase) + '">' + esc(data.journey_phase) + '</a></span></div>';
@@ -4359,9 +4051,59 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     return railSection(label, '<ul class="detail-rel-list">' + rows + '</ul>', { collapsible: true, count: ids.length });
   }
 
+  // The persona's journey THROUGH the product: the top-level features that serve
+  // this persona, grouped by journey_phase and laid out in the project's phase
+  // order — entry phase first, exit phase last. Answers "where do they enter,
+  // which features do they touch, where do they exit", derived from the
+  // bound_features snapshot (each carries journey_phase). Phase order comes from
+  // the snapshotted journey_phases; falls back to first-seen so it still renders
+  // before a re-aggregate. Subpages are excluded — the journey is through
+  // capabilities, not their drill-downs.
+  function renderPersonaJourney(persona) {
+    if (!persona) return '';
+    var feats = isNonEmptyArray(persona.bound_features) ? persona.bound_features : [];
+    var topLevel = feats.filter(function (f) { return f && f.is_subpage !== true; });
+    if (!topLevel.length) return '';
+    function featItem(f) {
+      var status = f.status || 'draft';
+      var title = f.title ? '<span class="detail-rel-item__title">' + esc(f.title) + '</span>' : '';
+      return '<li class="detail-rel-item">' +
+        glyphSpan(f.status_glyph || glyphFor(status), glyphClassFor(status)) +
+        '<a class="dep-link" href="' + esc(f.id) + '.tend.html">' + esc(f.id) + '</a>' + title +
+      '</li>';
+    }
+    var byPhase = {};
+    var unphased = [];
+    topLevel.forEach(function (f) {
+      if (isNonEmptyString(f.journey_phase)) (byPhase[f.journey_phase] = byPhase[f.journey_phase] || []).push(f);
+      else unphased.push(f);
+    });
+    var ordered = (isNonEmptyArray(persona.journey_phases) ? persona.journey_phases : [])
+      .filter(function (p) { return byPhase[p]; });
+    Object.keys(byPhase).forEach(function (p) { if (ordered.indexOf(p) === -1) ordered.push(p); });
+    var steps = ordered.map(function (phase, i) {
+      var edge = i === 0 ? 'enter' : (i === ordered.length - 1 && ordered.length > 1 ? 'exit' : '');
+      var edgeTag = edge ? '<span class="persona-journey__edge">' + edge + '</span>' : '';
+      return '<div class="persona-journey__step' + (edge ? ' persona-journey__step--' + edge : '') + '">' +
+        '<div class="persona-journey__phase">' + esc(phase) + edgeTag + '</div>' +
+        '<ul class="detail-rel-list">' + byPhase[phase].map(featItem).join('') + '</ul>' +
+      '</div>';
+    }).join('');
+    // Top-level features with no journey_phase yet are still the persona's — show
+    // them in a trailing group so nothing is dropped before the map is fully phased.
+    if (unphased.length) {
+      steps += '<div class="persona-journey__step persona-journey__step--unphased">' +
+        '<div class="persona-journey__phase">unphased</div>' +
+        '<ul class="detail-rel-list">' + unphased.map(featItem).join('') + '</ul>' +
+      '</div>';
+    }
+    if (!steps) return '';
+    return railSection('journey', '<div class="persona-journey">' + steps + '</div>', { collapsible: true, count: topLevel.length });
+  }
+
   // Returns { identity, graph }: the persona's identity meta (jobs count,
-  // archetype, jobs list) goes in the IDENTITY band; its outward links
-  // (bound features, felt opportunities) go in the GRAPH band.
+  // archetype, jobs list) goes in the IDENTITY band; its journey through the
+  // product (bound features by phase) + felt opportunities go in the GRAPH band.
   function renderPersonaRail(persona) {
     if (!persona) return { identity: '', graph: '' };
     var identity = '';
@@ -4401,7 +4143,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     }
 
     // 4 + 5. Outward links — bound features + felt opportunities (GRAPH band).
-    var graph = renderFeatureSummaryList(persona.bound_features, 'bound features', '#bound-features') +
+    var graph = renderPersonaJourney(persona) +
       renderIdList('opportunities felt', persona.felt_opportunities);
 
     return { identity: identity, graph: graph };
