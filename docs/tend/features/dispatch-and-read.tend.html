@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.556Z",
   "project_name": "Project Garden",
-  "dek_sha": "abd66a1815c9a9bd09f79e2e284b509febfd4c73"
+  "dek_sha": "12371d9f0608e5748ef597eb546123e15200b5b6"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "dispatch-and-read",
   "title": "Dispatch and Read",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "high",
   "dependencies": [
     "worker-lifecycle",
@@ -2509,15 +2509,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "cross-provider-gap",
     "context-bloat"
   ],
-  "what": "Send prompts into a worker and get its output back: send, read (last assistant message via lazy JSONL transcript resolution), capture (pane snapshot), logs, diff — with truncation for host-context hygiene.",
-  "why": "Typing into a TUI and scraping its output are the two halves automation always gets wrong: submission quirks differ per provider, and transcripts appear lazily, after first message.",
-  "impact": "The host consumes a worker's actual answer — not pane noise — sized for synthesis; capture and diff exist for when the pane itself is the question.",
-  "fit": "The io pair between lifecycle (a worker exists) and wait (the answer is ready); read is where context-bloat is won or lost.",
-  "where": "src/operations/send.ts, resolve-transcript.ts, resolve-jsonl.ts, diff.ts; src/adapters/jsonl.ts; src/core/diff.ts, truncate.ts.",
-  "how": "send routes through the provider's submission behavior; transcripts resolve lazily from the Stop-hook payload (v3: spawn-time discovery is impossible); lastAssistantMessage walks from the last assistant index past trailing metadata.",
+  "what": "Send a prompt into a running worker and read back its last assistant message from the provider's JSONL transcript — with Myers line-diff across turns and head/tail/section truncation for host-context hygiene.",
+  "why": "The two halves automation always gets wrong: submission quirks differ per provider (multi-line needs paste-buffer, delay quirks per CLI), and transcripts don't exist until the first message arrives — spawn-time discovery fails against real claude.",
+  "impact": "The host receives the worker's actual answer — not pane noise — sized for synthesis; diff surfaces what changed across turns; truncation prevents context bloat consuming the host's budget.",
+  "fit": "The I/O pair between lifecycle (a worker exists) and completion-detection (the answer is ready): send enqueues work, read retrieves the result — without these two, the scaffold of spawn/wait has no payload.",
+  "where": "src/operations/send.ts, src/operations/resolve-transcript.ts, src/operations/resolve-jsonl.ts, src/operations/diff.ts; src/adapters/jsonl.ts; src/core/diff.ts, src/core/truncate.ts.",
+  "how": "send routes via the provider's submitDelayMs quirk using tmux paste-buffer for multi-line; transcript path resolves lazily: cached jsonlPath → events/transcript-path (stop.sh hook payload) → dir-snapshot fallback; lastAssistantMessage walks backward from the last assistant index past trailing metadata entries.",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2561,6 +2561,106 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "A prompt arrow in, an answer arrow out",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='38' y='18' width='44' height='44' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><path d='M8 32 H32 M26 26 l8 6 -8 6' stroke='#D97757' stroke-width='2.5' fill='none'/><path d='M88 48 H112 M104 42 l8 6 -8 6' stroke='#46913C' stroke-width='2.5' fill='none'/><line x1='45' y1='32' x2='72' y2='32' stroke='#8A8A86' stroke-width='2'/><line x1='45' y1='42' x2='66' y2='42' stroke='#8A8A86' stroke-width='2'/></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "send() enqueues a multi-line prompt without throwing, returning a sinceMtime number before any Stop has fired.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Spawn a fake-claude session; call send with a newline-containing prompt; assert resolves with { sinceMtime: 0 } (no prior Stop) and does not throw. See test/integration/send.test.ts 'multi-line prompt does not throw' and 'sinceMtime is 0 when stop has never fired before first send'."
+    },
+    {
+      "id": "c002",
+      "description": "send() reads the mtime snapshot of events/stop BEFORE sending, so the caller can detect whether Stop fired since the call.",
+      "validates": "why",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "After spawn, call send; assert sinceMtime===0 (events/stop absent). After a Stop fires, sinceMtime > 0 on the next call. See test/integration/send.test.ts 'sinceMtime is 0 when stop has never fired before first send'."
+    },
+    {
+      "id": "c003",
+      "description": "lastAssistantMessage() returns only the last turn's text from a multi-turn JSONL transcript, ignoring earlier assistant turns.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Write a JSONL with two turns; call lastAssistantMessage; assert result equals second answer only. See test/integration/jsonl.test.ts 'returns only the last turn (ignores earlier assistant turns)' line 211."
+    },
+    {
+      "id": "c004",
+      "description": "resolveTranscriptContent() reads the JSONL from events/transcript-path (written by stop.sh hook payload) when meta.jsonlPath is null — never from capture-pane.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Create session with jsonlPath=null; write events/transcript-path pointing to a JSONL file; call resolveTranscriptContent; assert returned content equals file contents. See test/integration/resolve-transcript.test.ts 'returns file contents when events/transcript-path points to file (meta.jsonlPath=null)' line 195."
+    },
+    {
+      "id": "c005",
+      "description": "unifiedDiff() produces Myers unified-diff output with correct hunk headers and +/- prefixed lines; identical inputs return empty string.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Call unifiedDiff with two versions of a string; assert header lines '--- a/…', '+++ b/…', hunk '@@ -N,M +N,M @@', and +/- content lines. Identical inputs must return ''. See test/unit/diff.test.ts lines 5-105."
+    },
+    {
+      "id": "c006",
+      "description": "truncateAssistantText() returns head+elision+tail for long responses, exact section for section opt, and full text unchanged when full=true.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Call truncateAssistantText with text >2000 tokens (no opts); assert contains 'elided' and 'call umbel_read with full=true'. With section='## Findings', assert returns only that section. With full=true, assert identity. See test/unit/truncate.test.ts lines 17-31, 100-107, 34-43."
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/unit/diff.test.ts test/unit/truncate.test.ts test/integration/send.test.ts test/integration/jsonl.test.ts test/integration/resolve-transcript.test.ts test/integration/diff.test.ts",
+    "verify": "69 pass, 0 fail",
+    "last_run": "2026-06-21T00:00:00Z",
+    "last_result": "pass"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T00:00:00Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/integration/send.test.ts:97-105 ('multi-line prompt does not throw'), test/integration/send.test.ts:86-95 ('sinceMtime is 0 when stop has never fired before first send')",
+        "evidence_sha": "5dc80a5fd084b8227f992f9a29fe14895956fbd7"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/integration/send.test.ts:86-95 ('sinceMtime is 0 when stop has never fired before first send'); src/operations/send.ts:43-50 (mtime snapshot before sendText)",
+        "evidence_sha": "5dc80a5fd084b8227f992f9a29fe14895956fbd7"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/integration/jsonl.test.ts:211-227 ('returns only the last turn (ignores earlier assistant turns)'); src/adapters/jsonl.ts:248-263 (backward walk from last assistant index)",
+        "evidence_sha": "c5881c56961ee4fcea4a7f91f1a6e1a140f4e2a2"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/integration/resolve-transcript.test.ts:195-216 ('returns file contents when events/transcript-path points to file'); src/operations/resolve-jsonl.ts:35-42 (events/transcript-path read)",
+        "evidence_sha": "723c8ff4fb40c895e232b223c9f3d2ef05d619ff"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "test/unit/diff.test.ts:5-105 (9 unifiedDiff tests all passing); src/core/diff.ts:24-50 (unifiedDiff function)",
+        "evidence_sha": "9022f20616ebc558855896e0f2288616d4d5f417"
+      },
+      {
+        "check_id": "c006",
+        "verdict": "pass",
+        "evidence_path": "test/unit/truncate.test.ts:17-31 (head+elision+tail), test/unit/truncate.test.ts:100-107 (section extraction), test/unit/truncate.test.ts:34-43 (full bypass); src/core/truncate.ts:27-52",
+        "evidence_sha": "6619475e17d2712d274d3bcaa569c30906d29f7a"
+      }
+    ],
+    "drift": [],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

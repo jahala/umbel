@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.639Z",
   "project_name": "Project Garden",
-  "dek_sha": "332aa00dcead7f43f8cf15a6a699fc9d3a4f15c7"
+  "dek_sha": "78c2189ad9ba3a2c4c0c9a80faedb3377c7d14f9"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "mcp-face",
   "title": "MCP Face",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "high",
   "dependencies": [
     "worker-lifecycle",
@@ -2507,15 +2507,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "cross-provider-gap",
     "context-bloat"
   ],
-  "what": "The MCP server host agents mount: umbel_spawn/send/wait/read/kill plus umbel_help (lifecycle, workflow, providers topics) and a server-level instructions block — teaching without drowning.",
-  "why": "A host agent only uses what it understands; upfront docs bloat every session while absent docs strand the tools.",
-  "impact": "A fresh host session knows when to reach for umbel and how, from the instructions block and on-demand help — without umbel docs taxing unrelated turns.",
-  "fit": "The face the host-agent persona lives on; progressive disclosure is the design stance (instructions small, help on demand).",
-  "where": "src/faces/mcp.ts, mcp-help.ts.",
-  "how": "MCP SDK server exposing the verb tools; help topics rendered on request; instructions block kept to when-to-use signals. Active edits on this branch.",
+  "what": "The MCP server host agents mount: umbel_spawn/send/wait/read/kill/status/ls/actions/diff/capture/logs plus umbel_help (lifecycle, workflow, providers topics) and a server-level instructions block — teaching without drowning.",
+  "why": "A host agent only uses what it understands; upfront docs bloat every session while absent docs strand the tools — progressive disclosure (compact instructions + on-demand help) threads that needle.",
+  "impact": "A fresh host session knows when to reach for umbel and how to drive the lifecycle, from the always-on instructions block and on-demand help, without umbel docs taxing unrelated turns.",
+  "fit": "The face the host-agent persona lives on; progressive disclosure is the design stance — instructions signal when to use umbel, help delivers the how on request.",
+  "where": "src/faces/mcp.ts (SERVER_INSTRUCTIONS, TOOL_DESCRIPTIONS, createMcpTools, runMcpServer), src/faces/mcp-help.ts (HELP_TOPICS, helpForTopic, three topic strings).",
+  "how": "MCP SDK McpServer with stdio transport; 12 tools registered (spawn/send/wait/status/ls/kill/read/actions/diff/capture/logs/help); help topics embedded inline (no runtime file I/O) for single-binary portability; stdin-EOF watch ensures the process exits when the client dies.",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2548,6 +2548,105 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "A toolbelt of verbs an agent mounts",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='14' y='34' width='92' height='12' rx='6' fill='none' stroke='#4C5E3C' stroke-width='2'/><circle cx='30' cy='40' r='4' fill='#D97757'/><circle cx='48' cy='40' r='4' fill='#587383'/><circle cx='66' cy='40' r='4' fill='#46913C'/><circle cx='84' cy='40' r='4' fill='#C9923C'/><path d='M60 14 v14' stroke='#8A8A86' stroke-width='2'/><circle cx='60' cy='12' r='5' fill='none' stroke='#8A8A86' stroke-width='2'/></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "tools/list over JSON-RPC returns all 12 umbel_* tools (spawn, send, wait, status, ls, kill, read, actions, diff, capture, logs, help).",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "Start `umbel mcp` as subprocess, send JSON-RPC initialize + tools/list, assert each of the 12 names is present in result.tools[].name."
+    },
+    {
+      "id": "c002",
+      "description": "SERVER_INSTRUCTIONS is under 1500 chars and contains the fork-decision markers (USE umbel, USE your host's subagent, Lifecycle:, umbel_send does NOT wait, umbel_help).",
+      "validates": "why",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Import SERVER_INSTRUCTIONS; assert length > 200 and < 1500; assert each required substring is present."
+    },
+    {
+      "id": "c003",
+      "description": "umbel_help with no topic returns an index listing all three topics; with topic='workflow' returns the YAML schema content (workers:, steps:, {{ steps.NAME.outputs.KEY }}).",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "Call umbel_help via JSON-RPC tools/call with no args; assert index text contains 'lifecycle', 'workflow', 'providers'. Then call with topic='workflow'; assert content contains workers:/steps:/output substitution syntax."
+    },
+    {
+      "id": "c004",
+      "description": "helpForTopic covers all three topics with correct content: lifecycle includes the send→wait pairing rule; workflow includes YAML schema markers; providers includes all four vendors with stopEventName and hazards.",
+      "validates": "fit",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Call helpForTopic('lifecycle'), helpForTopic('workflow'), helpForTopic('providers') and assert topic-specific substrings; assert HELP_TOPICS is exactly ['lifecycle','providers','workflow']."
+    },
+    {
+      "id": "c005",
+      "description": "TOOL_DESCRIPTIONS has a non-empty, bounded-length entry for every registered tool; each tool's description on the MCP server matches the constant (no registration drift).",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "Assert all 12 tool names have entries in TOOL_DESCRIPTIONS, each length > 20 and < 260. In the live server, assert tools/list descriptions match the constant values."
+    },
+    {
+      "id": "c006",
+      "description": "umbel mcp exits promptly (within 4 s) when stdin closes — no orphan process or CPU spin after the MCP client dies.",
+      "validates": "where",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "Spawn `umbel mcp`, complete initialize handshake, close stdin, race proc.exited against a 4 s timeout; assert the process exits (not the timeout symbol)."
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/e2e/mcp-smoke.test.ts test/unit/mcp-help.test.ts",
+    "verify": "11 pass, 0 fail",
+    "last_run": "2026-06-21T00:00:00Z",
+    "last_result": "pass"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T00:00:00Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/mcp-smoke.test.ts:23 (test 'umbel mcp exposes all expected tool names', expectedTools array + containment loop); src/faces/mcp.ts:314-355 (12 server.tool() registrations)",
+        "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/mcp-smoke.test.ts:152 (test 'SERVER_INSTRUCTIONS contains fork-decision and lifecycle markers', length and substring assertions); src/faces/mcp.ts:27-33 (SERVER_INSTRUCTIONS constant)",
+        "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/mcp-smoke.test.ts:164 (test 'umbel mcp serves umbel_help with topic content over JSON-RPC', index + workflow content assertions); src/faces/mcp-help.ts:193-205 (INDEX + TOPIC_CONTENT map)",
+        "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/unit/mcp-help.test.ts:5 (index test), :13 (lifecycle test, Pair every umbel_send), :23 (workflow test), :35 (providers test, AfterAgent/OVERWRITES), :56 (HELP_TOPICS exact 3); src/faces/mcp-help.ts:6-7 (HELP_TOPICS), :9-74 (LIFECYCLE), :76-142 (WORKFLOW), :144-191 (PROVIDERS)",
+        "evidence_sha": "c3053c632e7a2f47b40aecad53c0f9a41d4646f8"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/mcp-smoke.test.ts:256 (test 'TOOL_DESCRIPTIONS has an entry per registered tool', length bounds for all 12); test/e2e/mcp-smoke.test.ts:143 (description drift guard loop); src/faces/mcp.ts:37-59 (TOOL_DESCRIPTIONS constant)",
+        "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
+      },
+      {
+        "check_id": "c006",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/mcp-smoke.test.ts:297 (test 'umbel mcp exits promptly when stdin closes', 4 s race); src/faces/mcp.ts:371-394 (stdin end/close SIGINT/SIGTERM Promise + stdin.resume())",
+        "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
+      }
+    ],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

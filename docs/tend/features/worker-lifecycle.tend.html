@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.532Z",
   "project_name": "Project Garden",
-  "dek_sha": "23468ba003eec8bf49b0f9c5dea910683e607bbe"
+  "dek_sha": "5257263968b19dc4d45410f490f6ae99648a0366"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "worker-lifecycle",
   "title": "Worker Lifecycle",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "high",
   "dependencies": [
     "provider-abstraction"
@@ -2507,15 +2507,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "solves": [
     "cross-provider-gap"
   ],
-  "what": "Spawn, list, inspect, attach to, and kill tmux-hosted workers: named sessions with meta.json identity, environment inheritance minus a shell-init denylist, startup-dialog dismissal.",
-  "why": "Standing up an interactive CLI programmatically fails on the fiddly edges — trust dialogs, shell-init races, environment stripping — and a worker you cannot find or kill is a leak.",
-  "impact": "A worker is one spawn away from any cwd, survives the supervisor detaching, and is always findable (ls/status) and stoppable (kill).",
+  "what": "Spawn, inspect, and kill tmux-hosted workers: named/anon sessions with meta.json identity, env inheritance minus a 5-var shell-init denylist, startup-dialog dismissal.",
+  "why": "Standing up an interactive CLI programmatically fails on fiddly edges — trust dialogs, shell-init races, environment stripping — and a worker you can't find or kill is a leak.",
+  "impact": "A worker is one spawn away from any cwd, survives supervisor detach, and is always findable (status) and stoppable (kill) — the prerequisite for every dispatch and wait operation.",
   "fit": "The base verb set every face exposes; dispatch and wait assume a lifecycle-managed session exists.",
   "where": "src/operations/spawn.ts, kill.ts, status.ts; src/adapters/tmux.ts, exec.ts; src/core/env.ts, startup-dialogs.ts, id.ts.",
-  "how": "tmux session per worker; meta.json records provider/cwd/model; env passes through minus a 5-var denylist (the bash-init race); capture-pane polling dismisses trust dialogs, gated on real binaries.",
+  "how": "tmux new-session per worker; meta.json records provider/cwd/model; env inherits process.env minus SHELL/PROMPT_COMMAND/BASH_ENV/ZDOTDIR/ENV; capture-pane polling dismisses trust dialogs gated on real binaries; generateSessionName yields anon-XXXXXX.",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2561,6 +2561,105 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "A tmux pane with spawn and kill controls",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='20' y='14' width='80' height='52' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><rect x='20' y='14' width='80' height='10' fill='#4C5E3C'/><circle cx='27' cy='19' r='2' fill='#fff'/><circle cx='34' cy='19' r='2' fill='#fff'/><path d='M48 40 l12 7 -12 7 Z' fill='#46913C'/><rect x='68' y='40' width='12' height='14' fill='#B85C3E'/></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "spawn creates a live tmux session named umbel-<name> and writes meta.json to the state dir.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Call spawn(); assert listSessions() contains session.name; assert meta.json exists at $UMBEL_STATE/sessions/<name>/meta.json."
+    },
+    {
+      "id": "c002",
+      "description": "Anonymous spawn auto-generates a session name matching anon-[a-z0-9]{6} and sets anonymous=true.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Call spawn() with no name; assert session.name matches /^anon-[a-z0-9]{6}$/ and session.anonymous===true."
+    },
+    {
+      "id": "c003",
+      "description": "Worker env inherits full process.env minus the 5-var shell-init denylist (SHELL, PROMPT_COMMAND, BASH_ENV, ZDOTDIR, ENV); explicit workerEnv overrides layer on top.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Set PROMPT_COMMAND and BASH_ENV in process.env; capture the env handed to newSession; assert denylist vars absent, arbitrary inherited var present, and explicit workerEnv override wins."
+    },
+    {
+      "id": "c004",
+      "description": "kill removes the tmux session and state dir; idempotent — killing a non-existent session does not throw.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "spawn() then kill(); assert hasSession()===false and session dir absent. Also kill a ghost name; assert resolves without error."
+    },
+    {
+      "id": "c005",
+      "description": "status() reports alive=true for a live session, alive=false after kill, and surfaces needsInput/needsInputReason/pendingTool from the notification event file.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "spawn() → status() → alive=true; kill(removeState=false) → status() → alive=false; write permission_prompt notification → status() → needsInput=true, needsInputReason='permission'."
+    },
+    {
+      "id": "c006",
+      "description": "generateSessionName() produces anon-XXXXXX (or prefix-XXXXXX); isValidSessionName rejects bad patterns (uppercase, dots, leading dash, >63 chars).",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Unit tests in test/unit/id.test.ts: assert format regex, length, base36 chars, validity checks."
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts",
+    "verify": "85 pass",
+    "last_run": "2026-06-21T15:14:51Z",
+    "last_result": "pass"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T15:14:51Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/integration/spawn.test.ts:88-94 (tmux session is created); test/integration/spawn.test.ts:96-103 (meta.json is written); src/operations/spawn.ts:135-331",
+        "evidence_sha": "21c69a0653c2511003b89c2a6b83a6751a4cc01c"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/integration/spawn.test.ts:80-86 (auto-generates name matching anon-XXXXXX pattern); test/unit/id.test.ts:5-8 (default format matches anon-XXXXXX); src/core/id.ts",
+        "evidence_sha": "21c69a0653c2511003b89c2a6b83a6751a4cc01c"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/integration/spawn-env.test.ts:98-108 (inherits arbitrary env var); test/integration/spawn-env.test.ts:125-140 (does NOT leak shell-init vars); test/integration/spawn-env.test.ts:111-121 (forwards explicit workerEnv override); src/operations/spawn.ts:245-254",
+        "evidence_sha": "8218815f64e6215b6582ff93f7da3f44ad8738a2"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/integration/kill.test.ts:77-90 (removes tmux session and state dir); test/integration/kill.test.ts:114-133 (does not throw when session does not exist); test/integration/kill.test.ts:151-159 (double kill does not throw); src/operations/kill.ts",
+        "evidence_sha": "aa7202ee6b25a4f0a9a7f22d21ef865e1d74ca6c"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "test/integration/status.test.ts:91-103 (both sessions alive after spawn); test/integration/status.test.ts:156-171 (alive=false after kill); test/integration/status.test.ts:273-286 (needsInput + needsInputReason=permission); src/operations/status.ts",
+        "evidence_sha": "8437e079c94ca531ec971290c38b72f69131bba3"
+      },
+      {
+        "check_id": "c006",
+        "verdict": "pass",
+        "evidence_path": "test/unit/id.test.ts:5-8 (default format anon-XXXXXX); test/unit/id.test.ts:32-37 (suffix 6 base36 chars); test/unit/id.test.ts:50-88 (isValidSessionName rejects bad patterns); src/core/id.ts",
+        "evidence_sha": "bbd755a2f7f3a9183073115f231d1a68c92350c2"
+      }
+    ],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

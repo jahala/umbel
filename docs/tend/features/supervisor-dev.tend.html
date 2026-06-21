@@ -2500,7 +2500,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "cli-face",
         "title": "Supervisor CLI",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "medium",
         "dependencies": [
           "worker-lifecycle",
@@ -2528,7 +2528,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "completion-detection",
         "title": "Completion Detection",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "high",
         "dependencies": [
           "dispatch-and-read",
@@ -2545,7 +2545,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "silent-workers"
         ],
         "journey_phase": "verify",
-        "what": "wait resolves what a quiet worker means: done (stop hook), needs-input (notify hook + the reason: the blocking question), or still-working (idle net as the fallback) — JSONL notifications and status -",
+        "what": "waitFor settles what a quiet worker means: done (stop hook mtime advance), needs-input (notify hook + blocking reason: permission/idle/question), idle (pane-activity backstop), dead (session vanished ",
         "thumbnail": {
           "kind": "svg",
           "alt": "A quiet pane resolved into done or needs-input",
@@ -2555,7 +2555,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "dispatch-and-read",
         "title": "Dispatch and Read",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "high",
         "dependencies": [
           "worker-lifecycle",
@@ -2573,7 +2573,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "context-bloat"
         ],
         "journey_phase": "build",
-        "what": "Send prompts into a worker and get its output back: send, read (last assistant message via lazy JSONL transcript resolution), capture (pane snapshot), logs, diff — with truncation for host-context hyg",
+        "what": "Send a prompt into a running worker and read back its last assistant message from the provider's JSONL transcript — with Myers line-diff across turns and head/tail/section truncation for host-context ",
         "thumbnail": {
           "kind": "svg",
           "alt": "A prompt arrow in, an answer arrow out",
@@ -2583,7 +2583,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "worker-lifecycle",
         "title": "Worker Lifecycle",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "high",
         "dependencies": [
           "provider-abstraction"
@@ -2599,7 +2599,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "cross-provider-gap"
         ],
         "journey_phase": "build",
-        "what": "Spawn, list, inspect, attach to, and kill tmux-hosted workers: named sessions with meta.json identity, environment inheritance minus a shell-init denylist, startup-dialog dismissal.",
+        "what": "Spawn, inspect, and kill tmux-hosted workers: named/anon sessions with meta.json identity, env inheritance minus a 5-var shell-init denylist, startup-dialog dismissal.",
         "thumbnail": {
           "kind": "svg",
           "alt": "A tmux pane with spawn and kill controls",
@@ -2609,7 +2609,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "workflow-runner",
         "title": "Workflow Runner",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "medium",
         "dependencies": [
           "worker-lifecycle",

@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.609Z",
   "project_name": "Project Garden",
-  "dek_sha": "bbd245cfd9bad4d13bab392365e4b0691f6fe7ed"
+  "dek_sha": "c34eefba8db24d8342716ea17a7aa2bcd82d6fff"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "workflow-runner",
   "title": "Workflow Runner",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "medium",
   "dependencies": [
     "worker-lifecycle",
@@ -2511,11 +2511,11 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "why": "Repeatable orchestrations should not require re-prompting a host agent to do the same dance; scripts want the dance as a file.",
   "impact": "A multi-worker, multi-provider orchestration is a YAML file anyone can run, version, and re-run.",
   "fit": "The deterministic third face: what the MCP face does conversationally, run does declaratively.",
-  "where": "src/core/workflow.ts; src/faces/workflow.ts.",
-  "how": "YAML parsed (yaml + zod) into a step plan over the shared operations; workers referenced by name; provider per worker.",
+  "where": "src/core/workflow.ts (parseWorkflow, topoSort, substitute); src/faces/workflow.ts (runWorkflow, executeStep).",
+  "how": "YAML parsed and zod-validated into a WorkflowSpec; topoSort (Kahn's algorithm) emits parallel waves; each wave runs workers concurrently via spawn/send/wait/kill; {{ steps.X.outputs.Y }} and {{ env.X }} substitution feeds downstream prompts.",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2547,6 +2547,92 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "Three workflow steps in sequence",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='8' y='30' width='26' height='20' rx='3' fill='none' stroke='#4C5E3C' stroke-width='2'/><rect x='47' y='30' width='26' height='20' rx='3' fill='none' stroke='#4C5E3C' stroke-width='2'/><rect x='86' y='30' width='26' height='20' rx='3' fill='none' stroke='#4C5E3C' stroke-width='2'/><path d='M34 40 H47 M73 40 H86' stroke='#D97757' stroke-width='2'/><text x='21' y='24' font-size='9' text-anchor='middle' fill='#8A8A86'>yaml</text></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "YAML with workers + steps is parsed and zod-validated into a WorkflowSpec; missing workers, missing steps, empty steps, and bad YAML each throw UmbelUsageError.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('parseWorkflow') block: 7 tests covering valid parse, malformed YAML, missing workers, missing steps, empty steps, multi-worker parse, wait-condition parse, step-missing-prompt."
+    },
+    {
+      "id": "c002",
+      "description": "topoSort emits independent steps in the same wave, orders linear dependencies across waves, detects cycles (including self-loops and length-3 cycles), and throws WorkflowCycleError.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('topoSort') block: 6 tests covering single step, two independent steps in one wave, linear chain (3 waves), fan-out parallel wave, direct cycle, self-dependency, 3-node cycle."
+    },
+    {
+      "id": "c003",
+      "description": "substitute resolves {{ env.X }}, {{ steps.NAME.outputs.KEY }}, {{ $session }}, multiple occurrences, whitespace-trimmed expressions, and throws UmbelUsageError for every unresolved or malformed reference.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "bun test test/unit/workflow.test.ts — describe('substitute') block: 11 tests covering no-op, env, steps output, $session, multiple occurrences, unresolved env, missing step, missing output key, unresolved $session, malformed prefix, whitespace trimming."
+    },
+    {
+      "id": "c004",
+      "description": "A two-step sequential workflow (step2 needs: [step1]) runs step1 first, captures its assistant_last_message output, substitutes it into step2's prompt, and returns status='completed' with both outputs populated.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "bun test test/e2e/workflow.test.ts — 'two-step sequential workflow (needs) runs step1 then step2' + 'assistant_last_message output substitution works': result.status='completed', result.outputs[step1].result contains 'Response to: step one prompt', result.outputs[step2].result contains substituted value."
+    },
+    {
+      "id": "c005",
+      "description": "Two independent steps (no needs) run concurrently in the same wave; a failing step returns status='failed' with failedStep populated and downstream steps' outputs absent; AbortSignal cancellation also returns status='failed'.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "bun test test/e2e/workflow.test.ts — 'parallel: two independent steps run in the same wave concurrently', 'step failure returns status=failed and remaining steps not run', 'workflow aborted via AbortSignal returns failed status': all 3 pass."
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/unit/workflow.test.ts test/e2e/workflow.test.ts",
+    "verify": "33 pass, 0 fail across 2 files",
+    "last_run": "2026-06-21T15:19:19Z",
+    "last_result": "pass"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T15:19:19Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/unit/workflow.test.ts:9-95 (describe parseWorkflow, 7 tests); bun test passed 26/26 unit tests",
+        "evidence_sha": "f924bc37b98c033acaa07d3a5a5c124d5366cb44"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/unit/workflow.test.ts:101-165 (describe topoSort, 7 tests); src/core/workflow.ts:28-82 (Kahn's algorithm implementation); bun test passed 26/26 unit tests",
+        "evidence_sha": "f924bc37b98c033acaa07d3a5a5c124d5366cb44"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/unit/workflow.test.ts:171-256 (describe substitute, 11 tests); src/core/workflow.ts:90-139 (TEMPLATE_RE + substitute implementation); bun test passed 26/26 unit tests",
+        "evidence_sha": "f924bc37b98c033acaa07d3a5a5c124d5366cb44"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/workflow.test.ts:101-163 (two-step sequential + output substitution tests); src/faces/workflow.ts:120-245 (executeStep: spawn/send/wait/outputs); bun test passed 7/7 e2e tests in 9.42s",
+        "evidence_sha": "e0b26cb9aefbced4e2df8c418c96c7185e08c289"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/workflow.test.ts:207-319 (parallel wave, step failure, AbortSignal tests); src/faces/workflow.ts:68-98 (Promise.allSettled wave loop + failure cleanup); bun test passed 7/7 e2e tests",
+        "evidence_sha": "e0b26cb9aefbced4e2df8c418c96c7185e08c289"
+      }
+    ],
+    "drift": [],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

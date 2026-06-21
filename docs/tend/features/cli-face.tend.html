@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.668Z",
   "project_name": "Project Garden",
-  "dek_sha": "1fb97b654284f1fe554778eba51cba692c183207"
+  "dek_sha": "71e939374e2f16afd1fa569f8ff08bb8da460693"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "cli-face",
   "title": "Supervisor CLI",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "medium",
   "dependencies": [
     "worker-lifecycle",
@@ -2510,14 +2510,14 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "cross-provider-gap"
   ],
   "what": "The umbel binary's verb surface — spawn, send, wait, status, ls, kill, attach, read, capture, logs, run, mcp — argv parsing with boolean-only short flags, human and --json output.",
-  "why": "Scripts and crons need the same verbs agents get, with parsing that does not eat prompts and output both humans and pipelines can read.",
-  "impact": "A supervisor drives everything from the shell; -p never swallows a prompt again; --json feeds the pipeline.",
-  "fit": "The human face over the same operations layer; also where the binary is built and installed (bun build, macOS-safe --install).",
-  "where": "src/faces/cli.ts, verbs.ts, p.ts; src/main.ts; src/operations/actions.ts, deps.ts; scripts/build.ts.",
-  "how": "One argv parser (short flags always boolean — the v2 lesson), verb dispatch to operations, deps wiring; Bun-compiled to dist/umbel.",
+  "why": "Scripts and crons need the same verbs agents get, with parsing that never swallows the -p prompt and output both humans and pipelines can read.",
+  "impact": "A supervisor drives everything from the shell; -p never eats a prompt again; --json output feeds machine callers; identical operations layer used by MCP.",
+  "fit": "The only human-facing entry point over the operations layer; also where the single-binary is compiled and installed via macOS-safe atomic rename.",
+  "where": "src/faces/cli.ts (runCli, verb handlers), src/faces/verbs.ts (VerbSchemas, parseDuration), src/faces/p.ts (runP), src/main.ts, src/operations/actions.ts, src/operations/deps.ts, scripts/build.ts, tsconfig.json.",
+  "how": "One parseArgv pass (short flags always boolean — the v2 fix), VerbSchemas as the single zod source of truth shared by CLI and MCP, verb dispatch calls operations with defaultDeps wiring; bun build --compile --minify produces dist/umbel; macOS install uses write+chmod+rename (never in-place).",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2554,6 +2554,105 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "A shell prompt driving verbs",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='14' y='14' width='92' height='52' rx='4' fill='#20251B'/><text x='24' y='38' font-size='14' font-family='monospace' fill='#8FCB63'>$ umbel</text><text x='24' y='54' font-size='11' font-family='monospace' fill='#8A8A86'>spawn · wait · read</text></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "Short flags are always boolean — no short flag ever consumes the next argument as a value (fixes v2 -p prompt-eating bug).",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Run runCli(['-p', 'hello from test', '--cwd', tmpDir]) via fake-claude; assert stdout contains 'Response to: hello from test' (proves -p received the prompt string, not undefined)."
+    },
+    {
+      "id": "c002",
+      "description": "All twelve verbs are dispatched correctly — unknown verb exits 2; known verbs route to their handler and return 0 or a typed exit code.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "runCli(['bogus-verb-xyz']) → exit 2, stderr contains unknown verb; runCli(['spawn', '--name', validName]) → exit 0."
+    },
+    {
+      "id": "c003",
+      "description": "VerbSchemas is the single zod source of truth — every verb parses valid input correctly and rejects invalid input with a typed ZodError.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "VerbSchemas.send.safeParse({name:'foo', prompt:'hi'}) succeeds; VerbSchemas.send.safeParse({name:'foo'}) fails with issues[0].path=['prompt']. Same pattern for all 11 other verbs."
+    },
+    {
+      "id": "c004",
+      "description": "The -p drop-in runs a full spawn-send-wait-read cycle and prints the assistant response on stdout, then exits 0.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "runP({prompt:'hi', claudeBin:'fake-claude.sh', env}) → result.text contains 'Response to: hi', result.sessionName is set and tmux session is gone (anonymous)."
+    },
+    {
+      "id": "c005",
+      "description": "The defaultDeps wiring in deps.ts composes all adapters correctly — operations receive real tmux/fs/jsonl/hooks/exec/watch deps without any extra coupling.",
+      "validates": "fit",
+      "method": "code-review",
+      "integration_level": "unit",
+      "verification_recipe": "Inspect src/operations/deps.ts: defaultDeps exports exactly {tmux, fs, hooks, jsonl, exec, watch} from their adapter modules; no business logic, no side effects."
+    },
+    {
+      "id": "c006",
+      "description": "The actions operation reads a session transcript via the provider's extractActions and returns a human-readable manifest including tool summary, files, bash commands, errors, and final message.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "actions({name:'sess3', env}) over a JSONL with Read/Edit/Bash tool_use blocks returns string containing 'Tools: Read×1, Edit×1, Bash×1' and 'Files read: /repo/foo.ts'."
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/unit/verbs.test.ts test/integration/actions.test.ts test/integration/cli-inproc.test.ts test/e2e/p-mode.test.ts",
+    "verify": "Ran 99 tests across 4 files",
+    "last_run": "2026-06-21T15:14:43Z",
+    "last_result": "pass"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T15:14:43Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/integration/cli-inproc.test.ts:551-575 (runCli(['-p','hello from test']) asserts stdout contains 'Response to: hello from test'); src/faces/cli.ts:83-91 (BOOLEAN_FLAGS constant, parseArgv never assigns next token to a short flag)",
+        "evidence_sha": "e1221d350982ca71525e44d5d27ee9e3ae2910a2"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/integration/cli-inproc.test.ts:199-205 (unknown verb → exit 2, 'unknown verb bogus-verb-xyz'); test/integration/cli-inproc.test.ts:211-226 (spawn valid name → exit 0)",
+        "evidence_sha": "e1221d350982ca71525e44d5d27ee9e3ae2910a2"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/unit/verbs.test.ts:104-128 (VerbSchemas.send valid parse + rejects missing prompt at path=['prompt']); test/unit/verbs.test.ts:72-316 (all 11 verbs covered with valid+invalid cases); src/faces/verbs.ts:34-94",
+        "evidence_sha": "c5299c2a7f79008151f831c07da8d7834d69d668"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/e2e/p-mode.test.ts:77-90 (one-shot anonymous: result.text contains 'Response to: hi', session dead after); test/e2e/p-mode.test.ts:92-106 (--name persists session); src/faces/p.ts",
+        "evidence_sha": "ffb8de034e35a301b114e2f44c3e5e6c0af0a686"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "src/operations/deps.ts:12-19 (defaultDeps = {tmux, fs, hooks, jsonl, exec, watch} — no business logic, pure wiring); test/integration/cli-inproc.test.ts:404-456 (read test injects deps override, proving defaultDeps is structurally replaceable)",
+        "evidence_sha": "7edb2e7c495695b4260ea253ce8664cea6cbb0a7"
+      },
+      {
+        "check_id": "c006",
+        "verdict": "pass",
+        "evidence_path": "test/integration/actions.test.ts:84-156 (sess3: tool_use blocks → 'Tools: Read×1, Edit×1, Bash×1', 'Files read: /repo/foo.ts', '## Final message'); src/operations/actions.ts:48-58",
+        "evidence_sha": "26c7e343519949303c6a02b3f01d2ab5346aca6c"
+      }
+    ],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

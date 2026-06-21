@@ -2504,7 +2504,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "dispatch-and-read",
         "title": "Dispatch and Read",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "high",
         "dependencies": [
           "worker-lifecycle",
@@ -2522,7 +2522,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "context-bloat"
         ],
         "journey_phase": "build",
-        "what": "Send prompts into a worker and get its output back: send, read (last assistant message via lazy JSONL transcript resolution), capture (pane snapshot), logs, diff — with truncation for host-context hyg",
+        "what": "Send a prompt into a running worker and read back its last assistant message from the provider's JSONL transcript — with Myers line-diff across turns and head/tail/section truncation for host-context ",
         "thumbnail": {
           "kind": "svg",
           "alt": "A prompt arrow in, an answer arrow out",
@@ -2532,7 +2532,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "mcp-face",
         "title": "MCP Face",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "high",
         "dependencies": [
           "worker-lifecycle",
@@ -2547,7 +2547,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "context-bloat"
         ],
         "journey_phase": "orient",
-        "what": "The MCP server host agents mount: umbel_spawn/send/wait/read/kill plus umbel_help (lifecycle, workflow, providers topics) and a server-level instructions block — teaching without drowning.",
+        "what": "The MCP server host agents mount: umbel_spawn/send/wait/read/kill/status/ls/actions/diff/capture/logs plus umbel_help (lifecycle, workflow, providers topics) and a server-level instructions block — te",
         "thumbnail": {
           "kind": "svg",
           "alt": "A toolbelt of verbs an agent mounts",
@@ -2557,7 +2557,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "workflow-runner",
         "title": "Workflow Runner",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "medium",
         "dependencies": [
           "worker-lifecycle",

@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.501Z",
   "project_name": "Project Garden",
-  "dek_sha": "09fbeee64d6ee107602711186262ae0d7d353cab"
+  "dek_sha": "e3fdf5bd51d80e61526a0ce50a777e806f06c7f3"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "provider-abstraction",
   "title": "Provider Abstraction",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "high",
   "dependencies": [],
   "enables": [
@@ -2506,15 +2506,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "solves": [
     "cross-provider-gap"
   ],
-  "what": "A pluggable provider interface (claude, codex, gemini, opencode) isolating the four provider-specific behaviors — startup dialogs, prompt submission, hook lifecycles, model flags — behind one contract.",
+  "what": "A pluggable provider interface (claude, codex, gemini, opencode) isolating the four provider-specific behaviors — startup dialogs, prompt submission, hook lifecycles, model flags — behind one AgentProvider contract.",
   "why": "Every provider's TUI differs in exactly the places that break automation; without one contract, each verb forks per provider and codex/gemini support rots.",
   "impact": "The same spawn/send/wait/read orchestration works against any registered provider; adding a provider touches the registry, not the verbs.",
   "fit": "The keystone under everything: lifecycle, dispatch, and completion all consume the contract. v3's defining change over the claude-only v2.",
-  "where": "src/core/providers/ (claude.ts, codex.ts, gemini.ts, opencode.ts, registry.ts, types.ts).",
-  "how": "A Provider interface with per-provider modules and a registry; provider recorded in meta.json at spawn so later verbs auto-route without --provider.",
+  "where": "src/core/providers/ — types.ts (AgentProvider interface + ActionManifest + Turn), claude.ts, codex.ts, gemini.ts, opencode.ts, registry.ts, index.ts.",
+  "how": "An AgentProvider interface (buildLaunch, stopEventName, parseTranscript; optional extractActions, extractTurns, exportTranscript, reconcileEnv) with four concrete modules and a getProvider(name) registry that throws ProviderUnknownError for unknowns; provider name is recorded in meta.json at spawn so all subsequent verbs auto-route.",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2554,6 +2554,103 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "Four provider plugs feeding one socket",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='44' y='28' width='32' height='24' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><circle cx='14' cy='14' r='5' fill='#D97757'/><circle cx='14' cy='36' r='5' fill='#587383'/><circle cx='14' cy='58' r='5' fill='#C9923C'/><circle cx='106' cy='40' r='5' fill='#46913C'/><path d='M19 14 C32 14 36 34 44 36 M19 36 L44 39 M19 58 C32 58 36 46 44 43 M76 40 L101 40' stroke='#8A8A86' stroke-width='1.5' fill='none'/></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "getProvider(name) returns the correct AgentProvider object for each of the four registered names (claude, codex, gemini, opencode).",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "call getProvider('claude') and assert result === ClaudeProvider; repeat for each provider name; assert all four have .name matching the lookup key"
+    },
+    {
+      "id": "c002",
+      "description": "getProvider throws ProviderUnknownError whose message contains the bad name AND lists all valid providers when given an unknown name.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "call getProvider('bogus'); catch error; assert instanceof ProviderUnknownError; assert message contains 'bogus' and each of Object.keys(PROVIDERS)"
+    },
+    {
+      "id": "c003",
+      "description": "Each provider's buildLaunch returns a ProviderLaunchSpec with the correct bin, provider-specific hook config in args or files, and an empty env for providers that need none.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "call buildLaunch on each of ClaudeProvider, CodexProvider, GeminiProvider, OpenCodeProvider with a hookScriptPath; assert spec.bin matches provider name; assert hook script path appears in args (claude) or files[0].content (codex/gemini)"
+    },
+    {
+      "id": "c004",
+      "description": "Each provider declares the correct stopEventName: 'Stop' for claude and codex, 'AfterAgent' for gemini, 'session.status' for opencode.",
+      "validates": "where",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "assert ClaudeProvider.stopEventName === 'Stop'; CodexProvider.stopEventName === 'Stop'; GeminiProvider.stopEventName === 'AfterAgent'; OpenCodeProvider.stopEventName === 'session.status'"
+    },
+    {
+      "id": "c005",
+      "description": "parseTranscript on each provider is a pure total function: returns '' for empty/whitespace/malformed input and never throws.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "call each provider's parseTranscript('') and parseTranscript('\\n\\n'); assert returns ''; call with malformed JSON line mixed with valid entry; assert returns valid entry text and does not throw"
+    },
+    {
+      "id": "c006",
+      "description": "spawn records the chosen provider name in meta.json so subsequent verbs (send/wait/kill) auto-route without --provider.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "spawn with provider='codex' via fake-codex.sh; assert session.provider === 'codex'; spawn with provider='opencode' via fake-opencode.sh; assert session.provider === 'opencode'"
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/unit/providers test/integration/codex-provider.test.ts test/integration/opencode-provider.test.ts",
+    "verify": "218 pass, 0 fail across 11 files"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T00:00:00Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/unit/providers/registry.test.ts:6-13; test/unit/providers/claude.test.ts:299-302; src/core/providers/registry.ts:19-25",
+        "evidence_sha": "736a66d33c762f97a3b0d21e4adb0777fadf4769"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/unit/providers/registry.test.ts:11-28; src/core/providers/registry.ts:21-23",
+        "evidence_sha": "736a66d33c762f97a3b0d21e4adb0777fadf4769"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/unit/providers/claude.test.ts:11-18,41-52,88-103; test/unit/providers/codex.test.ts:36-39,68-88; test/unit/providers/gemini.test.ts:79-88,99-117; test/unit/providers/opencode.test.ts:187-218; src/core/providers/claude.ts; src/core/providers/codex.ts; src/core/providers/gemini.ts; src/core/providers/opencode.ts",
+        "evidence_sha": "10ed620857dbeb59b0cdf059239dc7768dc46e9a"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/unit/providers/claude.test.ts:161-164; test/unit/providers/codex.test.ts:123-127; test/unit/providers/gemini.test.ts:162-166; test/unit/providers/opencode.test.ts:230-232; src/core/providers/types.ts:122",
+        "evidence_sha": "10ed620857dbeb59b0cdf059239dc7768dc46e9a"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "test/unit/providers/claude.test.ts:242-244,247-251; test/unit/providers/codex.test.ts:222-224,240-248; test/unit/providers/gemini.test.ts:260-263,265-268; test/unit/providers/opencode.test.ts:115-125",
+        "evidence_sha": "10ed620857dbeb59b0cdf059239dc7768dc46e9a"
+      },
+      {
+        "check_id": "c006",
+        "verdict": "pass",
+        "evidence_path": "test/integration/codex-provider.test.ts:247-257; test/integration/opencode-provider.test.ts:172-180; src/core/providers/registry.ts:12-17",
+        "evidence_sha": "92fedb28d552ef084c1f9c92d66a9803647c41ff"
+      }
+    ],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

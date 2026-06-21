@@ -2483,7 +2483,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "tend_version": "0.4.0",
   "generated_at": "2026-06-12T10:40:37.582Z",
   "project_name": "Project Garden",
-  "dek_sha": "f1c99701b6ef88446f7ff00fc31abbb5bc648248"
+  "dek_sha": "64eb6ffd2d7d8dca7e1d5289c3c1672ccaf2d0a6"
 }
 </script>
 
@@ -2491,7 +2491,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
 {
   "id": "completion-detection",
   "title": "Completion Detection",
-  "status": "in-progress",
+  "status": "verified",
   "priority": "high",
   "dependencies": [
     "dispatch-and-read",
@@ -2508,15 +2508,15 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "solves": [
     "silent-workers"
   ],
-  "what": "wait resolves what a quiet worker means: done (stop hook), needs-input (notify hook + the reason: the blocking question), or still-working (idle net as the fallback) — JSONL notifications and status --json carry it to machines.",
-  "why": "Silence is the hardest signal in interactive CLIs: completion, thinking, and a wedged permission prompt all look like a paused pane. Unattended runs die here.",
-  "impact": "wait returns a verdict a program can act on — done vs needs-input with reason — so hosts answer prompts instead of wedging and crons stop guessing.",
-  "fit": "The capability this branch is actively extending (needsInputReason); the precision frontier of the whole tool — hooks beat heuristics, the idle net catches what hooks miss.",
-  "where": "src/operations/wait.ts; src/core/wait.ts, notification.ts; src/adapters/hooks.ts, fs-watch.ts, fs-state.ts.",
-  "how": "Provider hooks write events (notification/stop) the wait loop watches via fs; needs-input hooks are provider-precise (codex/gemini/opencode added on this branch); an idle timer nets non-hook silences; reasons surface in status --json and JSONL notifications.",
+  "what": "waitFor settles what a quiet worker means: done (stop hook mtime advance), needs-input (notify hook + blocking reason: permission/idle/question), idle (pane-activity backstop), dead (session vanished without firing stop), or timeout — all surfaced via status --json and JSONL notifications.",
+  "why": "Silence is the hardest signal in interactive CLIs: completion, thinking, and a wedged permission prompt all look identical from the outside. Unattended runs and host-agent orchestrators die on this ambiguity.",
+  "impact": "wait returns a verdict a program can branch on — stop means done, input with inputReason means answer the prompt, dead means the worker crashed — so hosts stop wedging and crons stop guessing at timeouts.",
+  "fit": "The precision frontier of umbel: hooks are provider-precise (Claude Stop/Notification, Codex PermissionRequest, Gemini AfterAgent/ToolPermission, OpenCode permission.updated); the idle net and liveness probe are the universal backstop that keeps all four providers honest.",
+  "where": "src/operations/wait.ts (waitFor, inspectReason); src/core/wait.ts (compile, applyDefaultTimeout); src/core/notification.ts (classifyNotification); src/adapters/hooks.ts (STOP_HOOK_SCRIPT, NOTIFY_HOOK_SCRIPT, ensureGlobalHooks); src/adapters/fs-watch.ts (watch); src/adapters/fs-state.ts.",
+  "how": "Provider hooks write events/stop (touch) and events/notification (JSONL append); compile() turns the WaitCondition into a pure evaluate fn + wake sources; waitFor drives fs.watch + timers + a liveness poll; on each wake it re-evaluates the compiled condition then checks notification mtime before the liveness probe, so a blocked-not-dead worker resolves 'input' promptly.",
   "progress": {
-    "implementation": 0,
-    "verification": 0
+    "implementation": 100,
+    "verification": 100
   },
   "personas_resolved": [
     {
@@ -2560,6 +2560,105 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     "kind": "svg",
     "alt": "A quiet pane resolved into done or needs-input",
     "content": "<svg viewBox=\"0 0 120 80\" xmlns=\"http://www.w3.org/2000/svg\"><rect x='10' y='22' width='42' height='36' rx='4' fill='none' stroke='#4C5E3C' stroke-width='2'/><text x='31' y='46' font-size='16' text-anchor='middle' fill='#8A8A86'>…</text><path d='M56 32 C68 26 74 26 84 28 M56 48 C68 54 74 54 84 52' stroke='#8A8A86' stroke-width='1.5' fill='none'/><path d='M90 22 l5 6 9 -10' stroke='#46913C' stroke-width='3' fill='none'/><rect x='90' y='44' width='18' height='14' rx='3' fill='none' stroke='#C9923C' stroke-width='2'/><text x='99' y='55' font-size='11' text-anchor='middle' fill='#C9923C'>?</text></svg>"
+  },
+  "checks": [
+    {
+      "id": "c001",
+      "description": "waitFor returns reason='stop' when the provider's stop hook fires (events/stop mtime advances past the sinceMtime snapshot taken before send).",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Spawn fake-claude, send a prompt, call waitFor with the sinceMtime from send; assert result.reason==='stop' and result.stopped===true."
+    },
+    {
+      "id": "c002",
+      "description": "waitFor returns reason='dead' promptly (well under the default timeout) when the tmux session vanishes without firing the stop hook.",
+      "validates": "why",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Call waitFor on a session name that has no tmux session; assert result.reason==='dead' and elapsed < 1500ms with a 3s defaultTimeoutMs."
+    },
+    {
+      "id": "c003",
+      "description": "waitFor returns reason='input' with inputReason='permission' and the prompt message when events/notification is written mid-wait with a permission_prompt payload.",
+      "validates": "impact",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Start a live bash session (never fires stop), write a permission_prompt JSON line to events/notification after 300ms; assert result.reason==='input', result.inputReason==='permission', result.message contains the prompt text."
+    },
+    {
+      "id": "c004",
+      "description": "classifyNotification maps all four provider notification types to the correct reason: Claude permission_prompt→permission, idle_prompt→idle, elicitation_dialog→question; auth_success→null (informational); Codex PermissionRequest (tool_name field)→permission+tool; Gemini ToolPermission→permission; OpenCode permission.updated→permission+tool; latest-line-wins for JSONL.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Unit test classifyNotification with each provider's hook payload shape; assert correct reason and tool extraction; confirm last-line-wins by prepending a permission_prompt then appending idle_prompt and asserting reason==='idle'."
+    },
+    {
+      "id": "c005",
+      "description": "waitFor returns reason='idle' when the tmux pane shows no change for idleTimeoutMs, and does NOT fire idle while the pane keeps changing.",
+      "validates": "fit",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Case A: live bash session with static prompt, idleTimeoutMs=800 → assert result.reason==='idle'. Case B: bash -c 'while true; do echo $RANDOM; sleep 0.1; done', idleTimeoutMs=800, condition timeout 2.5s → assert result.reason==='timeout' (not idle)."
+    },
+    {
+      "id": "c006",
+      "description": "STOP_HOOK_SCRIPT and NOTIFY_HOOK_SCRIPT are executable bash scripts installed by ensureGlobalHooks; stop.sh touches events/stop and appends a nanosecond timestamp to events/log; notify.sh appends the payload JSON to events/notification (JSONL, no clobber).",
+      "validates": "where",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Call ensureGlobalHooks, exec stop.sh with UMBEL_STATE+UMBEL_SESSION_ID set; assert events/stop exists and events/log has a numeric line. Exec notify.sh twice with different payloads; assert events/notification has 2 lines, each parseable, in order."
+    }
+  ],
+  "smoke": {
+    "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts",
+    "verify": "77 pass",
+    "last_run": "2026-06-21T15:20:01Z",
+    "last_result": "pass"
+  },
+  "audit": {
+    "ran_at": "2026-06-21T15:20:01Z",
+    "result": "pass",
+    "verdicts": [
+      {
+        "check_id": "c001",
+        "verdict": "pass",
+        "evidence_path": "test/integration/wait.test.ts:92-108 (returns reason=stop when fake-claude fires the hook); test/integration/wait.test.ts:110-134 (returns immediately if stop already fired); src/operations/wait.ts:82-94 (waitFor stop condition default)",
+        "evidence_sha": "07b0743ead1195597b23e5b3cdfa1603fc1d6602"
+      },
+      {
+        "check_id": "c002",
+        "verdict": "pass",
+        "evidence_path": "test/integration/wait.test.ts:415-435 (settles reason=dead without waiting for timeout, elapsed < 1500ms); test/integration/wait.test.ts:437-460 (satisfied stop wins over dead session); src/operations/wait.ts:300-318 (liveness probe + dead settle)",
+        "evidence_sha": "07b0743ead1195597b23e5b3cdfa1603fc1d6602"
+      },
+      {
+        "check_id": "c003",
+        "verdict": "pass",
+        "evidence_path": "test/integration/wait.test.ts:468-509 (settles reason=input with inputReason=permission and message); test/integration/wait.test.ts:513-551 (auth_success informational → does not settle input); src/operations/wait.ts:202-294 (notification baseline + input settle path)",
+        "evidence_sha": "07b0743ead1195597b23e5b3cdfa1603fc1d6602"
+      },
+      {
+        "check_id": "c004",
+        "verdict": "pass",
+        "evidence_path": "test/unit/notification.test.ts:16-107 (all provider shapes: permission_prompt, idle_prompt, elicitation_dialog, auth_success→null, worker_permission_prompt+tool, codex PermissionRequest tool_name, gemini ToolPermission, opencode permission.updated, last-line-wins, empty/malformed→null); src/core/notification.ts:32-72 (classifyNotification)",
+        "evidence_sha": "e45f3ab58de7e6f5845a942b5c4bd7b014786455"
+      },
+      {
+        "check_id": "c005",
+        "verdict": "pass",
+        "evidence_path": "test/integration/wait.test.ts:559-592 (settles idle on static pane, idleTimeoutMs=800); test/integration/wait.test.ts:594-631 (does not settle idle on changing pane → timeout); src/operations/wait.ts:391-424 (idle net implementation)",
+        "evidence_sha": "07b0743ead1195597b23e5b3cdfa1603fc1d6602"
+      },
+      {
+        "check_id": "c006",
+        "verdict": "pass",
+        "evidence_path": "test/integration/hooks.test.ts:104-157 (stop.sh created, executable, fires correctly, events/stop+log written); test/integration/hooks.test.ts:182-203 (notify.sh writes payload to events/notification); test/integration/hooks.test.ts:205-240 (notify.sh appends two lines, JSONL no-clobber); src/adapters/hooks.ts (STOP_HOOK_SCRIPT, NOTIFY_HOOK_SCRIPT, ensureGlobalHooks)",
+        "evidence_sha": "7129a5b7ef0aca19145da5a8821d2cc0a23e41bd"
+      }
+    ],
+    "verified_at_commit": "622f4af7234a499de0d1169ff9bd1862c3e23ba8"
   }
 }
 </script>

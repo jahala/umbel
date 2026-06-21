@@ -2505,7 +2505,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "cli-face",
         "title": "Supervisor CLI",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "medium",
         "dependencies": [
           "worker-lifecycle",
@@ -2533,7 +2533,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "id": "completion-detection",
         "title": "Completion Detection",
-        "status": "in-progress",
+        "status": "verified",
         "priority": "high",
         "dependencies": [
           "dispatch-and-read",
@@ -2550,7 +2550,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
           "silent-workers"
         ],
         "journey_phase": "verify",
-        "what": "wait resolves what a quiet worker means: done (stop hook), needs-input (notify hook + the reason: the blocking question), or still-working (idle net as the fallback) — JSONL notifications and status -",
+        "what": "waitFor settles what a quiet worker means: done (stop hook mtime advance), needs-input (notify hook + blocking reason: permission/idle/question), idle (pane-activity backstop), dead (session vanished ",
         "thumbnail": {
           "kind": "svg",
           "alt": "A quiet pane resolved into done or needs-input",
