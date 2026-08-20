@@ -702,7 +702,7 @@ async function verbCapture(
   if (name === undefined) throw new UmbelUsageError('capture: <name> is required');
   const linesStr = flagStr(flags, 'lines');
   const lines = linesStr !== undefined ? Number.parseInt(linesStr, 10) : 100;
-  process.stdout.write(await defaultDeps.tmux.capturePane(name, lines));
+  process.stdout.write(await defaultDeps.tmux.capturePane(name, lines, getCliEnv()));
   return 0;
 }
 

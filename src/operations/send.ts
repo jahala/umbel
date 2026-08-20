@@ -34,7 +34,7 @@ export async function send(opts: SendOpts): Promise<SendResult> {
   const provider = getProvider(meta.provider);
 
   // Verify tmux session is alive
-  const alive = await d.tmux.hasSession(opts.name);
+  const alive = await d.tmux.hasSession(opts.name, env);
   if (!alive) {
     throw new SessionDeadError(opts.name, 'tmux session not found');
   }
@@ -53,6 +53,7 @@ export async function send(opts: SendOpts): Promise<SendResult> {
     opts.name,
     opts.prompt,
     provider.submitDelayMs !== undefined ? { submitDelayMs: provider.submitDelayMs } : undefined,
+    env,
   );
 
   return { sinceMtime };

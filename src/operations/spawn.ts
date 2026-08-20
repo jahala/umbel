@@ -33,6 +33,7 @@ export async function dismissStartupDialogs(
   name: string,
   dialogs: readonly StartupDialog[],
   readyMatch?: RegExp,
+  env: Record<string, string | undefined> = {},
 ): Promise<void> {
   // Nothing to wait for: no dialogs to dismiss AND no ready signal to poll for.
   if (dialogs.length === 0 && readyMatch === undefined) return;
@@ -42,7 +43,7 @@ export async function dismissStartupDialogs(
   while (Date.now() < deadline) {
     let pane = '';
     try {
-      pane = await d.tmux.capturePane(name, 40);
+      pane = await d.tmux.capturePane(name, 40, env);
     } catch {
       return;
     }
@@ -52,7 +53,7 @@ export async function dismissStartupDialogs(
       const dialog = dialogs[idx];
       if (dialog !== undefined) {
         try {
-          await d.tmux.sendKeys(name, dialog.keys);
+          await d.tmux.sendKeys(name, dialog.keys, env);
         } catch {
           // best-effort; ignore
         }
@@ -289,7 +290,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // the provider files written above so a failed spawn doesn't leak
   // .codex/hooks.json or .gemini/settings.json into the user's cwd, then state.
   const unwind = async (): Promise<void> => {
-    await d.tmux.killSession(name).catch(() => undefined);
+    await d.tmux.killSession(name, env).catch(() => undefined);
     for (const filePath of providerFilePaths) {
       await unlink(filePath).catch(() => undefined);
     }
@@ -297,12 +298,15 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   };
 
   try {
-    await d.tmux.newSession({
-      name,
-      cwd: opts.cwd,
-      cmd,
-      env: workerEnvFinal,
-    });
+    await d.tmux.newSession(
+      {
+        name,
+        cwd: opts.cwd,
+        cmd,
+        env: workerEnvFinal,
+      },
+      env,
+    );
   } catch (err) {
     await unwind();
     throw err;
@@ -312,7 +316,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // fixtures inject their bin via opts.claudeBin (fake-*.sh) and show no
   // dialogs — for them we just give the fixture a brief warm-up instead.
   if (opts.claudeBin === undefined && provider.startupDialogs !== undefined) {
-    await dismissStartupDialogs(d, name, provider.startupDialogs, provider.readyMatch).catch(
+    await dismissStartupDialogs(d, name, provider.startupDialogs, provider.readyMatch, env).catch(
       () => undefined,
     );
   } else {
@@ -325,7 +329,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // survive detachment leaves no session behind. The guarantee is point-in-time
   // — the session existed when spawn returned. A worker that dies later is the
   // wait layer's problem (reason: 'dead'), not something spawn can promise away.
-  if (!(await d.tmux.hasSession(name))) {
+  if (!(await d.tmux.hasSession(name, env))) {
     await unwind();
     throw new SessionNotCreatedError(name);
   }
