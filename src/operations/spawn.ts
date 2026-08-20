@@ -2,7 +2,11 @@ import { access, copyFile, mkdir, symlink, unlink, writeFile } from 'node:fs/pro
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { resolveEnvRefs } from '../core/env.ts';
-import { AllowedToolsUnsupportedError, UmbelUsageError } from '../core/errors.ts';
+import {
+  AllowedToolsUnsupportedError,
+  SessionNotCreatedError,
+  UmbelUsageError,
+} from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { ProviderLaunchSpec } from '../core/providers/types.ts';
@@ -272,6 +276,17 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // set — it would otherwise wedge the worker on the "use this key?" prompt).
   const workerEnvFinal = provider.reconcileEnv?.(tmuxEnv) ?? tmuxEnv;
 
+  // Every post-creation failure unwinds the same way: drop the session, then
+  // the provider files written above so a failed spawn doesn't leak
+  // .codex/hooks.json or .gemini/settings.json into the user's cwd, then state.
+  const unwind = async (): Promise<void> => {
+    await d.tmux.killSession(name).catch(() => undefined);
+    for (const filePath of providerFilePaths) {
+      await unlink(filePath).catch(() => undefined);
+    }
+    await d.fs.rmSession(name, env).catch(() => undefined);
+  };
+
   try {
     await d.tmux.newSession({
       name,
@@ -280,13 +295,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
       env: workerEnvFinal,
     });
   } catch (err) {
-    await d.tmux.killSession(name).catch(() => undefined);
-    // Clean up provider files written above so a failed spawn doesn't leak
-    // .codex/hooks.json or .gemini/settings.json into the user's cwd.
-    for (const filePath of providerFilePaths) {
-      await unlink(filePath).catch(() => undefined);
-    }
-    await d.fs.rmSession(name, env).catch(() => undefined);
+    await unwind();
     throw err;
   }
 
@@ -299,6 +308,17 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     );
   } else {
     await Bun.sleep(800);
+  }
+
+  // Returning success is a promise to the caller that a worker exists to talk
+  // to, and `tmux new-session -d` exiting 0 does not establish that (umbel#54):
+  // it exits 0 once the server accepts the command, so a server that fails to
+  // survive detachment leaves no session behind. The guarantee is point-in-time
+  // — the session existed when spawn returned. A worker that dies later is the
+  // wait layer's problem (reason: 'dead'), not something spawn can promise away.
+  if (!(await d.tmux.hasSession(name))) {
+    await unwind();
+    throw new SessionNotCreatedError(name);
   }
 
   // jsonlPath is unknown at spawn-time: real claude doesn't create the
@@ -319,11 +339,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   try {
     await d.fs.writeMeta(name, session, env);
   } catch (err) {
-    await d.tmux.killSession(name).catch(() => undefined);
-    for (const filePath of providerFilePaths) {
-      await unlink(filePath).catch(() => undefined);
-    }
-    await d.fs.rmSession(name, env).catch(() => undefined);
+    await unwind();
     throw err;
   }
 

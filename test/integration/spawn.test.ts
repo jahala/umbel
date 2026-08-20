@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
 import { killSession, listSessions } from '../../src/adapters/tmux.ts';
-import { UmbelUsageError } from '../../src/core/errors.ts';
+import { SessionNotCreatedError, UmbelUsageError } from '../../src/core/errors.ts';
 import { spawn } from '../../src/operations/spawn.ts';
 
 // ---------------------------------------------------------------------------
@@ -306,5 +306,72 @@ describe('spawn — cleanup on writeMeta failure', () => {
     expect((caughtErr as Error).message).toBe('disk full');
     expect(killCalled).toBe(true);
     expect(rmCalled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// umbel#54: exit 0 must mean a session exists
+// ---------------------------------------------------------------------------
+
+describe('spawn — session verification', () => {
+  test('throws SessionNotCreatedError when newSession succeeds but no session exists', async () => {
+    const env = await setup();
+    const name = sessionName('void');
+
+    let killCalled = false;
+    let rmCalled = false;
+
+    const tmuxAdapter = await import('../../src/adapters/tmux.ts');
+    const fsState = await import('../../src/adapters/fs-state.ts');
+
+    // Reproduces the nohup/no-server case: `tmux new-session -d` exits 0 the
+    // moment the server accepts the command, then nothing is there afterwards.
+    const voidTmux = {
+      ...tmuxAdapter,
+      newSession: async () => undefined,
+      hasSession: async () => false,
+      killSession: async (_n: string) => {
+        killCalled = true;
+      },
+    };
+    const spyFs = {
+      ...fsState,
+      rmSession: async (_n: string, _e: Record<string, string | undefined>) => {
+        rmCalled = true;
+        await fsState.rmSession(_n, _e).catch(() => undefined);
+      },
+    };
+
+    const baseOpts = makeOpts(env, '/tmp', { name });
+    let caughtErr: unknown;
+    try {
+      await spawn({
+        ...baseOpts,
+        deps: { ...baseOpts.deps, tmux: voidTmux as never, fs: spyFs as never },
+      });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr).toBeInstanceOf(SessionNotCreatedError);
+    expect(killCalled).toBe(true);
+    expect(rmCalled).toBe(true);
+
+    // No phantom worker left on disk for a session that never existed — this
+    // also pins the check ahead of writeMeta.
+    await expect(stat(join(tmpDir, 'sessions', name, 'meta.json'))).rejects.toThrow();
+  });
+
+  // The guarantee is point-in-time, so a worker that dies *during* the startup
+  // window is deliberately not asserted here: whether tmux has reaped the pane
+  // by the time spawn checks depends on server load, and a test that races the
+  // reaper reports load, not correctness. Death after spawn returns belongs to
+  // the wait layer (reason: 'dead'), which covers it in wait.test.ts.
+  test('a live session passes verification and still returns success', async () => {
+    const env = await setup();
+    const name = sessionName('alive');
+    const { session } = await spawn(makeOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+    expect(await listSessions()).toContain(session.name);
   });
 });

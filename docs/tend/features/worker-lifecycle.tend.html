@@ -2620,16 +2620,25 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "unit",
       "verification_recipe": "Unit tests in test/unit/id.test.ts: assert format regex, length, base36 chars, validity checks.",
       "validates_job": "supervisor-dev:1"
+    },
+    {
+      "id": "c007",
+      "description": "spawn returning success implies the tmux session existed at return time: it verifies with hasSession before writing meta, and throws SessionNotCreatedError (unwinding session, provider files, and state) when the session never appeared. The guarantee is point-in-time; a worker that dies later is the wait layer's reason='dead'.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Inject a tmux dep whose newSession resolves but hasSession returns false; assert spawn rejects with SessionNotCreatedError, that the unwind ran (killSession + rmSession), and that no meta.json is left behind. Against real tmux, assert a live session still passes verification and returns success.",
+      "validates_job": "supervisor-dev:0"
     }
   ],
   "smoke": {
     "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts",
-    "verify": "85 pass",
-    "last_run": "2026-06-21T15:14:51Z",
+    "verify": "87 pass",
+    "last_run": "2026-08-20T06:38:00Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-06-21T15:14:51Z",
+    "ran_at": "2026-08-20T06:38:00Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2667,6 +2676,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/unit/id.test.ts:5-8 (default format anon-XXXXXX); test/unit/id.test.ts:32-37 (suffix 6 base36 chars); test/unit/id.test.ts:50-88 (isValidSessionName rejects bad patterns); src/core/id.ts",
         "evidence_sha": "bbd755a2f7f3a9183073115f231d1a68c92350c2"
+      },
+      {
+        "check_id": "c007",
+        "verdict": "pass",
+        "evidence_path": "test/integration/spawn.test.ts:317-363 (injected: newSession resolves, hasSession false → SessionNotCreatedError, unwind ran, no meta.json — confirmed RED with the check disabled); test/integration/spawn.test.ts:370-376 (real tmux: a live session passes verification); src/operations/spawn.ts:313-322 (the check); src/core/errors.ts:118-128 (SessionNotCreatedError); src/faces/cli.ts:234 (exit code 1); docs/cli-reference.md spawn section (documented contract).",
+        "evidence_sha": "f435ae79ff87476490e5cba799b3950427aea31e"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

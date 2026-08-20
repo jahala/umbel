@@ -80,6 +80,10 @@ async function captureWorkerEnv(
     newSession: async (o: { env: Record<string, string> }) => {
       captured = o.env;
     },
+    // No real session is created here, so hasSession must stand in for one:
+    // spawn verifies existence before returning (umbel#54), and in this fake's
+    // world the newSession above succeeded.
+    hasSession: async () => true,
   };
   await spawn({ ...opts, deps: { ...opts.deps, tmux: fakeTmux as never } });
   return captured;
