@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   capturePane,
   hasSession,
@@ -141,38 +144,42 @@ describe('TmuxError on invalid operations', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Line 93: listSessions catch path — no server running
-// This test runs last; it kills the server and tests that listSessions returns [].
-// It then starts a new server so subsequent tests in other files are not affected.
+// listSessions catch path — no server running
+//
+// This used to run `tmux kill-server`, which is not scoped to anything: it
+// destroys every session on the default socket, so a test run would reap live
+// workers belonging to other agents (and anyone else's tmux) on the same
+// machine. It did exactly that, repeatedly, and cost three agents four runs to
+// find. There is no safe way to kill a shared server, so this no longer kills
+// anything: TMUX_TMPDIR points tmux at an empty socket dir where no server has
+// ever run, which reaches the identical catch path with no blast radius.
 // ---------------------------------------------------------------------------
 
-describe('listSessions — no server (line 93 catch path)', () => {
+describe('listSessions — no server (catch path)', () => {
   test('returns [] when tmux server is not running', async () => {
-    // Clean up all test sessions first
     await Promise.all(CREATED.splice(0).map(safeKill));
 
-    // Kill the tmux server
-    const killProc = Bun.spawn(['tmux', 'kill-server'], { stdout: 'pipe', stderr: 'pipe' });
-    await killProc.exited;
-    // Brief pause so the server fully stops
-    await Bun.sleep(200);
+    // Run the real adapter in a child, because Bun.spawn snapshots the
+    // environment at startup: mutating process.env.TMUX_TMPDIR here would not
+    // reach the tmux it shells out to, and the assertion would silently read
+    // the machine's actual sessions instead of an empty socket.
+    const isolated = await mkdtemp(join(tmpdir(), 'umbel-tmux-empty-'));
+    const adapter = join(import.meta.dir, '../../src/adapters/tmux.ts');
+    const proc = Bun.spawn(
+      [
+        'bun',
+        '-e',
+        `console.log(JSON.stringify(await (await import(${JSON.stringify(adapter)})).listSessions()))`,
+      ],
+      {
+        env: { ...process.env, TMUX_TMPDIR: isolated },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
 
-    // listSessions must catch the TmuxError and return empty array
-    const sessions = await listSessions();
-    expect(Array.isArray(sessions)).toBe(true);
-    expect(sessions).toEqual([]);
-
-    // Restart the server with a dummy session so other tests still work
-    const startProc = Bun.spawn(['tmux', 'new-session', '-d', '-s', `umbel-boot-${RUN_ID}`], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    await startProc.exited;
-    // Clean it up immediately
-    const cleanProc = Bun.spawn(['tmux', 'kill-session', '-t', `umbel-boot-${RUN_ID}`], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    await cleanProc.exited;
+    expect(JSON.parse(out.trim())).toEqual([]);
   });
 });
