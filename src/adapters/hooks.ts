@@ -56,6 +56,7 @@ export function buildSettingsJson(opts: {
   notifyScriptPath?: string;
   allowedTools?: string;
   permissionMode?: string;
+  unattended?: boolean;
 }): string {
   const hooksBlock: Record<string, unknown> = {
     Stop: [
@@ -91,7 +92,14 @@ export function buildSettingsJson(opts: {
     hooks: hooksBlock,
   };
 
-  if (opts.allowedTools !== undefined || opts.permissionMode !== undefined) {
+  // Delivered through --settings rather than --dangerously-skip-permissions:
+  // same effect, but it reuses the config channel umbel already owns and skips
+  // that flag's separate --allow-dangerously-skip-permissions gate. An explicit
+  // permissionMode still wins — the caller asked for a specific posture.
+  const defaultMode =
+    opts.permissionMode ?? (opts.unattended === true ? 'bypassPermissions' : undefined);
+
+  if (opts.allowedTools !== undefined || defaultMode !== undefined) {
     const permissions: Record<string, unknown> = {};
     if (opts.allowedTools !== undefined) {
       permissions.allow = opts.allowedTools
@@ -99,8 +107,8 @@ export function buildSettingsJson(opts: {
         .map((t) => t.trim())
         .filter(Boolean);
     }
-    if (opts.permissionMode !== undefined) {
-      permissions.defaultMode = opts.permissionMode;
+    if (defaultMode !== undefined) {
+      permissions.defaultMode = defaultMode;
     }
     settings.permissions = permissions;
   }

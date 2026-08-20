@@ -92,6 +92,11 @@ export interface Turn {
 export interface AgentProvider {
   readonly name: string;
 
+  // Can this provider run with no human present? Declared, not inferred, so
+  // spawn can refuse at dispatch rather than accept a worker that will wedge on
+  // a prompt hours later. Required: a new provider must answer it deliberately.
+  readonly supportsUnattended: boolean;
+
   buildLaunch(opts: {
     sessionId: string; // umbel session name (= tmux session suffix)
     cwd: string;
@@ -100,6 +105,10 @@ export interface AgentProvider {
     model?: string;
     allowedTools?: string;
     permissionMode?: string;
+    // No human is present: suppress every prompt this provider would raise.
+    // Each adapter maps it to its own escape; safety is external (disposable
+    // worktree, publish through a gate), never the prompt.
+    unattended?: boolean;
     // umbel state root ($UMBEL_STATE). Providers needing an isolated config home
     // derive it from here (codex: <stateDir>/codex-home). Injected by spawn.
     stateDir?: string;

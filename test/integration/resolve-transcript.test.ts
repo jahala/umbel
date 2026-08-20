@@ -46,6 +46,7 @@ async function makeSession(
 // Fake provider with exportTranscript — simulates the future OpenCode pattern.
 const fakeExportProvider: AgentProvider = {
   name: 'x',
+  supportsUnattended: true,
   stopEventName: '',
   parseTranscript: (c) => c,
   buildLaunch: () => ({ bin: 'x', args: [], env: {}, files: [] }),
@@ -55,6 +56,7 @@ const fakeExportProvider: AgentProvider = {
 // Fake provider without exportTranscript — simulates claude/codex/gemini.
 const fakeFileProvider: AgentProvider = {
   name: 'y',
+  supportsUnattended: true,
   stopEventName: '',
   parseTranscript: (c) => c,
   buildLaunch: () => ({ bin: 'y', args: [], env: {}, files: [] }),

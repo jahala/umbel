@@ -6,6 +6,7 @@ import {
   AllowedToolsUnsupportedError,
   SessionNotCreatedError,
   UmbelUsageError,
+  UnattendedUnsupportedError,
 } from '../core/errors.ts';
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
@@ -117,6 +118,7 @@ export interface SpawnOpts {
   provider?: string;
   allowedTools?: string;
   permissionMode?: string;
+  unattended?: boolean;
   anonymous?: boolean;
   claudeBin?: string;
   env?: Record<string, string | undefined>;
@@ -177,6 +179,12 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
       throw new AllowedToolsUnsupportedError(providerName);
     }
   }
+  // An unattended worker has nobody to answer a prompt. If the provider can't
+  // suppress them, refuse here rather than accept the spawn and let it wedge on
+  // a prompt hours later — the same doctrine as verifying the session exists.
+  if (opts.unattended === true && !provider.supportsUnattended) {
+    throw new UnattendedUnsupportedError(providerName);
+  }
 
   // Install global stop hook
   const { stopScriptPath, notifyScriptPath } = await d.hooks.ensureGlobalHooks(env);
@@ -209,6 +217,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     ...(opts.model !== undefined ? { model: opts.model } : {}),
     ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
     ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
+    ...(opts.unattended !== undefined ? { unattended: opts.unattended } : {}),
   });
 
   // Write any provider-required files before tmux launch. If a later write

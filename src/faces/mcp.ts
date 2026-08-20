@@ -93,6 +93,7 @@ export interface McpToolHandlers {
     model?: string | undefined;
     allowedTools?: string | undefined;
     permissionMode?: string | undefined;
+    unattended?: boolean | undefined;
     env?: Record<string, string | { fromEnv: string }> | undefined;
   }) => Promise<ToolResult>;
   umbel_send: (args: { name: string; prompt: string }) => Promise<ToolResult>;
@@ -141,6 +142,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         ...(args.model !== undefined ? { model: args.model } : {}),
         ...(args.allowedTools !== undefined ? { allowedTools: args.allowedTools } : {}),
         ...(args.permissionMode !== undefined ? { permissionMode: args.permissionMode } : {}),
+        ...(args.unattended !== undefined ? { unattended: args.unattended } : {}),
         ...(args.env !== undefined ? { workerEnv: args.env } : {}),
         ...(deps !== undefined ? { deps } : {}),
       };

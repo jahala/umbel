@@ -2611,14 +2611,23 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "spawn with provider='codex' via fake-codex.sh; assert session.provider === 'codex'; spawn with provider='opencode' via fake-opencode.sh; assert session.provider === 'opencode'",
       "validates_job": "host-agent:0"
+    },
+    {
+      "id": "c007",
+      "description": "Every provider declares supportsUnattended, and `unattended: true` maps to that provider's own no-prompt escape: claude permissions.defaultMode=bypassPermissions, codex --dangerously-bypass-approvals-and-sandbox, gemini --approval-mode yolo --skip-trust, opencode --auto. An explicit permissionMode wins over unattended.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "For each provider assert supportsUnattended === true. Call buildLaunch({unattended:true}) and assert the provider's documented flag is present; call it without unattended and assert the flag is absent. For claude, parse the --settings JSON and assert permissions.defaultMode.",
+      "validates_job": "host-agent:0"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/unit/providers test/integration/codex-provider.test.ts test/integration/opencode-provider.test.ts",
-    "verify": "218 pass, 0 fail across 11 files"
+    "cmd": "bun test test/unit/providers test/integration/codex-provider.test.ts test/integration/opencode-provider.test.ts test/unit/unattended.test.ts",
+    "verify": "227 pass, 0 fail across 12 files"
   },
   "audit": {
-    "ran_at": "2026-06-21T00:00:00Z",
+    "ran_at": "2026-08-20T09:22:19Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2656,6 +2665,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/integration/codex-provider.test.ts:247-257; test/integration/opencode-provider.test.ts:172-180; src/core/providers/registry.ts:12-17",
         "evidence_sha": "92fedb28d552ef084c1f9c92d66a9803647c41ff"
+      },
+      {
+        "check_id": "c007",
+        "verdict": "pass",
+        "evidence_path": "test/unit/unattended.test.ts (9 tests, all four providers); src/core/providers/types.ts:98 (required supportsUnattended) + :105-108 (unattended launch opt); src/adapters/hooks.ts:94-99 (claude defaultMode, explicit permissionMode wins); src/core/providers/codex.ts:269; src/core/providers/gemini.ts:291-296; src/core/providers/opencode.ts:387-389; src/operations/spawn.ts:182-187 (fail-fast at dispatch). Flags verified against installed binaries' --help, and buildLaunch was executed directly to confirm the emitted argv.",
+        "evidence_sha": "f34f38c751b9157a13a13b7845fe4d09a5f7ff74"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
