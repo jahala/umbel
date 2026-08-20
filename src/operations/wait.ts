@@ -136,7 +136,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
 
     async function paneText(session: string): Promise<string> {
       try {
-        return await d.tmux.capturePane(session, 200);
+        return await d.tmux.capturePane(session, 200, env);
       } catch {
         return '';
       }
@@ -278,7 +278,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           if (cls.reason !== null) {
             let paneSnapshot: string | undefined;
             try {
-              paneSnapshot = await d.tmux.capturePane(name, 30);
+              paneSnapshot = await d.tmux.capturePane(name, 30, env);
             } catch {
               // pane capture failed — settle without it.
             }
@@ -304,7 +304,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         // before exiting); only then give up with 'dead'.
         let alive = true;
         try {
-          alive = await d.tmux.hasSession(name);
+          alive = await d.tmux.hasSession(name, env);
         } catch {
           // Liveness probe itself failed — assume alive; never report false-dead.
         }
@@ -324,7 +324,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         // Best-effort pane snapshot for diagnostics before giving up.
         let paneSnapshot: string | undefined;
         try {
-          paneSnapshot = await d.tmux.capturePane(name, 30);
+          paneSnapshot = await d.tmux.capturePane(name, 30, env);
         } catch {
           // capture failed (session gone, tmux error) — settle without it.
         }
@@ -401,7 +401,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           if (settled) return;
           let pane: string;
           try {
-            pane = await d.tmux.capturePane(name, 50);
+            pane = await d.tmux.capturePane(name, 50, env);
           } catch {
             return;
           }

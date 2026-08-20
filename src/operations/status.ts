@@ -49,7 +49,7 @@ async function enrich(
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
   const [alive, logMtime, notifMtime, stopMtime] = await Promise.all([
-    d.tmux.hasSession(session.name),
+    d.tmux.hasSession(session.name, env),
     fileMtime(join(eventsDir, 'log')),
     fileMtime(join(eventsDir, 'notification')),
     fileMtime(join(eventsDir, 'stop')),

@@ -278,7 +278,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     },
 
     umbel_capture: async (args) => {
-      const text = await d.tmux.capturePane(args.name, args.lines);
+      const text = await d.tmux.capturePane(args.name, args.lines, env);
       return { content: [{ type: 'text' as const, text }] };
     },
 

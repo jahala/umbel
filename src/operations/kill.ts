@@ -22,7 +22,7 @@ export async function kill(opts: KillOpts): Promise<void> {
   const env = opts.env ?? {};
   const removeState = opts.removeState !== false;
 
-  await d.tmux.killSession(opts.name);
+  await d.tmux.killSession(opts.name, env);
 
   if (removeState) {
     // Clean up provider-written files before removing the state dir. These

@@ -583,7 +583,8 @@ umbel spawn --provider claude --name ds --cwd ./work \
 
 | Variable | Description |
 |----------|-------------|
-| `UMBEL_STATE` | Override the default state directory (`~/.umbel/`). All session metadata, hook event files, and workflow run state are stored here. Useful in CI or for isolated test environments. |
+| `UMBEL_STATE` | Override the default state directory (`~/.umbel/`). All session metadata, hook event files, and workflow run state are stored here. Useful in CI or for isolated test environments. Also determines the tmux socket, so two state roots get two independent sets of workers. |
+| `UMBEL_TMUX_SOCKET` | Override the tmux socket name, which is otherwise derived from the state root. Set it to the same value in two places to deliberately share one set of workers between them. |
 | `UMBEL_CLAUDE_BIN` | Override the `claude` binary path. Used by the test suite to inject `test/fixtures/fake-claude.sh`. Not intended for production use. |
 | `UMBEL_CODEX_BIN` | Override the `codex` binary path. Same contract as `UMBEL_CLAUDE_BIN` — inject `test/fixtures/fake-codex.sh` in tests, or point at a non-PATH install. |
 | `UMBEL_GEMINI_BIN` | Override the `gemini` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
