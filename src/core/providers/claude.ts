@@ -276,6 +276,7 @@ export function extractTurnsFromContent(content: string): Turn[] {
 
 const claudeProvider: AgentProvider = {
   name: 'claude',
+  supportsUnattended: true,
 
   stopEventName: 'Stop',
 
@@ -290,6 +291,7 @@ const claudeProvider: AgentProvider = {
       ...(opts.notifyScriptPath !== undefined ? { notifyScriptPath: opts.notifyScriptPath } : {}),
       ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
       ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
+      ...(opts.unattended !== undefined ? { unattended: opts.unattended } : {}),
     });
 
     const args: string[] = ['--settings', settingsJson];

@@ -116,6 +116,9 @@ export const WorkerSpecSchema = z.object({
   provider: ProviderNameSchema.optional(),
   allowedTools: z.string().optional(),
   permissionMode: z.string().optional(),
+  // No human present: each provider suppresses its own prompts. Safety is the
+  // surrounding architecture (disposable worktree, gated publish), not the prompt.
+  unattended: z.boolean().optional(),
   // Per-worker environment overrides, merged over the inherited environment.
   // Values may be literals or {fromEnv} references (resolved at spawn time).
   env: z.record(z.string(), EnvValueSchema).optional(),

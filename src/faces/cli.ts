@@ -11,6 +11,7 @@ import {
   SessionNotFoundError,
   TmuxError,
   UmbelUsageError,
+  UnattendedUnsupportedError,
   WaitTimeoutError,
   WorkerBlockedError,
 } from '../core/errors.ts';
@@ -60,7 +61,8 @@ Verbs:
 
 Exit codes:
   0    Success
-  1    Generic error (session dead, tmux failure, JSONL malformed, hook timeout)
+  1    Generic error (session dead, tmux failure, JSONL malformed, hook timeout,
+       session not created, provider has no unattended mode)
   2    Usage error (bad flags, missing required argument, unknown verb, unsupported option)
   123  wait idle — no pane activity for --idle-timeout
   124  wait timeout — hard deadline hit
@@ -89,6 +91,7 @@ const BOOLEAN_FLAGS = new Set([
   'follow',
   'keep-state',
   'keepState',
+  'unattended',
 ]);
 
 function parseArgv(argv: readonly string[]): ParsedArgs {
@@ -231,7 +234,8 @@ function errorExitCode(err: unknown): number {
     err instanceof HookTimeoutError ||
     err instanceof JsonlMalformedError ||
     err instanceof SessionNotFoundError ||
-    err instanceof SessionNotCreatedError
+    err instanceof SessionNotCreatedError ||
+    err instanceof UnattendedUnsupportedError
   ) {
     return 1;
   }
@@ -408,6 +412,7 @@ async function verbSpawn(
   const model = flagStr(flags, 'model');
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
+  const unattended = flagBool(flags, 'unattended');
   // UMBEL_CLAUDE_BIN allows tests to inject a fake claude binary
   const claudeBin = process.env.UMBEL_CLAUDE_BIN;
   const envEntries = repeated.get('env') ?? [];
@@ -421,6 +426,7 @@ async function verbSpawn(
     ...(model !== undefined ? { model } : {}),
     ...(allowedTools !== undefined ? { allowedTools } : {}),
     ...(permissionMode !== undefined ? { permissionMode } : {}),
+    ...(unattended ? { unattended } : {}),
     ...(workerEnv !== undefined ? { workerEnv } : {}),
     ...(claudeBin !== undefined ? { claudeBin } : {}),
   };

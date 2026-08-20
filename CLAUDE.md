@@ -84,7 +84,9 @@ Needs-input detection (the inverse keystone): a worker blocked on a prompt (a pe
 
 ## Provider-specific surfaces
 
-Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLaunch`, a `stopEventName`, and a `parseTranscript`. Per-vendor specifics:
+Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLaunch`, a `stopEventName`, a `parseTranscript`, and a `supportsUnattended` declaration. Per-vendor specifics:
+
+**Unattended** (`--unattended`, `unattended: true`) is the neutral contract term for "no human will be prompted"; each adapter maps it to its own escape (claude `permissions.defaultMode=bypassPermissions` via `--settings`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini `--approval-mode yolo --skip-trust`, opencode `--auto`). `supportsUnattended` is **required** on the provider contract so a new provider must answer deliberately; `spawn` refuses at dispatch when it is false, rather than accepting a worker that would wedge on a prompt later. An explicit `permissionMode` wins over `unattended`. Note claude's workspace-trust dialog is *not* covered by any permission flag — it is only skipped in non-interactive mode, and umbel drives a TTY — so the best-effort `startupDialogs` pane dismissal remains the only defence there.
 
 **Claude** (`claude`)
 - `--settings '<inline-json>'` carries the hook config (no `settings.local.json` collision).

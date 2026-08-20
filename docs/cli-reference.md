@@ -16,7 +16,7 @@ umbel --version                  Show version (0.0.1)
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout, session not created) |
+| 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout, session not created, provider has no unattended mode) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
 | 123 | `wait` idle — no pane activity for `--idle-timeout` |
 | 124 | `wait` timeout — hard deadline hit |
@@ -47,7 +47,8 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. |
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
-| `--permission-mode MODE` | unset | Claude permission mode (`default`/`acceptEdits`/`bypassPermissions`/`plan`). **Claude only** (usage error otherwise). `bypassPermissions` lets an autonomous worker run unattended — appropriate when work is sandboxed and externally verified (e.g. under the pleach conductor); a curated `--allowed-tools` list cannot cover MCP tools, so unattended workers need this. |
+| `--permission-mode MODE` | unset | Claude permission mode (`default`/`acceptEdits`/`bypassPermissions`/`plan`). **Claude only** (usage error otherwise), except `bypassPermissions` which codex also accepts. For the plain "nobody is watching" case prefer `--unattended`, which is provider-neutral; use this flag when you need a *specific* claude posture such as `acceptEdits` or `plan`. An explicit mode wins over `--unattended`. |
+| `--unattended` | off | No human is present: suppress every prompt the provider would raise. Maps per-provider — claude `permissions.defaultMode=bypassPermissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini `--approval-mode yolo --skip-trust`, opencode `--auto`. A provider with no unattended mode is **refused at spawn** (exit 1) rather than accepted and left to wedge on a prompt later. Safety for unattended work is the surrounding architecture — disposable worktree, publish through a gate, quarantine — never the prompt. |
 | `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. Use for per-worker proxies, API keys, or custom config dirs. Not persisted to `meta.json`. |
 
 **Output:** `spawned: <name>` on stdout.

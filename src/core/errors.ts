@@ -111,6 +111,17 @@ export class AllowedToolsUnsupportedError extends Error {
   }
 }
 
+export class UnattendedUnsupportedError extends Error {
+  override name = 'UnattendedUnsupportedError';
+
+  constructor(public providerName: string) {
+    super(
+      `Provider '${providerName}' has no unattended mode: it would prompt a human who isn't there. ` +
+        'Refused at spawn rather than wedging on the prompt later.',
+    );
+  }
+}
+
 // `tmux new-session -d` exits 0 once the server accepts the command, which is
 // not the same as the session existing afterwards: with no server already
 // running (under nohup, systemd, a detached CI step) the server can fail to

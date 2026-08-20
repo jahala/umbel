@@ -373,6 +373,7 @@ export function mergeOpencodePluginConfig(existing: string | null, pluginAbsPath
 
 const opencodeProvider: AgentProvider = {
   name: 'opencode',
+  supportsUnattended: true,
 
   stopEventName: 'session.status',
 
@@ -383,6 +384,9 @@ const opencodeProvider: AgentProvider = {
 
   buildLaunch(opts): ProviderLaunchSpec {
     const args: string[] = [];
+    if (opts.unattended === true) {
+      args.push('--auto');
+    }
     if (opts.model !== undefined) {
       args.push('-m', opts.model);
     }

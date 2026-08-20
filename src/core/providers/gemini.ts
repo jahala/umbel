@@ -224,6 +224,7 @@ export function extractGeminiTurnsFromContent(content: string): Turn[] {
 // codebases.
 const geminiProvider: AgentProvider = {
   name: 'gemini',
+  supportsUnattended: true,
 
   stopEventName: 'AfterAgent',
 
@@ -288,6 +289,12 @@ const geminiProvider: AgentProvider = {
     const settingsJson = JSON.stringify({ hooks });
 
     const args: string[] = [];
+    if (opts.unattended === true) {
+      // gemini is the only provider with a separate escape for the workspace
+      // trust prompt, and it needs it: every fleet worktree is a brand-new
+      // directory, so trust would be asked on the first launch of every worker.
+      args.push('--approval-mode', 'yolo', '--skip-trust');
+    }
     if (opts.model !== undefined) {
       args.push('--model', opts.model);
     }
