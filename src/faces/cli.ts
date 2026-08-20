@@ -7,6 +7,7 @@ import {
   JsonlMalformedError,
   ProviderUnknownError,
   SessionDeadError,
+  SessionNotCreatedError,
   SessionNotFoundError,
   TmuxError,
   UmbelUsageError,
@@ -229,7 +230,8 @@ function errorExitCode(err: unknown): number {
     err instanceof TmuxError ||
     err instanceof HookTimeoutError ||
     err instanceof JsonlMalformedError ||
-    err instanceof SessionNotFoundError
+    err instanceof SessionNotFoundError ||
+    err instanceof SessionNotCreatedError
   ) {
     return 1;
   }

@@ -110,3 +110,19 @@ export class AllowedToolsUnsupportedError extends Error {
     );
   }
 }
+
+// `tmux new-session -d` exits 0 once the server accepts the command, which is
+// not the same as the session existing afterwards: with no server already
+// running (under nohup, systemd, a detached CI step) the server can fail to
+// survive detachment and take the session with it. Reported as umbel#54.
+export class SessionNotCreatedError extends Error {
+  override name = 'SessionNotCreatedError';
+
+  constructor(public sessionName: string) {
+    super(
+      `Session ${sessionName} was not created: tmux reported success but no session exists. ` +
+        'Most likely no tmux server could be started in this environment — check that the ' +
+        'socket directory is writable (TMUX_TMPDIR) when running detached (nohup/systemd).',
+    );
+  }
+}

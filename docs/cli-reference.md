@@ -16,7 +16,7 @@ umbel --version                  Show version (0.0.1)
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout) |
+| 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout, session not created) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
 | 123 | `wait` idle — no pane activity for `--idle-timeout` |
 | 124 | `wait` timeout — hard deadline hit |
@@ -51,6 +51,8 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. Use for per-worker proxies, API keys, or custom config dirs. Not persisted to `meta.json`. |
 
 **Output:** `spawned: <name>` on stdout.
+
+Exit 0 means the tmux session exists — `spawn` verifies it before returning, so a worker that never started (no tmux server bootable, e.g. detached under `nohup` with an unwritable socket dir) or that died during startup fails immediately with exit 1 rather than succeeding into the void and surfacing later as a `wait` timeout. Session, provider files, and state are cleaned up on that path.
 
 `--provider` is only valid on `spawn` and `-p`. For `send`, `wait`, `read`, `kill`, `status`, `ls`, `attach`, `capture`, and `logs`, the provider is looked up automatically from `meta.json` — no `--provider` flag is accepted.
 
