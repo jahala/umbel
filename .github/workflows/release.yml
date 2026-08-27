@@ -45,7 +45,7 @@ jobs:
       - name: Build all targets
         run: bun run scripts/build.ts --all
 
-      - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # ratchet:softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # ratchet:softprops/action-gh-release@v3
         with:
           files: dist/umbel-*
           generate_release_notes: true
