@@ -27,7 +27,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "chokidar": "^5.0.0",
     "yaml": "^2.6.0",
-    "zod": "^3.23.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
