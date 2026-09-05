@@ -35,7 +35,8 @@ import { runWorkflow } from './workflow.ts';
 
 const VERSION = '0.0.1';
 
-const HELP = `umbel — remote-control interactive Claude Code over tmux
+const HELP = `umbel — remote-control an interactive agent CLI over tmux
+           (claude, codex, gemini, opencode)
 
 Usage:
   umbel <verb> [flags...]    Supervisor verbs

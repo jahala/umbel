@@ -79,6 +79,11 @@ function inspectReason(condition: WaitCondition, ctx: WaitContext): WaitResult['
 // waitFor
 // ---------------------------------------------------------------------------
 
+// How often a wait re-captures the pane while the worker is alive. Only the
+// most recent view is kept, and only a death ever reads it, so this trades a
+// couple of seconds of staleness against spawning a tmux process every poll.
+const ALIVE_PANE_CAPTURE_MS = 2000;
+
 export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
   const d = { ...defaultDeps, ...opts.deps };
   const env = opts.env ?? {};
@@ -217,6 +222,22 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
   return new Promise<WaitResult>((resolve) => {
     let settled = false;
 
+    // A worker that dies takes its pane with it: by the time the liveness probe
+    // notices, there is nothing left to capture, which is why 'dead' carried no
+    // diagnostics at all. Keep the last view from while it was alive. Throttled
+    // so a long wait does not spawn a tmux process on every poll.
+    let lastAlivePane: string | undefined;
+    let lastAlivePaneAt = 0;
+    async function refreshAlivePane(): Promise<void> {
+      if (Date.now() - lastAlivePaneAt < ALIVE_PANE_CAPTURE_MS) return;
+      lastAlivePaneAt = Date.now();
+      try {
+        lastAlivePane = await d.tmux.capturePane(name, 30, env);
+      } catch {
+        // Capture failed — keep whatever earlier view we already hold.
+      }
+    }
+
     function settle(result: WaitResult): void {
       if (settled) return;
       settled = true;
@@ -309,11 +330,20 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           // Liveness probe itself failed — assume alive; never report false-dead.
         }
         if (settled) return;
-        if (alive) return;
+        if (alive) {
+          await refreshAlivePane();
+          return;
+        }
         ctx = await buildCtx();
         if (settled) return;
         if (!syncEvaluate(ctx)) {
-          settle({ stopped: false, reason: 'dead' });
+          settle({
+            stopped: false,
+            reason: 'dead',
+            ...(lastAlivePane !== undefined && lastAlivePane !== ''
+              ? { paneSnapshot: lastAlivePane }
+              : {}),
+          });
           return;
         }
         // Condition was satisfied in the race window — fall through to settle.

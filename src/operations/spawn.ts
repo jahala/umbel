@@ -199,7 +199,8 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   }
 
   // Install global stop hook
-  const { stopScriptPath, notifyScriptPath } = await d.hooks.ensureGlobalHooks(env);
+  const { stopScriptPath, notifyScriptPath, statusLineScriptPath } =
+    await d.hooks.ensureGlobalHooks(env);
 
   // Install provider-specific global plugin (e.g. opencode-stop.ts), if declared.
   if (provider.globalPlugin !== undefined) {
@@ -224,6 +225,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     cwd: opts.cwd,
     hookScriptPath: stopScriptPath,
     notifyScriptPath,
+    statusLineScriptPath,
     stateDir: stateRoot,
     userCodexHome,
     ...(opts.model !== undefined ? { model: opts.model } : {}),

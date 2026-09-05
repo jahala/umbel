@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ensureGlobalHooks } from '../../src/adapters/hooks.ts';
 import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
 import { killSession } from '../../src/adapters/tmux.ts';
 import { SessionNotFoundError } from '../../src/core/errors.ts';
@@ -331,5 +332,47 @@ describe('status — needsInput', () => {
 
     const entries = await status({ name, env });
     expect(entries[0]?.needsInput).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quota — the statusLine payload becomes state a caller can branch on
+// ---------------------------------------------------------------------------
+
+describe('status — subscription quota', () => {
+  test('the installed statusline script turns a payload into a quota field', async () => {
+    const env = await setup();
+    const name = sessionName('quota');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    // Drive the real installed script the way claude does: payload on stdin,
+    // session identified by env. Nothing here is a stand-in for umbel's code.
+    const { statusLineScriptPath } = await ensureGlobalHooks(env);
+    const proc = Bun.spawn([statusLineScriptPath], {
+      stdin: new TextEncoder().encode(
+        JSON.stringify({
+          model: { display_name: 'Opus' },
+          rate_limits: { five_hour: { used_percentage: 94, resets_at: '2026-09-05T21:20:00Z' } },
+        }),
+      ),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: session.name },
+    });
+    expect(await proc.exited).toBe(0);
+
+    const [entry] = await status({ name: session.name, env });
+    expect(entry?.quota).toEqual({ fiveHourPct: 94, resetsAt: '2026-09-05T21:20:00Z' });
+  });
+
+  test('a worker with no reported limits carries no quota field', async () => {
+    const env = await setup();
+    const name = sessionName('noquota');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    const [entry] = await status({ name: session.name, env });
+    expect(entry?.quota).toBeUndefined();
   });
 });

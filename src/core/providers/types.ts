@@ -102,6 +102,9 @@ export interface AgentProvider {
     cwd: string;
     hookScriptPath: string; // absolute path to our stop.sh
     notifyScriptPath?: string; // absolute path to our notify.sh (needs-input hook)
+    // absolute path to our statusline.sh — captures the provider's status
+    // payload (subscription rate limits) as state instead of pane text.
+    statusLineScriptPath?: string;
     model?: string;
     allowedTools?: string;
     permissionMode?: string;

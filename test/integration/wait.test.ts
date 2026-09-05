@@ -434,6 +434,34 @@ describe('waitFor — dead session', () => {
     expect(elapsed).toBeLessThan(1_500);
   });
 
+  test('hands over the last pane from while the worker was alive', async () => {
+    const env = await setup();
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp'));
+
+    // Kill it mid-wait. The pane is gone the instant the session is, so the
+    // only way 'dead' can carry diagnostics is a view captured while it lived —
+    // without which a crashed worker leaves nothing at all to read.
+    const killAt = setTimeout(() => {
+      void killSession(session.name).catch(() => undefined);
+    }, 1_200);
+
+    try {
+      const result = await waitFor({
+        name: session.name,
+        sinceMtime: Date.now(),
+        env,
+        defaultTimeoutMs: 15_000,
+      });
+
+      expect(result.reason).toBe('dead');
+      expect(result.paneSnapshot).toBeDefined();
+      expect(result.paneSnapshot).not.toBe('');
+    } finally {
+      clearTimeout(killAt);
+      await killSession(session.name).catch(() => undefined);
+    }
+  }, 30_000);
+
   test('a satisfied stop wins over a dead session (real condition checked before liveness)', async () => {
     const env = await setup();
     const { session } = await spawn(makeSpawnOpts(env, '/tmp'));

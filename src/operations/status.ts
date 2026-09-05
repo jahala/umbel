@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
+import { parseQuota, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -22,6 +23,11 @@ export interface StatusEntry extends Session {
   // Best-effort pending tool, when the notification carries one. Absent for
   // Claude's main permission prompt (it omits the tool from the hook payload).
   pendingTool?: string;
+  // Subscription rate-limit usage, when the provider reports any. Absent is the
+  // normal case and means no limit pressure was reported — a caller can re-cast
+  // a node to another provider before dispatch instead of losing its work to a
+  // limit dialog mid-turn.
+  quota?: Quota;
 }
 
 export interface StatusOpts {
@@ -71,6 +77,10 @@ async function enrich(
       if (cls.tool !== undefined) entry.pendingTool = cls.tool;
     }
   }
+
+  const quota = parseQuota(await readFileSafe(join(eventsDir, 'quota')));
+  if (quota !== null) entry.quota = quota;
+
   return entry;
 }
 

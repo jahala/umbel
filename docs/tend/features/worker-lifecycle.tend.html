@@ -2647,16 +2647,25 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Drive dismissStartupDialogs with a scripted fake tmux using verbatim Claude Code 2.1.261 pane text: cursor on 'No, exit' yields Down+Enter, cursor on 'Yes' yields Enter alone, the external-imports prompt yields Enter. With a fake that swallows the first keystroke, assert the keys are re-sent; with one that never clears, assert the send count is capped. Against the real binary, test/smoke/claude/startup-dialogs.smoke.ts spawns into a fresh untrusted clone and asserts the worker is alive and past the dialog.",
       "validates_job": "supervisor-dev:0"
+    },
+    {
+      "id": "c010",
+      "description": "status carries a quota field when the provider reports subscription rate-limit usage, read from claude's structured statusLine payload rather than scraped from the pane. Absent means no limit pressure was reported, which is the normal case.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Feed the real installed statusline.sh a payload on stdin with UMBEL_SESSION_ID set, then assert status() exposes quota. Unit-test parseQuota for totality on malformed input and for the no-rate_limits case. The rate_limits branch cannot be induced on demand \u2014 claude emits it only under real limit pressure \u2014 so the shape follows claude's own documented jq example.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts",
-    "verify": "108 pass",
-    "last_run": "2026-09-05T19:25:00Z",
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts",
+    "verify": "117 pass",
+    "last_run": "2026-09-05T19:45:28Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-09-05T19:25:00Z",
+    "ran_at": "2026-09-05T19:45:28Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2712,6 +2721,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/integration/dismiss-dialogs.test.ts:170-260 (claude specs + swallowed-keystroke retry and its bound, pane text verbatim from Claude Code 2.1.261); src/core/providers/claude.ts:283-297 (cursor-anchored matchers); src/operations/spawn.ts:30-33,67-69 (MAX_DIALOG_ATTEMPTS, re-send). Three of the six tests confirmed RED against the previous matcher. Verified against the installed binary: test/smoke/claude/startup-dialogs.smoke.ts passes, and reverting claude.ts to the old matcher makes it fail with spawn exit 1 (the worker is killed by Enter on 'No, exit').",
         "evidence_sha": "26c1d0f71c226e07b05cfb908a89863cade80cb0"
+      },
+      {
+        "check_id": "c010",
+        "verdict": "pass",
+        "evidence_path": "test/unit/quota.test.ts (parseQuota totality + statusLine registration); test/integration/status.test.ts (drives the installed statusline.sh and asserts status().quota); src/core/quota.ts; src/adapters/hooks.ts:60-67 (STATUSLINE_SCRIPT, rename-into-place). Transport verified against the real binary: a claude worker spawned by umbel wrote events/quota with the full 13-key payload unprompted. The rate_limits branch itself is UNVERIFIED end-to-end \u2014 it was absent because no limit was in force, and a limit cannot be induced on demand.",
+        "evidence_sha": "6c92e02298f6e98f07a1346ec5478a0db8597a86"
       }
     ],
     "verified_at_commit": "ebceffdce052407326d9f66210cf2b5bce570fed"
