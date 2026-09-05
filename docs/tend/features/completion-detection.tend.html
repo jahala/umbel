@@ -2619,16 +2619,25 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Call ensureGlobalHooks, exec stop.sh with UMBEL_STATE+UMBEL_SESSION_ID set; assert events/stop exists and events/log has a numeric line. Exec notify.sh twice with different payloads; assert events/notification has 2 lines, each parseable, in order.",
       "validates_job": "host-agent:1"
+    },
+    {
+      "id": "c007",
+      "description": "A reason='dead' result carries paneSnapshot: the last pane captured while the worker was still alive. A dying session takes its pane with it, so a snapshot taken at detection time is impossible \u2014 without the rolling capture a crashed worker leaves no diagnostics at all.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Spawn a real worker, kill it mid-wait, and assert waitFor settles reason='dead' with a non-empty paneSnapshot. Confirmed RED by removing the snapshot from the dead branch.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
     "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts",
-    "verify": "77 pass",
-    "last_run": "2026-06-21T15:20:01Z",
+    "verify": "78 pass",
+    "last_run": "2026-09-05T19:45:28Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-06-21T15:20:01Z",
+    "ran_at": "2026-09-05T19:45:28Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2666,6 +2675,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/integration/hooks.test.ts:104-157 (stop.sh created, executable, fires correctly, events/stop+log written); test/integration/hooks.test.ts:182-203 (notify.sh writes payload to events/notification); test/integration/hooks.test.ts:205-240 (notify.sh appends two lines, JSONL no-clobber); src/adapters/hooks.ts (STOP_HOOK_SCRIPT, NOTIFY_HOOK_SCRIPT, ensureGlobalHooks)",
         "evidence_sha": "7129a5b7ef0aca19145da5a8821d2cc0a23e41bd"
+      },
+      {
+        "check_id": "c007",
+        "verdict": "pass",
+        "evidence_path": "test/integration/wait.test.ts:437-462 (kills a live worker mid-wait, asserts reason=dead carries a non-empty paneSnapshot); src/operations/wait.ts:206,222-236 (ALIVE_PANE_CAPTURE_MS and the throttled rolling capture), :313-316 (captured only while the liveness probe says alive), :330-337 (handed over on death). Confirmed RED by deleting the snapshot from the dead branch.",
+        "evidence_sha": "43a5f32734ec1602e558da5605eda8ae1404eb49"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

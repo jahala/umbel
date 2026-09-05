@@ -48,6 +48,25 @@ date +%s%N >> "$state/events/log"
 `;
 
 // ---------------------------------------------------------------------------
+// STATUSLINE_SCRIPT — captures the statusLine payload as structured state
+// ---------------------------------------------------------------------------
+
+// claude runs statusLine on every render and hands it a JSON snapshot on stdin
+// that carries subscription rate-limit usage. Writing it to the events dir turns
+// a presentational pane line into state a caller can branch on, without
+// scraping the pane. Rendered output is deliberately empty: nobody reads a
+// headless worker's status line, and printing to it would only churn the pane
+// that idle-detection watches.
+export const STATUSLINE_SCRIPT: string = `#!/usr/bin/env bash
+set -euo pipefail
+state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
+mkdir -p "$state/events"
+# Rename into place so a concurrent reader never sees a half-written file.
+cat > "$state/events/quota.part"
+mv -f "$state/events/quota.part" "$state/events/quota"
+`;
+
+// ---------------------------------------------------------------------------
 // buildSettingsJson — inline JSON for claude's --settings flag
 // ---------------------------------------------------------------------------
 
@@ -57,6 +76,7 @@ export function buildSettingsJson(opts: {
   allowedTools?: string;
   permissionMode?: string;
   unattended?: boolean;
+  statusLineScriptPath?: string;
 }): string {
   const hooksBlock: Record<string, unknown> = {
     Stop: [
@@ -92,6 +112,10 @@ export function buildSettingsJson(opts: {
     hooks: hooksBlock,
   };
 
+  if (opts.statusLineScriptPath !== undefined) {
+    settings.statusLine = { type: 'command', command: opts.statusLineScriptPath };
+  }
+
   // Delivered through --settings rather than --dangerously-skip-permissions:
   // same effect, but it reuses the config channel umbel already owns and skips
   // that flag's separate --allow-dangerously-skip-permissions gate. An explicit
@@ -122,7 +146,7 @@ export function buildSettingsJson(opts: {
 
 export async function ensureGlobalHooks(
   env: Record<string, string | undefined> = {},
-): Promise<{ stopScriptPath: string; notifyScriptPath: string }> {
+): Promise<{ stopScriptPath: string; notifyScriptPath: string; statusLineScriptPath: string }> {
   const hooksDir = join(stateDir(env), 'hooks');
   await mkdir(hooksDir, { recursive: true });
 
@@ -134,7 +158,11 @@ export async function ensureGlobalHooks(
   await writeFile(notifyScriptPath, NOTIFY_HOOK_SCRIPT, { encoding: 'utf8' });
   await chmod(notifyScriptPath, 0o755);
 
-  return { stopScriptPath, notifyScriptPath };
+  const statusLineScriptPath = join(hooksDir, 'statusline.sh');
+  await writeFile(statusLineScriptPath, STATUSLINE_SCRIPT, { encoding: 'utf8' });
+  await chmod(statusLineScriptPath, 0o755);
+
+  return { stopScriptPath, notifyScriptPath, statusLineScriptPath };
 }
 
 // ---------------------------------------------------------------------------

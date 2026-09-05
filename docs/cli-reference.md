@@ -85,6 +85,8 @@ umbel spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --
 umbel spawn --cwd /tmp/scratch
 ```
 
+The keyless opencode models are a free lane, and they are slow: fine for a probe or a smoke check, too slow to sit on the critical path of a gate or an audit. Put gates on a subscription-billed provider and keep the free lane for questions you can afford to wait on.
+
 ---
 
 ### send
@@ -106,7 +108,7 @@ umbel send [--json] <name> <prompt>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `umbel wait --since N` to make stop-detection race-free when send and wait run in separate processes. |
+| `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `umbel wait --since N` to make stop-detection race-free when send and wait run in separate processes. **`0` is a valid value, not a failure:** `events/stop` does not exist until a worker's first turn ends, so the first send to a fresh worker always reports 0, meaning "no turn has ended yet — any stop counts". A conductor that spawns a worker per node and sends one prompt will therefore see 0 every time, correctly. |
 
 Multi-line prompts are handled automatically via `tmux load-buffer` + `paste-buffer` (see `src/adapters/tmux.ts`).
 
@@ -132,6 +134,8 @@ EOF
 ### wait
 
 Block until a session reaches a condition. Default: wait for the Stop hook to fire (end of turn). Returns exit code 124 on timeout, or 125 if the worker's session dies before the condition is met (e.g. the CLI crashed or exited non-zero).
+
+A `dead` result carries `paneSnapshot`: the last view of the pane from while the worker was still alive. A dying session takes its pane with it, so without this a crashed worker leaves nothing at all to read — which is exactly what makes a mid-run death expensive to diagnose. The snapshot is refreshed periodically during the wait, so it is at most a couple of seconds behind the moment of death.
 
 ```
 umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]
@@ -233,6 +237,8 @@ umbel status reviewer
 ```
 
 ---
+
+When the provider reports subscription rate-limit usage, entries carry a `quota` field (`fiveHourPct`, `sevenDayPct`, `resetsAt`). It is absent whenever no limit pressure is reported, which is the normal case — claude only sends the figures as a window fills. The numbers come from the provider's structured status payload, not from reading the pane. Checking it before dispatch is what lets a caller re-cast work to another provider rather than lose a turn to a limit dialog.
 
 ### ls
 

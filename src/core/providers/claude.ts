@@ -304,6 +304,9 @@ const claudeProvider: AgentProvider = {
       ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
       ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
       ...(opts.unattended !== undefined ? { unattended: opts.unattended } : {}),
+      ...(opts.statusLineScriptPath !== undefined
+        ? { statusLineScriptPath: opts.statusLineScriptPath }
+        : {}),
     });
 
     const args: string[] = ['--settings', settingsJson];
