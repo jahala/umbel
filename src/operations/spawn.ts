@@ -21,12 +21,17 @@ import { defaultDeps } from './deps.ts';
 // hook-review prompts). Generic over providers: each declares its dialogs in
 // `provider.startupDialogs`; we poll capture-pane and send each dialog's keys
 // as it appears. Dialogs are dismissed in declared order (later ones only
-// render after earlier ones clear). Bails early when all known dialogs have
-// fired OR the provider's readyMatch shows the main UI is up (already-trusted
-// cwd → no dialogs appear). Best-effort throughout — never throws.
+// render after earlier ones clear). Bails early when every declared dialog has
+// been handled OR the provider's readyMatch shows the main UI is up
+// (already-trusted cwd → no dialogs appear). Best-effort throughout — never
+// throws.
 const DIALOG_POLL_INTERVAL_MS = 150;
 const DIALOG_POLL_TIMEOUT_MS = 8000;
 const DIALOG_KEY_SETTLE_MS = 300;
+// A dialog still on the pane after its keys were sent swallowed them: the TUI
+// had rendered but was not yet reading input. Re-send rather than move on, but
+// cap it — retrying is what makes typing forever into a live agent possible.
+const MAX_DIALOG_ATTEMPTS = 3;
 
 export async function dismissStartupDialogs(
   d: Pick<Deps, 'tmux'>,
@@ -38,7 +43,10 @@ export async function dismissStartupDialogs(
   // Nothing to wait for: no dialogs to dismiss AND no ready signal to poll for.
   if (dialogs.length === 0 && readyMatch === undefined) return;
   const deadline = Date.now() + DIALOG_POLL_TIMEOUT_MS;
-  const fired = new Set<number>();
+  // Keystrokes sent per dialog. Its size doubles as "dialogs handled at least
+  // once", which is how a provider with no readyMatch knows it is done.
+  const attempts = new Map<number, number>();
+  const exhausted = new Set<number>();
 
   while (Date.now() < deadline) {
     let pane = '';
@@ -48,7 +56,7 @@ export async function dismissStartupDialogs(
       return;
     }
 
-    const idx = nextStartupDialog(pane, dialogs, fired);
+    const idx = nextStartupDialog(pane, dialogs, exhausted);
     if (idx !== null) {
       const dialog = dialogs[idx];
       if (dialog !== undefined) {
@@ -57,9 +65,12 @@ export async function dismissStartupDialogs(
         } catch {
           // best-effort; ignore
         }
-        fired.add(idx);
+        const n = (attempts.get(idx) ?? 0) + 1;
+        attempts.set(idx, n);
+        if (n >= MAX_DIALOG_ATTEMPTS) exhausted.add(idx);
         // Give the TUI a moment to render the next dialog (or the main UI)
-        // before the next capture.
+        // before the next capture. A dismissed dialog stops matching, so the
+        // next pass moves on by itself.
         await Bun.sleep(DIALOG_KEY_SETTLE_MS);
         continue;
       }
@@ -71,7 +82,7 @@ export async function dismissStartupDialogs(
       // dialog-less providers (e.g. opencode) so the first send doesn't race
       // the TUI's boot and get dropped.
       if (readyMatch.test(pane)) return;
-    } else if (fired.size >= dialogs.length) {
+    } else if (attempts.size >= dialogs.length) {
       // No ready signal to wait for; done once all known dialogs are dismissed.
       return;
     }
