@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { ClaudeProvider } from '../../src/core/providers/claude.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
 import { GeminiProvider } from '../../src/core/providers/gemini.ts';
 import { dismissStartupDialogs } from '../../src/operations/spawn.ts';
@@ -168,4 +169,119 @@ describe('dismissStartupDialogs (dialog-less warm-up via readyMatch)', () => {
     expect(captures).toBeGreaterThan(1); // polled — did NOT return immediately
     expect(sentCount).toBe(0); // no dialogs → no keystrokes
   });
+});
+
+// ---------------------------------------------------------------------------
+// Claude's dialogs. Pane text below is verbatim from Claude Code 2.1.261,
+// captured 2026-09-05 by launching the real binary in an untrusted clone.
+// The keys matter: pressing Enter on the trust prompt was tested against the
+// real binary and it EXITS — a bare Enter kills the worker.
+// ---------------------------------------------------------------------------
+
+const TRUST_ON_NO = [
+  ' Accessing workspace:',
+  ' Quick safety check: Is this a project you created or one you trust?',
+  ' ❯ No, exit',
+  '   Yes, I trust this folder',
+  ' Enter to confirm · Esc to cancel',
+].join('\n');
+
+const TRUST_ON_YES = [
+  ' Quick safety check: Is this a project you created or one you trust?',
+  '   No, exit',
+  ' ❯ Yes, I trust this folder',
+  ' Enter to confirm · Esc to cancel',
+].join('\n');
+
+const EXTERNAL_IMPORTS = [
+  '  Allow external CLAUDE.md file imports?',
+  "  This project's CLAUDE.md imports files outside the current working directory.",
+  '  ❯ No, disable external imports',
+  '    Yes, allow external imports',
+  '  Enter to confirm · Esc to cancel',
+].join('\n');
+
+const CLAUDE_MAIN_UI = ['❯ Try "fix lint errors"', '  ⏵⏵ auto mode on (shift+tab to cycle)'].join(
+  '\n',
+);
+
+function claudeDismiss(panes: string[]): Promise<string[][]> {
+  const { sent, tmux } = makeFakeTmux(panes);
+  return dismissStartupDialogs(
+    { tmux } as never,
+    'sess',
+    ClaudeProvider.startupDialogs ?? [],
+    ClaudeProvider.readyMatch,
+  ).then(() => sent);
+}
+
+describe('dismissStartupDialogs (ClaudeProvider specs)', () => {
+  test('trust prompt: moves off the "No, exit" default before confirming', async () => {
+    expect(await claudeDismiss([TRUST_ON_NO, CLAUDE_MAIN_UI])).toEqual([['Down', 'Enter']]);
+  });
+
+  test('trust prompt with the cursor already on Yes: confirms in place', async () => {
+    // Reachable when a retry lands after Down moved the selection. Sending
+    // Down again here would walk back onto "No, exit" and kill the worker.
+    expect(await claudeDismiss([TRUST_ON_YES, CLAUDE_MAIN_UI])).toEqual([['Enter']]);
+  });
+
+  test('external CLAUDE.md imports prompt is dismissed on its safe default', async () => {
+    expect(await claudeDismiss([EXTERNAL_IMPORTS, CLAUDE_MAIN_UI])).toEqual([['Enter']]);
+  });
+
+  test('already-trusted cwd sends nothing', async () => {
+    expect(await claudeDismiss([CLAUDE_MAIN_UI])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Swallowed keystrokes. A TUI that has rendered its dialog but is not yet
+// accepting input drops the first keypress. Firing once and moving on leaves
+// the worker parked on the dialog until the wait deadline — observed against
+// the real binary, where the worker sat on the trust prompt indefinitely.
+// ---------------------------------------------------------------------------
+
+function makeSwallowingTmux(dialogPane: string, readyPane: string, swallow: number) {
+  const sent: string[][] = [];
+  return {
+    sent,
+    tmux: {
+      capturePane: async (): Promise<string> => (sent.length > swallow ? readyPane : dialogPane),
+      sendKeys: async (_name: string, keys: readonly string[]): Promise<void> => {
+        sent.push([...keys]);
+      },
+    },
+  };
+}
+
+describe('dismissStartupDialogs (swallowed keystrokes)', () => {
+  test('re-sends while the dialog is still on the pane', async () => {
+    const { sent, tmux } = makeSwallowingTmux(TRUST_ON_NO, CLAUDE_MAIN_UI, 1);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      ClaudeProvider.startupDialogs ?? [],
+      ClaudeProvider.readyMatch,
+    );
+
+    expect(sent.length).toBeGreaterThan(1);
+    expect(sent.every((k) => k.join() === 'Down,Enter')).toBe(true);
+  });
+
+  test('gives up rather than typing forever at a dialog that never clears', async () => {
+    // Guard, not a spec: retrying is what makes unbounded key-spam into a live
+    // agent possible, so the bound is the thing that must not regress.
+    const { sent, tmux } = makeSwallowingTmux(TRUST_ON_NO, CLAUDE_MAIN_UI, Number.MAX_SAFE_INTEGER);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      ClaudeProvider.startupDialogs ?? [],
+      ClaudeProvider.readyMatch,
+    );
+
+    expect(sent.length).toBeLessThanOrEqual(3);
+  }, 12_000);
 });

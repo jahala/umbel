@@ -2638,16 +2638,25 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Create a session on socket A; assert hasSession is true from A and false from B, and listSessions(B) omits it. Create a session through the adapter and read the DEFAULT socket directly with bare `tmux list-sessions`; assert the name is absent. Unit-test socketFor: distinct roots give distinct sockets, the same root is stable, every result is umbel-prefixed, and an explicit socket wins.",
       "validates_job": "supervisor-dev:1"
+    },
+    {
+      "id": "c009",
+      "description": "Startup-dialog dismissal picks the option a human would and survives a swallowed keystroke: claude's matchers are anchored to the highlighted line (\u276f) so the keys always suit where the cursor sits, and the loop re-sends while a dialog is still on the pane, bounded by MAX_DIALOG_ATTEMPTS so it can never type indefinitely into a live agent.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Drive dismissStartupDialogs with a scripted fake tmux using verbatim Claude Code 2.1.261 pane text: cursor on 'No, exit' yields Down+Enter, cursor on 'Yes' yields Enter alone, the external-imports prompt yields Enter. With a fake that swallows the first keystroke, assert the keys are re-sent; with one that never clears, assert the send count is capped. Against the real binary, test/smoke/claude/startup-dialogs.smoke.ts spawns into a fresh untrusted clone and asserts the worker is alive and past the dialog.",
+      "validates_job": "supervisor-dev:0"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts",
-    "verify": "94 pass",
-    "last_run": "2026-08-20T10:39:44Z",
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts",
+    "verify": "108 pass",
+    "last_run": "2026-09-05T19:25:00Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-08-20T10:39:44Z",
+    "ran_at": "2026-09-05T19:25:00Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2697,6 +2706,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/integration/tmux-isolation.test.ts (7 tests: cross-socket invisibility, absence from the default socket read with bare tmux, socketFor derivation); src/adapters/tmux.ts socketFor + tmuxArgs (every invocation carries -L); test/setup.ts + bunfig.toml (the test run is pinned to its own socket, so a test run cannot reach a real worker). Regression context: the old default-socket behaviour let tmux.test.ts's kill-server reap other agents' live workers — #58 removed the trigger, this closes the class.",
         "evidence_sha": "39cb12c955edf2831efedab3c86c5b71fffa05ec"
+      },
+      {
+        "check_id": "c009",
+        "verdict": "pass",
+        "evidence_path": "test/integration/dismiss-dialogs.test.ts:170-260 (claude specs + swallowed-keystroke retry and its bound, pane text verbatim from Claude Code 2.1.261); src/core/providers/claude.ts:283-297 (cursor-anchored matchers); src/operations/spawn.ts:30-33,67-69 (MAX_DIALOG_ATTEMPTS, re-send). Three of the six tests confirmed RED against the previous matcher. Verified against the installed binary: test/smoke/claude/startup-dialogs.smoke.ts passes, and reverting claude.ts to the old matcher makes it fail with spawn exit 1 (the worker is killed by Enter on 'No, exit').",
+        "evidence_sha": "26c1d0f71c226e07b05cfb908a89863cade80cb0"
       }
     ],
     "verified_at_commit": "ebceffdce052407326d9f66210cf2b5bce570fed"

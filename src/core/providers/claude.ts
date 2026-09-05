@@ -280,9 +280,21 @@ const claudeProvider: AgentProvider = {
 
   stopEventName: 'Stop',
 
-  // Real claude shows a workspace-trust prompt on first launch in a fresh cwd.
-  // Default option is "Yes, I trust this folder" — a single Enter dismisses it.
-  startupDialogs: [{ match: /trust this folder|trust this directory/i, keys: ['Enter'] }],
+  // Matched on the HIGHLIGHTED line (❯) rather than the dialog's prose, because
+  // the right keys depend on where the cursor actually sits. Claude Code 2.1.261
+  // defaults the trust prompt to "No, exit", and a bare Enter there exits the
+  // worker — verified against the real binary. The previous matcher assumed the
+  // opposite default and pressed it. Anchoring to the cursor also makes wording
+  // drift fail safe: nothing matches, so the worker parks on the dialog instead
+  // of being killed by a keystroke aimed at the wrong line.
+  startupDialogs: [
+    { match: /❯\s*No, exit/, keys: ['Down', 'Enter'] },
+    // Reachable when a retry lands after Down already moved the selection.
+    { match: /❯\s*Yes, I trust this folder/, keys: ['Enter'] },
+    // CLAUDE.md importing files outside the cwd. Here the default is also the
+    // conservative answer, and the worker proceeds either way.
+    { match: /❯\s*No, disable external imports/, keys: ['Enter'] },
+  ],
   readyMatch: /Try |for shortcuts|│/,
 
   buildLaunch(opts): ProviderLaunchSpec {

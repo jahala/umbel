@@ -21,18 +21,19 @@ export interface StartupDialog {
 }
 
 // Pure: given the current pane text, the provider's dialog specs, and the set
-// of dialog indices already dismissed this spawn, return the index of the
-// first not-yet-fired dialog whose matcher hits the pane — or null if none.
+// of dialog indices to skip (those whose keys have been re-sent to the attempt
+// limit without the dialog clearing), return the index of the first remaining
+// dialog whose matcher hits the pane — or null if none.
 //
 // Total. No I/O. Lower indices win so a multi-dialog sequence is dismissed in
 // declared order.
 export function nextStartupDialog(
   pane: string,
   dialogs: readonly StartupDialog[],
-  fired: ReadonlySet<number>,
+  skip: ReadonlySet<number>,
 ): number | null {
   for (let i = 0; i < dialogs.length; i++) {
-    if (fired.has(i)) continue;
+    if (skip.has(i)) continue;
     const dialog = dialogs[i];
     if (dialog !== undefined && dialog.match.test(pane)) {
       return i;
