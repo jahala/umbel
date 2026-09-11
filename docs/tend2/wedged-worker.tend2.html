@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wedged-worker · umbel</title>
+<link rel="stylesheet" href="./loop.css">
+<body>
+<noscript>This page renders its markdown payload with JavaScript — enable JS, or read the raw payload in the page source.</noscript>
+<script type="text/markdown" id="loop">
+# A wedged worker is a failure, and a busy one is not
+
+**Goal.** `umbel wait` tells a worker that has stopped from one that is quietly working. Idleness is measured across every source of activity umbel can see — the tmux pane, the session's events directory and the transcript tree, including a claude worker's subagent transcripts — so a worker whose pane is silent while a subagent works is not idle, and one whose every source is still past the threshold is, with a message naming what stayed still and for how long. A provider error on the pane followed by stillness is reported at once as `provider-error` with the error line, long before the idle threshold. The exit code and the JSON carry both, so a conductor can fail the attempt without a human watching the pane.
+
+jahala/umbel#67. On 2026-09-09 a codex worker printed `unexpected status 404 Not Found: The model gpt-5.5 does not exist or you do not have access to it` and sat at its prompt with a live session; `wait` rode to the conductor's timeout. On 2026-09-12 the opposite: a claude worker launched a subagent and waited on it; the pane did not change for ten minutes while the subagent's transcript kept arriving under `<session-id>/subagents/`, `wait --idle-timeout 10m` answered `idle` with no message, and the conductor settled the node blocked — twenty-five minutes and the subagent's work invisible to the pane. Pane-based idleness cannot see a subagent; the transcript can.
+
+## How
+
+Stillness has three sources. The idle net already polls the pane; it now also reads the newest mtime under the session's events directory (`log`, `notification`, `stop`, `quota`) and under the transcript tree — the transcript file `resolveJsonlPath` resolves (meta, `events/transcript-path`, or the provider's discovery) and, for claude, the `<transcript dir>/<session-id>/subagents/` directory beside it. A source that cannot be resolved contributes nothing (opencode has no transcript file). The timer resets when any source moves; `idle` settles only when all of them have been still for `--idle-timeout`, and the result's `message` says so: which sources were watched and how long each has been still.
+
+A provider error is read from the pane. Each provider declares `errorMatch` patterns (`codex`: `unexpected status \d{3}` and `does not exist or you do not have access`; `claude`: `API Error`); when the idle poll sees the last lines of the pane match one and the pane then stays still for a short grace (a few polls, never more than the idle threshold), `wait` settles `provider-error` with the matched line as `message` and the pane as `paneSnapshot`. An error line followed by further output is a retry in progress and does not settle. The CLI maps `provider-error` to exit 122; `idle` keeps 123 and now carries its message the way `input` carries the prompt.
+
+The fakes grow the shapes. `fake-claude.sh` takes `FAKE_CLAUDE_SUBAGENT_MS` (print nothing, append a line to `<session-id>/subagents/agent-fake.jsonl` every 300 ms for that long, then finish the turn) and `FAKE_CLAUDE_HANG_MS` (print nothing, write nothing, then finish); `fake-codex.sh` takes `FAKE_CODEX_ERROR` (print the line, then sit forever) and `FAKE_CODEX_ERROR_THEN_CONTINUE` (print it, then finish the turn).
+
+## Tests
+- [ ] (code) `wait --idle-timeout` measures stillness across the pane, the session's events directory and the transcript tree (the resolved transcript and, for claude, its `<session-id>/subagents/` directory): a worker whose pane is silent while a subagent transcript keeps growing settles `stop` when its turn ends, not `idle`; a worker whose every source is still for the threshold settles `idle` · test/integration/wait-idle-sources.test.ts
+- [ ] (code) An `idle` result carries a `message` naming each source watched and how long it has been still; a source that could not be resolved is named as unresolved rather than silently omitted · test/integration/wait-idle-message.test.ts
+- [ ] (code) A pane whose last lines match the provider's `errorMatch` and then stay still for the grace settles `provider-error` with the matched line as `message` and the pane as `paneSnapshot`, well before the idle threshold; an error line followed by further output does not settle; codex and claude declare their patterns · test/integration/wait-provider-error.test.ts
+- [ ] (code) Through the CLI: `umbel wait --json --idle-timeout` exits 122 with `{"reason":"provider-error","message":…}` on the fake codex's 404 pane, 123 with the sources message on a hung fake, and 0 with `stop` on a silent-subagent fake; docs/cli-reference.md's exit-code table, `umbel --help` and `wait`'s reference list 122 and the idle message · test/e2e/wait-wedged.test.ts
+
+## For
+#umbel
+
+## Tried
+- 2026-09-11 shaped from jahala/umbel#67 and its three comments as the second loop of the tier-one order; the 2026-09-12 false idle (a claude worker waiting on a subagent) is the counter-case that makes the first check. Decided: `provider-error` is a new reason with its own exit code (122) rather than a flavour of `idle`, because a conductor should fail it at once and retry or recast, while `idle` past a threshold is a judgement it may want to make differently. Decided: detection stays inside the opt-in idle net (no pane polling without `--idle-timeout`) — the default stays off, as a long silent tool call is legitimate. Scoped out: a `status`/`ls` marker for a wedged live session, and pleach's classification of the new reason (pleach treats unknown reasons as terminal today; its own issue).
+</script>
+<script src="./loop.js"></script>
