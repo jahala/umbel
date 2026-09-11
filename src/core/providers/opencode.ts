@@ -366,8 +366,11 @@ export function mergeOpencodePluginConfig(
   pluginAbsPath: string,
 ): OpencodePluginConfigMerge {
   const entry = JSON.stringify(pluginAbsPath);
+  // opencode rewrites a config it loads without "$schema" to add it, so a
+  // created file carries it to stay untouched by the worker it launches.
   if (existing === null || existing.trim().length === 0) {
-    return { kind: 'write', content: JSON.stringify({ plugin: [pluginAbsPath] }, null, 2) };
+    const created = { $schema: 'https://opencode.ai/config.json', plugin: [pluginAbsPath] };
+    return { kind: 'write', content: JSON.stringify(created, null, 2) };
   }
 
   const errors: ParseError[] = [];

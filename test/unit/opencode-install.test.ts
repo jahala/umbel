@@ -4,7 +4,7 @@ import { mergeOpencodePluginConfig } from '../../src/core/providers/opencode.ts'
 // ---------------------------------------------------------------------------
 // mergeOpencodePluginConfig
 // Pure function over the text of the user's opencode.jsonc. Contract:
-//   - null existing          → { kind: 'write', content } creating { "plugin": [pluginAbsPath] }
+//   - null existing          → { kind: 'write', content } creating { "$schema", "plugin": [pluginAbsPath] }
 //   - JSONC existing         → { kind: 'write', content } where content is the original text with
 //                              one contiguous insertion (the plugin entry); every other byte,
 //                              comment, blank line and trailing comma is preserved
