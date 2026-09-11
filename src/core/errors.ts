@@ -137,3 +137,21 @@ export class SessionNotCreatedError extends Error {
     );
   }
 }
+
+// The user's opencode.jsonc is theirs: when it does not parse, the spawn is
+// refused and the file left untouched rather than replaced (umbel#53).
+export class OpencodeConfigUnparsableError extends Error {
+  override name = 'OpencodeConfigUnparsableError';
+
+  constructor(
+    public file: string,
+    public line: number,
+    public column: number,
+    public reason: string,
+  ) {
+    super(
+      `${file}:${line}:${column}: not valid JSONC (${reason}). ` +
+        'umbel left the file untouched; fix it and spawn again.',
+    );
+  }
+}
