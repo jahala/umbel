@@ -137,3 +137,56 @@ export class SessionNotCreatedError extends Error {
     );
   }
 }
+
+// The user's opencode.jsonc is theirs: when it does not parse, the spawn is
+// refused and the file left untouched rather than replaced (umbel#53).
+export class OpencodeConfigUnparsableError extends Error {
+  override name = 'OpencodeConfigUnparsableError';
+
+  constructor(
+    public file: string,
+    public line: number,
+    public column: number,
+    public reason: string,
+  ) {
+    super(
+      `${file}:${line}:${column}: not valid JSONC (${reason}). ` +
+        'umbel left the file untouched; fix it, or move it aside, and spawn again.',
+    );
+  }
+}
+
+// opencode falls back to another model when -m names one it does not know, so
+// an unlisted model is refused before a worker exists (umbel#53).
+const LISTED_MODELS_SHOWN = 10;
+
+export class OpencodeModelUnknownError extends Error {
+  override name = 'OpencodeModelUnknownError';
+
+  constructor(
+    public model: string,
+    public listed: readonly string[],
+  ) {
+    const shown = listed.slice(0, LISTED_MODELS_SHOWN).join(', ');
+    const more =
+      listed.length > LISTED_MODELS_SHOWN
+        ? ` and ${listed.length - LISTED_MODELS_SHOWN} more (run \`opencode models\`)`
+        : '';
+    super(
+      `Unknown model: ${model}. opencode lists ${listed.length === 0 ? 'no models' : `${shown}${more}`}.`,
+    );
+  }
+}
+
+// A model list umbel could not read means umbel cannot vouch for the model, so
+// the spawn is refused rather than launched on a guess.
+export class ModelListUnavailableError extends Error {
+  override name = 'ModelListUnavailableError';
+
+  constructor(
+    public model: string,
+    public detail: string,
+  ) {
+    super(`Cannot check model ${model}: listing models failed. ${detail.trim()}`);
+  }
+}

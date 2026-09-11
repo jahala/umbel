@@ -37,7 +37,7 @@ Adapters are injected into operations. Operations are called by faces. Providers
 ## Stack
 
 - TypeScript (strict mode) + Bun runtime + single-binary build via `bun build --compile`.
-- Dependencies: `@modelcontextprotocol/sdk`, `zod`, `yaml`, `chokidar`. No native modules.
+- Dependencies: `@modelcontextprotocol/sdk`, `zod`, `yaml`, `chokidar`, `jsonc-parser`. No native modules.
 - Tmux is the substrate (runtime requirement, not dev).
 - Tests via `bun:test`.
 - Lint/format via `biome`.

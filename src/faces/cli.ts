@@ -5,6 +5,9 @@ import {
   EnvRefUnresolvedError,
   HookTimeoutError,
   JsonlMalformedError,
+  ModelListUnavailableError,
+  OpencodeConfigUnparsableError,
+  OpencodeModelUnknownError,
   ProviderUnknownError,
   SessionDeadError,
   SessionNotCreatedError,
@@ -225,7 +228,8 @@ function errorExitCode(err: unknown): number {
     err instanceof UmbelUsageError ||
     err instanceof ProviderUnknownError ||
     err instanceof EnvRefUnresolvedError ||
-    err instanceof AllowedToolsUnsupportedError
+    err instanceof AllowedToolsUnsupportedError ||
+    err instanceof OpencodeModelUnknownError
   ) {
     return 2;
   }
@@ -236,7 +240,9 @@ function errorExitCode(err: unknown): number {
     err instanceof JsonlMalformedError ||
     err instanceof SessionNotFoundError ||
     err instanceof SessionNotCreatedError ||
-    err instanceof UnattendedUnsupportedError
+    err instanceof UnattendedUnsupportedError ||
+    err instanceof OpencodeConfigUnparsableError ||
+    err instanceof ModelListUnavailableError
   ) {
     return 1;
   }
