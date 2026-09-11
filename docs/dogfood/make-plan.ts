@@ -30,7 +30,9 @@ export interface LoopSpec {
   checks: Check[];
 }
 
-const VERIFY = '/opt/homebrew/bin/tend2';
+// The pinned tend2 master build (cf8ba13). The `tend2` on PATH is a global link to an August 21
+// build from another worktree; every verify and audit runs the pinned build by path.
+const VERIFY = 'node /tmp/tend2-pinned/dist/cli.js';
 const WEEDER = '/Users/jahala/.local/bin/weeder';
 const WORKER = { provider: 'claude', model: 'claude-opus-5' };
 // The cross-provider auditor: opencode + DeepSeek V4 Pro (codex 404s inside umbel, 2026-09-08).
