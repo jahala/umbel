@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>umbel · map</title>
+<link rel="stylesheet" href="./loop.css">
+<body>
+<noscript>This page renders its markdown payload with JavaScript — enable JS, or read the raw payload in the page source.</noscript>
+<script type="text/markdown" id="loop">
+# umbel — the project loop
+
+**Goal.** umbel is the reliable execution boundary for one unit of agent work: a conductor hands it a task for any provider (claude, codex, gemini, opencode) and gets back a result it can branch on — the worker's own words, its actions, its diff, or a typed reason it did not finish. The caller owns the graph; umbel owns transport, completion detection, liveness, output parsing and provider quirks, so that a conductor such as pleach can be pure control flow over trustworthy units. Every unit is honest about its end: a worker that died, wedged, never started its turn, or was told to leave leaves evidence a post-mortem can read without spawning another.
+
+This map is the tier-one order of 2026-09-12 from the umbrella (jahala/plotplot): the defects pleach hit while conducting real builds through umbel, one loop per issue, shaped checks-first and built by pleach driving umbel — umbel building umbel is the dogfood.
+
+## Tests
+- [ ] (human) the goal above states the real bet, not a placeholder
+
+## Children
+#opencode-config-survives
+
+## Tried
+- 2026-09-11 map initialized by tend2 init
+- 2026-09-11 goal written from docs/positioning.md; children are the tier-one issues in the umbrella's order: #53 (opencode config), then #67 (wedged worker), #77 (codex paste never submitted), #73 (a dead worker leaves nothing). #72 (trust dialog) closed without a loop — fixed by ab0469f before it was filed, re-verified against Claude Code 2.1.268.
+</script>
+<script src="./loop.js"></script>
