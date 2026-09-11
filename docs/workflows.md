@@ -69,7 +69,7 @@ workers:
 |-------|----------|-------------|
 | `cwd` | yes | Working directory for the session. umbel does not create worktrees; use `git worktree add` first. |
 | `provider` | no | Which CLI to launch. One of `claude`, `codex`, `gemini`, `opencode`. Defaults to `claude` — existing v2 YAML files work without changes. For `opencode`, model is a `provider/model` string (e.g. `opencode/big-pickle`, `ollama/qwen2.5-coder`, `openrouter/deepseek/deepseek-v4-flash`). OpenCode has no subscription; models are local, free-tier, or API-billed. |
-| `model` | no | Free-form model string. Each provider validates its own model names at spawn time; the YAML schema does not restrict values. |
+| `model` | no | Free-form model string. Each provider validates its own model names at spawn time; the YAML schema does not restrict values. For `opencode`, a model `opencode models` does not list refuses the spawn. |
 | `allowedTools` | no | Comma-separated tool list. Mirrors `umbel spawn --allowed-tools`. |
 | `env` | no | Map of per-worker environment variables, merged over the inherited environment. Mirrors `umbel spawn --env`. Not persisted to `meta.json`. |
 

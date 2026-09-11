@@ -169,10 +169,12 @@ Gemini (\`provider: gemini\`)
 - Same overwrite hazard as Codex.
 
 OpenCode (\`provider: opencode\`)
-- Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config (~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation, crash-safe, reversible. Inert unless UMBEL_SESSION_ID is set.
+- Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config ($XDG_CONFIG_HOME/opencode/opencode.jsonc, default ~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation. Inert unless UMBEL_SESSION_ID is set.
+- opencode.jsonc is read as JSONC and edited in place: umbel inserts only its plugin entry and preserves every other byte, comments included. A file that already has the entry is not written.
+- An unparsable opencode.jsonc refuses the spawn (exit 1) naming file, line and column, and the file is left untouched.
 - No JSONL transcript (SQLite only). Output read via \`opencode export <sessionID>\`.
 - stopEventName: "session.status" idle (plugin-based).
-- Model flag: -m provider/model. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
+- Model flag: -m provider/model, checked against \`opencode models\` at spawn; an unlisted model refuses the spawn (exit 2) before a worker exists. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
 - API keys reach the worker via inherited env or --env KEY=VAL; umbel does not manage keys.
 
 ## When to mix providers
@@ -183,7 +185,7 @@ OpenCode (\`provider: opencode\`)
 
 ## Model names
 
-Free-form strings. Each provider validates at spawn time. umbel does not enforce names.
+Free-form strings. Each provider validates at spawn time. umbel does not enforce names, except for opencode, where it checks the name against \`opencode models\`.
 
   claude: "sonnet", "opus", "haiku"
   codex:  "o4-mini", "gpt-4.1", ...
