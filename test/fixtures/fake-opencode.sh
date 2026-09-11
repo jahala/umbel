@@ -4,6 +4,9 @@
 #   UMBEL_STATE          (set by umbel spawn via tmux env)
 #   UMBEL_SESSION_ID     (set by umbel spawn via tmux env)
 #   FAKE_OPENCODE_DELAY  optional, ms to sleep before responding (default 0)
+#   FAKE_OPENCODE_MODELS_EXTRA  optional, one more id for `models` to list
+#   FAKE_OPENCODE_MODELS_EXIT   optional, non-zero makes `models` fail with it
+#   FAKE_OPENCODE_ARGV   optional file; the launch argv is written there, one per line
 #
 # This fake stands in for "opencode + umbel's JS plugin" together:
 # - Prints a banner so readyMatch can fire.
@@ -18,6 +21,20 @@ set -euo pipefail
 DELAY="${FAKE_OPENCODE_DELAY:-0}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-opencode-session}"
 FAKE_SESSION_ID="ses_fake123"
+
+# `opencode models` prints one provider/model id per line and exits.
+if [[ "${1:-}" == "models" ]]; then
+  if [[ "${FAKE_OPENCODE_MODELS_EXIT:-0}" -ne 0 ]]; then
+    echo "fake-opencode: model catalogue unavailable" >&2
+    exit "${FAKE_OPENCODE_MODELS_EXIT}"
+  fi
+  echo "opencode/big-pickle"
+  echo "ollama/some-model"
+  [[ -n "${FAKE_OPENCODE_MODELS_EXTRA:-}" ]] && echo "${FAKE_OPENCODE_MODELS_EXTRA}"
+  exit 0
+fi
+
+[[ -n "${FAKE_OPENCODE_ARGV:-}" ]] && printf '%s\n' "$@" > "${FAKE_OPENCODE_ARGV}"
 
 # Print a banner line so readyMatch can fire (real opencode shows "Ask anything...")
 echo "Ask anything... (fake-opencode ready)"
