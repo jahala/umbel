@@ -45,7 +45,7 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--name NAME` | auto-generated `anon-XXXXXX` | Session name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`. Can also be the first positional argument. |
 | `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist. |
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
-| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. |
+| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. For `opencode`, umbel checks the model against `opencode models` first, and an unlisted model refuses the spawn (exit 2) before a worker exists. |
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
 | `--permission-mode MODE` | unset | Claude permission mode (`default`/`acceptEdits`/`bypassPermissions`/`plan`). **Claude only** (usage error otherwise), except `bypassPermissions` which codex also accepts. For the plain "nobody is watching" case prefer `--unattended`, which is provider-neutral; use this flag when you need a *specific* claude posture such as `acceptEdits` or `plan`. An explicit mode wins over `--unattended`. |
 | `--unattended` | off | No human is present: suppress every prompt the provider would raise. Maps per-provider — claude `permissions.defaultMode=bypassPermissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini `--approval-mode yolo --skip-trust`, opencode `--auto`. A provider with no unattended mode is **refused at spawn** (exit 1) rather than accepted and left to wedge on a prompt later. Safety for unattended work is the surrounding architecture — disposable worktree, publish through a gate, quarantine — never the prompt. |
@@ -516,7 +516,7 @@ If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
 | `--resume NAME` | — | Attach to an existing named session. Sends the prompt and waits; does not kill on exit. |
 | `--cwd PATH` | `$PWD` | Working directory. |
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
-| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time. |
+| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time. For `opencode`, a model `opencode models` does not list is refused (exit 2) before a worker exists. |
 | `--allowed-tools TOOLS` | unset | Forwarded to the provider's equivalent of `--allowedTools`. |
 | `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. |
 | `--output-format text\|json` | `text` | `json` emits `{"text": "...", "sessionName": "..."}`. |
@@ -595,5 +595,7 @@ umbel spawn --provider claude --name ds --cwd ./work \
 | `UMBEL_CODEX_BIN` | Override the `codex` binary path. Same contract as `UMBEL_CLAUDE_BIN` — inject `test/fixtures/fake-codex.sh` in tests, or point at a non-PATH install. |
 | `UMBEL_GEMINI_BIN` | Override the `gemini` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
 | `UMBEL_OPENCODE_BIN` | Override the `opencode` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
+
+**Note on OpenCode config:** umbel installs its stop plugin into `$XDG_CONFIG_HOME/opencode/opencode.jsonc` (default `~/.config/opencode/`). The file is read as JSONC, so comments and trailing commas are fine. umbel edits it in place, inserting only its own `plugin` entry and preserving every other byte, comments included. A file that already carries the entry is not written. An unparsable file refuses the spawn (exit 1) with its path, line and column, and is left untouched.
 
 **Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass keys via `--env KEY=VAL` or ensure they are in the inherited env. umbel does not manage opencode API keys.
