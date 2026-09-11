@@ -5,6 +5,7 @@ import {
   EnvRefUnresolvedError,
   HookTimeoutError,
   JsonlMalformedError,
+  OpencodeConfigUnparsableError,
   ProviderUnknownError,
   SessionDeadError,
   SessionNotCreatedError,
@@ -236,7 +237,8 @@ function errorExitCode(err: unknown): number {
     err instanceof JsonlMalformedError ||
     err instanceof SessionNotFoundError ||
     err instanceof SessionNotCreatedError ||
-    err instanceof UnattendedUnsupportedError
+    err instanceof UnattendedUnsupportedError ||
+    err instanceof OpencodeConfigUnparsableError
   ) {
     return 1;
   }

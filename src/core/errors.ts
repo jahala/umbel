@@ -151,7 +151,7 @@ export class OpencodeConfigUnparsableError extends Error {
   ) {
     super(
       `${file}:${line}:${column}: not valid JSONC (${reason}). ` +
-        'umbel left the file untouched; fix it and spawn again.',
+        'umbel left the file untouched; fix it, or move it aside, and spawn again.',
     );
   }
 }
