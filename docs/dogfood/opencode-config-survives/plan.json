@@ -31,7 +31,7 @@
       "accept": {
         "smoke": "/Users/jahala/.local/bin/weeder check --strict",
         "audit": {
-          "command": "/opt/homebrew/bin/tend2 verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 1 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
+          "command": "node /tmp/tend2-pinned/dist/cli.js verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 1 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
           "provider": "opencode",
           "model": "deepseek/deepseek-v4-pro",
           "selfIntegrity": true
@@ -75,7 +75,7 @@
       "accept": {
         "smoke": "/Users/jahala/.local/bin/weeder check --strict",
         "audit": {
-          "command": "/opt/homebrew/bin/tend2 verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 2 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
+          "command": "node /tmp/tend2-pinned/dist/cli.js verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 2 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
           "provider": "opencode",
           "model": "deepseek/deepseek-v4-pro",
           "selfIntegrity": true
@@ -119,7 +119,7 @@
       "accept": {
         "smoke": "/Users/jahala/.local/bin/weeder check --strict",
         "audit": {
-          "command": "/opt/homebrew/bin/tend2 verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 3 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
+          "command": "node /tmp/tend2-pinned/dist/cli.js verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 3 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
           "provider": "opencode",
           "model": "deepseek/deepseek-v4-pro",
           "selfIntegrity": true
@@ -163,7 +163,7 @@
       "accept": {
         "smoke": "/Users/jahala/.local/bin/weeder check --strict",
         "audit": {
-          "command": "/opt/homebrew/bin/tend2 verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 4 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
+          "command": "node /tmp/tend2-pinned/dist/cli.js verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 4 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
           "provider": "opencode",
           "model": "deepseek/deepseek-v4-pro",
           "selfIntegrity": true
@@ -207,7 +207,7 @@
       "accept": {
         "smoke": "/Users/jahala/.local/bin/weeder check --strict",
         "audit": {
-          "command": "/opt/homebrew/bin/tend2 verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 5 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
+          "command": "node /tmp/tend2-pinned/dist/cli.js verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --check 5 --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
           "provider": "opencode",
           "model": "deepseek/deepseek-v4-pro",
           "selfIntegrity": true
@@ -251,7 +251,7 @@
       "accept": {
         "smoke": "/Users/jahala/.local/bin/weeder check --strict",
         "audit": {
-          "command": "/opt/homebrew/bin/tend2 verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
+          "command": "node /tmp/tend2-pinned/dist/cli.js verify docs/tend2/opencode-config-survives.tend2.html --repo-root . --force --runner 'bun test {evidence}' --audit-egress --expect-payload 50a8f8de3550",
           "provider": "opencode",
           "model": "deepseek/deepseek-v4-pro",
           "selfIntegrity": true
