@@ -1,6 +1,7 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { OpencodeConfigUnparsableError } from '../core/errors.ts';
 import { mergeOpencodePluginConfig } from '../core/providers/opencode.ts';
 import { stateDir } from './fs-state.ts';
 
@@ -196,5 +197,8 @@ export async function installGlobalPlugin(
   }
 
   const merged = mergeOpencodePluginConfig(existing, pluginAbsPath);
-  await writeFile(cfgPath, merged, { encoding: 'utf8' });
+  if (merged.kind === 'unparsable') {
+    throw new OpencodeConfigUnparsableError(cfgPath, merged.line, merged.column, merged.reason);
+  }
+  if (merged.kind === 'write') await writeFile(cfgPath, merged.content, { encoding: 'utf8' });
 }

@@ -1,3 +1,11 @@
+import {
+  findNodeAtLocation,
+  getNodeValue,
+  type Node as JsonNode,
+  type ParseError,
+  parseTree,
+  printParseErrorCode,
+} from 'jsonc-parser';
 import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './types.ts';
 
 // ---------------------------------------------------------------------------
@@ -340,31 +348,73 @@ export function opencodePluginShouldFireNotification(
 }
 
 // ---------------------------------------------------------------------------
-// mergeOpencodePluginConfig — pure: idempotently add pluginAbsPath to the
-// opencode config's "plugin" array. Preserves all other keys.
-// Returns valid JSON string. Never throws.
+// mergeOpencodePluginConfig — pure + total: idempotently add pluginAbsPath to
+// the "plugin" array of the user's opencode.jsonc. The text is edited by a
+// single insertion, so comments, trailing commas and layout survive; a file
+// that is not JSONC (or not the expected shape) is reported, never replaced.
+// jsonc-parser's `modify` is not used: its formatter reflows the whole touched
+// line, rewriting bytes the user owns (e.g. an inline plugin array).
 // ---------------------------------------------------------------------------
 
-export function mergeOpencodePluginConfig(existing: string | null, pluginAbsPath: string): string {
-  let config: JsonObj = {};
-  if (existing !== null && existing.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(existing);
-      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        config = parsed as JsonObj;
-      }
-    } catch {
-      // malformed → treat as empty
-    }
+export type OpencodePluginConfigMerge =
+  | { kind: 'unchanged' }
+  | { kind: 'write'; content: string }
+  | { kind: 'unparsable'; line: number; column: number; reason: string };
+
+export function mergeOpencodePluginConfig(
+  existing: string | null,
+  pluginAbsPath: string,
+): OpencodePluginConfigMerge {
+  const entry = JSON.stringify(pluginAbsPath);
+  if (existing === null || existing.trim().length === 0) {
+    return { kind: 'write', content: JSON.stringify({ plugin: [pluginAbsPath] }, null, 2) };
   }
 
-  const existingPlugins = Array.isArray(config.plugin) ? (config.plugin as unknown[]) : [];
-  const alreadyPresent = existingPlugins.some((p) => p === pluginAbsPath);
-  if (!alreadyPresent) {
-    config = { ...config, plugin: [...existingPlugins, pluginAbsPath] };
+  const errors: ParseError[] = [];
+  const root = parseTree(existing, errors, { allowTrailingComma: true });
+  const firstError = errors[0];
+  if (firstError) {
+    return unparsable(existing, firstError.offset, printParseErrorCode(firstError.error));
+  }
+  if (!root || root.type !== 'object') {
+    return unparsable(existing, root?.offset ?? 0, 'the root is not an object');
   }
 
-  return JSON.stringify(config, null, 2);
+  const plugins = findNodeAtLocation(root, ['plugin']);
+  if (!plugins) {
+    return { kind: 'write', content: insertAfterLast(existing, root, `"plugin": [${entry}]`) };
+  }
+  if (plugins.type !== 'array') {
+    return unparsable(existing, plugins.offset, '"plugin" is not an array');
+  }
+  if ((plugins.children ?? []).some((p) => getNodeValue(p) === pluginAbsPath)) {
+    return { kind: 'unchanged' };
+  }
+  return { kind: 'write', content: insertAfterLast(existing, plugins, entry) };
+}
+
+// Inserts `item` as the last member of an object or array node, separated from
+// its predecessor the way the predecessor is separated from what precedes it.
+function insertAfterLast(text: string, container: JsonNode, item: string): string {
+  const last = container.children?.at(-1);
+  if (!last) {
+    const at = container.offset + 1;
+    return `${text.slice(0, at)}${item}${text.slice(at)}`;
+  }
+  const at = last.offset + last.length;
+  const leading = /\s*$/.exec(text.slice(0, last.offset))?.[0] ?? '';
+  const separator = leading.includes('\n') ? leading.slice(leading.lastIndexOf('\n')) : leading;
+  return `${text.slice(0, at)},${separator}${item}${text.slice(at)}`;
+}
+
+function unparsable(text: string, offset: number, reason: string): OpencodePluginConfigMerge {
+  const before = text.slice(0, offset);
+  return {
+    kind: 'unparsable',
+    line: before.split('\n').length,
+    column: offset - before.lastIndexOf('\n'),
+    reason,
+  };
 }
 
 // ---------------------------------------------------------------------------
