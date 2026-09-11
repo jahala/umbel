@@ -12,3 +12,4 @@ dist/
 coverage/
 docs/research/
 .brand/
+.loop-scratch/
