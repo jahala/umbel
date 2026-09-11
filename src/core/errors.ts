@@ -155,3 +155,38 @@ export class OpencodeConfigUnparsableError extends Error {
     );
   }
 }
+
+// opencode falls back to another model when -m names one it does not know, so
+// an unlisted model is refused before a worker exists (umbel#53).
+const LISTED_MODELS_SHOWN = 10;
+
+export class OpencodeModelUnknownError extends Error {
+  override name = 'OpencodeModelUnknownError';
+
+  constructor(
+    public model: string,
+    public listed: readonly string[],
+  ) {
+    const shown = listed.slice(0, LISTED_MODELS_SHOWN).join(', ');
+    const more =
+      listed.length > LISTED_MODELS_SHOWN
+        ? ` and ${listed.length - LISTED_MODELS_SHOWN} more (run \`opencode models\`)`
+        : '';
+    super(
+      `Unknown model: ${model}. opencode lists ${listed.length === 0 ? 'no models' : `${shown}${more}`}.`,
+    );
+  }
+}
+
+// A model list umbel could not read means umbel cannot vouch for the model, so
+// the spawn is refused rather than launched on a guess.
+export class ModelListUnavailableError extends Error {
+  override name = 'ModelListUnavailableError';
+
+  constructor(
+    public model: string,
+    public detail: string,
+  ) {
+    super(`Cannot check model ${model}: listing models failed. ${detail.trim()}`);
+  }
+}

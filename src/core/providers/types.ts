@@ -190,4 +190,10 @@ export interface AgentProvider {
     readonly fileName: string;
     readonly content: string;
   };
+
+  // Optional: argv that prints the model ids the binary accepts, one per line.
+  // Declared by providers that silently fall back to another model when the
+  // requested one is unknown, so spawn can refuse an unlisted --model before
+  // a worker exists. `bin` is the binary the launch will use.
+  listModels?(bin: string): readonly string[];
 }

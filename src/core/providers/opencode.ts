@@ -461,6 +461,12 @@ const opencodeProvider: AgentProvider = {
     return ['opencode', 'export', sessionId];
   },
 
+  // opencode binds an unknown -m to whatever provider it falls back to, so a
+  // free local model could silently become a paid remote one (umbel#53).
+  listModels(bin: string): readonly string[] {
+    return [bin, 'models'];
+  },
+
   extractActions(content: string): ActionManifest {
     return extractOpencodeActionsFromContent(content);
   },
