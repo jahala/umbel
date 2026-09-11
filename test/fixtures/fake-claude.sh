@@ -6,10 +6,17 @@
 #   FAKE_CLAUDE_DELAY     optional, ms to sleep before responding (default 0)
 #   FAKE_CLAUDE_JSONL_DIR optional, write JSONL here instead of ~/.claude/projects/...
 #   FAKE_CLAUDE_HOOK      optional, exec this (stop.sh) when done
+#   FAKE_CLAUDE_SUBAGENT_MS optional, ms a silent subagent runs: nothing on the pane,
+#                         one line every 300 ms to <transcript>/subagents/agent-fake.jsonl
+#   FAKE_CLAUDE_HANG_MS   optional, ms to hang mid-turn: nothing on the pane, nothing written
+#   FAKE_CLAUDE_PANE_MS   optional, ms to print a progress line to the pane every 500 ms
 
 set -euo pipefail
 
 DELAY="${FAKE_CLAUDE_DELAY:-0}"
+SUBAGENT_MS="${FAKE_CLAUDE_SUBAGENT_MS:-0}"
+HANG_MS="${FAKE_CLAUDE_HANG_MS:-0}"
+PANE_MS="${FAKE_CLAUDE_PANE_MS:-0}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
@@ -48,6 +55,31 @@ write_turn() {
   printf '{"type":"human","message":{"role":"user","content":[{"type":"text","text":%s}]},"uuid":"u-%s","timestamp":"%s"}\n' \
     "$(echo -n "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
     "$$" "$now" >> "$JSONL_FILE"
+
+  # Real claude keeps a subagent's transcript beside the session's:
+  # <dir>/<session>/subagents/agent-<id>.jsonl
+  if [[ "$SUBAGENT_MS" -gt 0 ]]; then
+    local subagent_dir="${JSONL_FILE%.jsonl}/subagents"
+    mkdir -p "$subagent_dir"
+    local i
+    for ((i = 0; i < SUBAGENT_MS / 300; i++)); do
+      printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"subagent step %d"}]}}\n' \
+        "$i" >> "${subagent_dir}/agent-fake.jsonl"
+      sleep 0.3
+    done
+  fi
+
+  if [[ "$HANG_MS" -gt 0 ]]; then
+    sleep "$(echo "scale=3; $HANG_MS / 1000" | bc)"
+  fi
+
+  if [[ "$PANE_MS" -gt 0 ]]; then
+    local j
+    for ((j = 0; j < PANE_MS / 500; j++)); do
+      echo "working ${j}"
+      sleep 0.5
+    done
+  fi
 
   # Sleep if requested
   if [[ "$DELAY" -gt 0 ]]; then
