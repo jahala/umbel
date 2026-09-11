@@ -18,6 +18,9 @@ export interface Check {
   needs: string[];
   how: string; // how this node fits: where it lives, what to reuse, what NOT to touch
   timeoutMs?: number;
+  // A proof node: its behaviours are delivered by its siblings, so the failing-test gate cannot be
+  // passed honestly; it runs a single GREEN phase (write or finish the proof, `bun run check` green).
+  proof?: boolean;
 }
 
 export interface LoopSpec {
@@ -69,13 +72,16 @@ const RULES = `## Rules
 - Production quality only; match the surrounding style; the smallest change that is honest.
 - Your FINAL message must end with one line of the form \`Tried: YYYY-MM-DD <what you did, what you rejected and why, anything the next worker must know>\` — the conductor transcribes it into the loop page.`;
 
-function prompt(c: Check, phase: 'red' | 'impl' | 'green'): string {
+function prompt(c: Check, phase: 'red' | 'impl' | 'green' | 'proof'): string {
   const head = `You are a worker in a build loop. Make the check below pass, honestly. Nobody reviews your prose — only the verifier's verdict counts.\n\n## The loop\n${spec.title} (closes ${spec.issue}; loop ${LOOP}). ${spec.goal}\n\n## Your check (c${c.n})\n- (code) ${c.claim} · evidence: ${c.evidence}\n\n## How this node fits\n${c.how}\n\n${ENV}`;
   if (phase === 'red') {
     return `${head}\n\n## This phase: RED\nWrite the failing test FIRST at ${c.evidence} — a real test of the claim above, against real behaviour (no mocks of the unit under test). Do not implement anything yet. Run \`bun test ${c.evidence}\` yourself and confirm it FAILS for the right reason (the missing behaviour, not a typo or import error). The conductor will run \`bun run check\` and require it to be RED. Then stop.\n\n${RULES}`;
   }
   if (phase === 'impl') {
     return `${head}\n\n## This phase: IMPLEMENT\nThe failing test at ${c.evidence} is in place. Now make it pass with the smallest honest change, per the How above and CLAUDE.md. Do not weaken the test. Run \`bun test ${c.evidence}\` yourself, then stop.\n\n${RULES}`;
+  }
+  if (phase === 'proof') {
+    return `${head}\n\n## This phase: PROOF (green only)\nThis node proves the whole loop through the CLI. Its behaviours were delivered by the sibling nodes, so the failing-test gate does not apply: the conductor requires only that \`bun run check\` exits 0 with your proof in place at ${c.evidence}. Your tree may have been resumed from a quarantined earlier attempt and already hold that proof and a BLOCKED.md from it: remove BLOCKED.md first (\`trash BLOCKED.md\`, or \`git rm\` if tracked) — the block it describes is resolved by this phase — then finish the proof so every case the claim names is exercised against real behaviour (the fake binary, real tmux, the real CLI entry). Run \`bun run check\` and fix anything red, including biome formatting of files you created. The conductor will then run \`${WEEDER} check --strict\` on your diff and the tend2 verifier on every check of the page. Then stop, ending your final message with the dated Tried line.\n\n${RULES}`;
   }
   return `${head}\n\n## This phase: GREEN\nRun \`bun run check\` (typecheck + biome + unit, integration and e2e tests) and fix anything red — including biome formatting of your new files (\`bunx biome check --write <file>\` on files you created is fine). The conductor requires \`bun run check\` to exit 0 and will then run \`${WEEDER} check --strict\` on your diff (no deleted tests, no weakened assertions, no stubs/TODOs, no secrets, no files outside the work) and the tend2 verifier on your check. Then stop, ending your final message with the dated Tried line.\n\n${RULES}`;
 }
@@ -89,11 +95,13 @@ const plan = {
     worker: WORKER,
     work: {
       test: 'bun run check',
-      phases: [
-        { phase: 'red', prompt: prompt(c, 'red') },
-        { phase: 'impl', prompt: prompt(c, 'impl') },
-        { phase: 'green', prompt: prompt(c, 'green') },
-      ],
+      phases: c.proof
+        ? [{ phase: 'green', prompt: prompt(c, 'proof') }]
+        : [
+            { phase: 'red', prompt: prompt(c, 'red') },
+            { phase: 'impl', prompt: prompt(c, 'impl') },
+            { phase: 'green', prompt: prompt(c, 'green') },
+          ],
     },
     needs: c.needs,
     // A fresh worktree has no environment: dependencies are provisioned in setup, never in

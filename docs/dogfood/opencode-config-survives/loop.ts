@@ -58,6 +58,7 @@ const checks: Check[] = [
     evidence: 'test/e2e/opencode-config.test.ts',
     needs: ['oc.docs'],
     timeoutMs: 2_700_000,
+    proof: true,
     how: `Model on test/e2e/cli.test.ts: run the CLI entry (bun src/main.ts, or however cli.test.ts invokes it) with UMBEL_STATE, XDG_CONFIG_HOME under a tmp dir and UMBEL_CLAUDE_BIN=test/fixtures/fake-opencode.sh. (a) Seed the issue's exact Case A file (copy it from the issue text quoted in the loop page's narrative: provider ollama with a // comment inside), spawn --provider opencode --model ollama/some-model → exit 0; the file still contains the provider block and the comment line verbatim and the plugin entry. (b) A broken file → exit 1, stderr names the path and line:column, bytes identical. (c) --model nobody/nothing → exit 2, stderr names the model, umbel ls does not list the name. (d) --model opencode/big-pickle → exit 0 and the session exists. Kill every session in afterEach. This node is the sink of the loop: its audit verifies EVERY check on the page; if a sibling's check reads red here, fix it here and say so in Tried. ${GROUND}`,
   },
 ];
