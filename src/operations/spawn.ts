@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { resolveEnvRefs } from '../core/env.ts';
 import {
   AllowedToolsUnsupportedError,
+  ModelListUnavailableError,
+  OpencodeModelUnknownError,
   SessionNotCreatedError,
   UmbelUsageError,
   UnattendedUnsupportedError,
@@ -202,14 +204,6 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const { stopScriptPath, notifyScriptPath, statusLineScriptPath } =
     await d.hooks.ensureGlobalHooks(env);
 
-  // Install provider-specific global plugin (e.g. opencode-stop.ts), if declared.
-  if (provider.globalPlugin !== undefined) {
-    await d.hooks.installGlobalPlugin(provider.globalPlugin, env);
-  }
-
-  // Create session directory
-  await d.fs.ensureSessionDir(name, env);
-
   // codex needs an isolated CODEX_HOME — a project .codex/hooks.json is ignored
   // inside linked git worktrees, so the Stop hook is delivered via a global
   // <stateDir>/codex-home/hooks.json instead. Resolve the umbel state root and
@@ -234,31 +228,10 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     ...(opts.unattended !== undefined ? { unattended: opts.unattended } : {}),
   });
 
-  // Write any provider-required files before tmux launch. If a later write
-  // fails mid-list, unlink the ones already written so we don't leak partial
-  // provider config into the user's cwd.
-  const providerFilePaths: string[] = [];
-  try {
-    for (const f of launchSpec.files) {
-      await materializeFile(f);
-      // Shared infra (a provider's CODEX_HOME) is set up idempotently and reused
-      // across workers — never tracked for per-session cleanup.
-      if (f.shared !== true) providerFilePaths.push(f.path);
-    }
-  } catch (err) {
-    for (const written of providerFilePaths) {
-      await unlink(written).catch(() => undefined);
-    }
-    await d.fs.rmSession(name, env).catch(() => undefined);
-    throw err;
-  }
-
   // claudeBin overrides the provider's default bin (used by tests to inject
   // fake-claude.sh). When not provided, use the provider's bin.
   const bin = opts.claudeBin ?? launchSpec.bin;
   const cmd: string[] = [bin, ...launchSpec.args];
-
-  const sinceMs = Date.now();
 
   // Build env for the tmux session. The worker runs with the user's
   // environment by default — it should behave like running the CLI yourself,
@@ -298,6 +271,55 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // (claude drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is
   // set — it would otherwise wedge the worker on the "use this key?" prompt).
   const workerEnvFinal = provider.reconcileEnv?.(tmuxEnv) ?? tmuxEnv;
+
+  // Refuse a model the binary does not list before anything is created: the
+  // probe runs the launch's binary with the launch's env and cwd, so it sees
+  // the same provider config the worker would.
+  if (opts.model !== undefined && provider.listModels !== undefined) {
+    let out: string;
+    try {
+      out = await d.exec.run(provider.listModels(bin), { cwd: opts.cwd, env: workerEnvFinal });
+    } catch (err) {
+      throw new ModelListUnavailableError(
+        opts.model,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    const listed = out
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (!listed.includes(opts.model)) throw new OpencodeModelUnknownError(opts.model, listed);
+  }
+
+  // Install provider-specific global plugin (e.g. opencode-stop.ts), if declared.
+  if (provider.globalPlugin !== undefined) {
+    await d.hooks.installGlobalPlugin(provider.globalPlugin, env);
+  }
+
+  // Create session directory
+  await d.fs.ensureSessionDir(name, env);
+
+  // Write any provider-required files before tmux launch. If a later write
+  // fails mid-list, unlink the ones already written so we don't leak partial
+  // provider config into the user's cwd.
+  const providerFilePaths: string[] = [];
+  try {
+    for (const f of launchSpec.files) {
+      await materializeFile(f);
+      // Shared infra (a provider's CODEX_HOME) is set up idempotently and reused
+      // across workers — never tracked for per-session cleanup.
+      if (f.shared !== true) providerFilePaths.push(f.path);
+    }
+  } catch (err) {
+    for (const written of providerFilePaths) {
+      await unlink(written).catch(() => undefined);
+    }
+    await d.fs.rmSession(name, env).catch(() => undefined);
+    throw err;
+  }
+
+  const sinceMs = Date.now();
 
   // Every post-creation failure unwinds the same way: drop the session, then
   // the provider files written above so a failed spawn doesn't leak
