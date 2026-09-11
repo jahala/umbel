@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>opencode-config-survives · umbel</title>
+<link rel="stylesheet" href="./loop.css">
+<body>
+<noscript>This page renders its markdown payload with JavaScript — enable JS, or read the raw payload in the page source.</noscript>
+<script type="text/markdown" id="loop">
+# The user's opencode config survives a spawn
+
+**Goal.** A spawn with the opencode provider reads the user's `opencode.jsonc` as what its name says — JSONC, with comments and trailing commas — and edits it in place, preserving every byte it does not own. A file that does not parse refuses the spawn, naming the file, line and column, and is left byte-identical. A file that already carries the plugin entry is not written at all. A `--model` that opencode does not list refuses the spawn before a worker exists, so a request for a free local model can never silently become a paid remote one.
+
+jahala/umbel#53. Today `installGlobalPlugin` parses the file with `JSON.parse` inside a try; a single `//` comment takes the catch branch, the config becomes `{}`, and the file is rewritten with nothing but `$schema` and `plugin`. Provider blocks, model definitions and every other setting are gone without an error, a warning or a backup. The worker then binds to whatever provider opencode falls back to, with whatever credential the inherited environment carries.
+
+## How
+
+JSONC in, the same JSONC out. `mergeOpencodePluginConfig` parses with `jsonc-parser` (Microsoft's JSONC implementation, the one VS Code uses; a new dependency, listed in CLAUDE.md's Stack line) and inserts the plugin path with `modify` + `applyEdits`, so comments, key order and formatting survive and the Case B reformatting churn goes away. A file that already lists the path is returned as-is and not written. A file with a syntax error is reported as unparsable with its line and column; the pure function never replaces it.
+
+Refusal is a typed error. `OpencodeConfigUnparsableError` (file, line, column, reason) in `src/core/errors.ts` is thrown by the adapter and mapped to exit 1 at the face; the spawn stops before tmux is touched. `OpencodeModelUnknownError` (model, the listed ids) is thrown by `spawn` after consulting `opencode models` — one `provider/model` id per line, about half a second on the real binary — and mapped to exit 2 like an unknown provider. The probe runs the same binary the launch will use (the `claudeBin` override, which the CLI takes from `UMBEL_CLAUDE_BIN` for every provider), so the fake binary answers it in tests.
+
+The fake grows the `models` verb. `test/fixtures/fake-opencode.sh models` prints a fixed list, so integration and e2e tests exercise the check without the real binary; the smoke suite is not touched.
+
+## Tests
+- [ ] (code) `mergeOpencodePluginConfig` reads `opencode.jsonc` as JSONC — `//` and `/* */` comments and trailing commas — and returns the file with the plugin path inserted and every other byte, comment and blank line preserved; a file that already lists the path comes back unchanged; a file that does not parse is reported as unparsable with its line and column, never replaced · test/unit/opencode-install.test.ts
+- [ ] (code) `installGlobalPlugin` on an `opencode.jsonc` that does not parse throws `OpencodeConfigUnparsableError` naming the file, line and column, leaves the file byte-identical, and `spawn` with the opencode provider rejects with it before any tmux session exists · test/integration/opencode-config-refused.test.ts
+- [ ] (code) A second `spawn` with the opencode provider leaves `opencode.jsonc` byte-identical and does not write it at all (its mtime does not move); a first spawn on a commented config keeps every key and comment · test/integration/opencode-config-idempotent.test.ts
+- [ ] (code) `spawn` with the opencode provider and a model consults `opencode models` before launching; a model not listed rejects with `OpencodeModelUnknownError` naming the model and the ids that exist, with no session created; a listed model launches with `-m` · test/integration/opencode-model-check.test.ts
+- [ ] (code) docs/cli-reference.md and `umbel help providers` (src/faces/mcp-help.ts) state the contract — `opencode.jsonc` is read as JSONC and edited in place preserving comments, an unparsable file refuses the spawn with exit 1, an unlisted model refuses the spawn with exit 2 — and CLAUDE.md's Stack line lists `jsonc-parser` · test/unit/opencode-config-doc.test.ts
+- [ ] (code) Through the CLI with the fake opencode binary: the reproduction from jahala/umbel#53 — a commented config with a provider block — survives `umbel spawn --provider opencode` with every key and comment intact; a broken config exits 1 naming the file, line and column and leaves the file byte-identical; an unlisted model exits 2 with no session; a listed one spawns · test/e2e/opencode-config.test.ts
+
+## For
+#umbel
+
+## Tried
+- 2026-09-11 shaped from jahala/umbel#53 as the first loop of the umbrella's tier-one order; the issue's five suggested fixes become six checks (parse and preserve, refuse, idempotence, model check, docs, e2e); its sixth (document the hazard) is the docs check. Decided: `jsonc-parser` as a dependency rather than a hand-rolled JSONC editor — the issue's own suggestion, pure JS, and the only way to preserve comments on write without inventing a parser. Decided: the model probe is a spawn-time `opencode models` call on the same binary the launch uses (half a second on the real binary), so a wrong model costs a probe, never a worker. Scoped out: the issue's side note that `umbel read` reports a live session dead before its first session id — its own issue.
+</script>
+<script src="./loop.js"></script>
