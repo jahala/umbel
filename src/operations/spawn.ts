@@ -40,6 +40,7 @@ export async function dismissStartupDialogs(
   name: string,
   dialogs: readonly StartupDialog[],
   readyMatch?: RegExp,
+  readySettleMs?: number,
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
   // Nothing to wait for: no dialogs to dismiss AND no ready signal to poll for.
@@ -49,6 +50,9 @@ export async function dismissStartupDialogs(
   // once", which is how a provider with no readyMatch knows it is done.
   const attempts = new Map<number, number>();
   const exhausted = new Set<number>();
+  // The ready pane and when it was first seen unchanged. Any change, a dialog,
+  // or losing readyMatch restarts the settle window.
+  let settling: { pane: string; since: number } | null = null;
 
   while (Date.now() < deadline) {
     let pane = '';
@@ -70,6 +74,7 @@ export async function dismissStartupDialogs(
         const n = (attempts.get(idx) ?? 0) + 1;
         attempts.set(idx, n);
         if (n >= MAX_DIALOG_ATTEMPTS) exhausted.add(idx);
+        settling = null;
         // Give the TUI a moment to render the next dialog (or the main UI)
         // before the next capture. A dismissed dialog stops matching, so the
         // next pass moves on by itself.
@@ -83,7 +88,15 @@ export async function dismissStartupDialogs(
       // Poll until the main UI renders. This doubles as a warm-up for
       // dialog-less providers (e.g. opencode) so the first send doesn't race
       // the TUI's boot and get dropped.
-      if (readyMatch.test(pane)) return;
+      if (!readyMatch.test(pane)) {
+        settling = null;
+      } else if (readySettleMs === undefined) {
+        return;
+      } else if (settling === null || settling.pane !== pane) {
+        settling = { pane, since: Date.now() };
+      } else if (Date.now() - settling.since >= readySettleMs) {
+        return;
+      }
     } else if (attempts.size >= dialogs.length) {
       // No ready signal to wait for; done once all known dialogs are dismissed.
       return;
@@ -347,13 +360,20 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     throw err;
   }
 
-  // Auto-dismiss startup dialogs only for REAL provider binaries. Test
-  // fixtures inject their bin via opts.claudeBin (fake-*.sh) and show no
-  // dialogs — for them we just give the fixture a brief warm-up instead.
-  if (opts.claudeBin === undefined && provider.startupDialogs !== undefined) {
-    await dismissStartupDialogs(d, name, provider.startupDialogs, provider.readyMatch, env).catch(
-      () => undefined,
-    );
+  // Fakes (opts.claudeBin) go through the same loop: each prints its provider's
+  // ready line, so the e2e path is the real startup path. A provider with no
+  // readyMatch (gemini) gives a fake nothing to print, and the loop would poll
+  // to its timeout, so its fake keeps the warm-up.
+  const fakeWithoutReadySignal = opts.claudeBin !== undefined && provider.readyMatch === undefined;
+  if (provider.startupDialogs !== undefined && !fakeWithoutReadySignal) {
+    await dismissStartupDialogs(
+      d,
+      name,
+      provider.startupDialogs,
+      provider.readyMatch,
+      provider.readySettleMs,
+      env,
+    ).catch(() => undefined);
   } else {
     await Bun.sleep(800);
   }

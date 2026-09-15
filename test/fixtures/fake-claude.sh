@@ -103,6 +103,9 @@ write_turn() {
   fire_hook
 }
 
+# The main-UI line claude's readyMatch waits for.
+echo "? for shortcuts (fake-claude ready)"
+
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF
 while IFS= read -r line || [[ -n "${line:-}" ]]; do
   [[ "${line:-}" == "/exit" ]] && exit 0

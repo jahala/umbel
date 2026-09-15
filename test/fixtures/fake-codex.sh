@@ -77,6 +77,9 @@ write_turn() {
   fire_hook
 }
 
+# The idle prompt line codex's readyMatch waits for.
+echo "› Ask Codex to do anything"
+
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF.
 while IFS= read -r line || [[ -n "${line:-}" ]]; do
   [[ "${line:-}" == "/exit" ]] && exit 0

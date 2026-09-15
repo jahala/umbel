@@ -217,7 +217,13 @@ const codexProvider: AgentProvider = {
     { match: /trust the contents of this directory/i, keys: ['Enter'] },
     { match: /hooks need review/i, keys: ['Down', 'Enter'] },
   ],
-  readyMatch: /OpenAI Codex|Implement \{|gpt-/i,
+  // The idle prompt line (0.154.0: "› Ask Codex to do anything"; older builds:
+  // "Implement {feature}"). The banner paints before the model has loaded and
+  // before a late trust dialog, so it is not a ready signal
+  // (test/fixtures/codex-0.154-startup.txt). The screen keeps re-rendering for
+  // seconds after, hence the settle window.
+  readyMatch: /› Ask Codex to do anything|Implement \{/,
+  readySettleMs: 1500,
 
   // Codex's TUI ignores a submitting Enter that lands immediately after the
   // pasted prompt — the text stays in the input box, unsent, and no turn runs.

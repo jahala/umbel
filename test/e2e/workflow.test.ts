@@ -247,7 +247,13 @@ steps:
     // timeout, step2's waitFor returns reason='timeout' → workflow marks
     // the run as failed and cleans up first-wave sessions.
     const failingClaude = join(tmpDir, 'fail-cleanup.sh');
-    await writeFile(failingClaude, '#!/usr/bin/env bash\nexec sleep 9999\n', { mode: 0o755 });
+    await writeFile(
+      failingClaude,
+      '#!/usr/bin/env bash\necho "? for shortcuts"\nexec sleep 9999\n',
+      {
+        mode: 0o755,
+      },
+    );
 
     const yaml = `
 workers:

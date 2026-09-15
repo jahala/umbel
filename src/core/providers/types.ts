@@ -179,6 +179,13 @@ export interface AgentProvider {
   // appear) instead of waiting out the full timeout.
   readonly readyMatch?: RegExp;
 
+  // Optional: milliseconds the pane must stay unchanged, with readyMatch
+  // holding and no dialog pending, before spawn declares the worker ready. For
+  // TUIs that keep building the screen after the ready line first paints
+  // (codex re-renders its banner and can show the trust dialog seconds later).
+  // Omit to return as soon as readyMatch holds.
+  readonly readySettleMs?: number;
+
   // Optional: milliseconds to wait between pasting the prompt text and sending
   // the submitting Enter. Codex's TUI drops an Enter that arrives too soon
   // after the paste (the prompt sits in the box unsent); a short delay lets it
