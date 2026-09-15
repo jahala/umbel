@@ -18,13 +18,14 @@ umbel --version                  Show version (0.0.1)
 | 0 | Success |
 | 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout, session not created, provider has no unattended mode) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
-| 123 | `wait` idle — no pane activity for `--idle-timeout` |
+| 122 | `wait` provider-error — a provider error on the pane, then stillness |
+| 123 | `wait` idle — pane, events directory and transcript tree all still for `--idle-timeout` |
 | 124 | `wait` timeout — hard deadline hit |
 | 125 | `wait` abandoned — the target worker died before completing its turn |
 | 126 | `wait` input — worker is blocked waiting for input (permission prompt / elicitation) |
 | 130 | SIGINT — operation aborted by the user |
 
-The mapping lives in `errorExitCode` (`src/faces/cli.ts`).
+The mapping lives in `errorExitCode` and, for `wait` reasons, `WAIT_EXIT_CODES` (`src/faces/cli.ts`).
 
 ---
 
@@ -138,7 +139,7 @@ Block until a session reaches a condition. Default: wait for the Stop hook to fi
 A `dead` result carries `paneSnapshot`: the last view of the pane from while the worker was still alive. A dying session takes its pane with it, so without this a crashed worker leaves nothing at all to read — which is exactly what makes a mid-run death expensive to diagnose. The snapshot is refreshed periodically during the wait, so it is at most a couple of seconds behind the moment of death.
 
 ```
-umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION]
+umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION] [--idle-timeout DURATION]
 ```
 
 **Positionals**
@@ -151,13 +152,13 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout and **exit 0 regardless of reason**. The JSON is the signal; non-zero exit codes are only emitted in non-JSON mode. `message` is included when `reason` is `input`. |
+| `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `message` is included for `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line). |
 | `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `umbel send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
 | `--pattern REGEX` | — | Required when `--until=pattern`. Regex matched against tmux pane output. |
 | `--timeout DURATION` | 30 minutes | Maximum wait time. Format: `5m`, `30s`, `1h`, `500ms`. Exit code 124 on expiry. |
-| `--idle-timeout DURATION` | off | Idle net: settle `idle` if the tmux pane shows no change for this long. Off by default (a worker may run a long silent tool call). |
+| `--idle-timeout DURATION` | off | Idle net: settle `idle` when nothing the worker touches has moved for this long. Stillness is measured across the pane, the events directory and the transcript tree (for claude, the subagent transcripts too), so a silent pane over a working subagent is not idle. The same poll reports `provider-error` (exit 122) when the pane's last lines match the provider's error pattern and then stay still for a short grace. Off by default (a worker may run a long silent tool call). |
 
 **Wait condition kinds**
 
@@ -171,15 +172,16 @@ The default timeout (30 minutes) is enforced even when `--timeout` is not specif
 
 `wait` reports *why* it ended so a supervisor can act instead of hanging when a worker needs attention:
 
-| Reason | Exit (non-JSON) | Meaning |
-|--------|-----------------|---------|
+| Reason | Exit | Meaning |
+|--------|------|---------|
 | stop | 0 | Turn completed — `umbel read` the result. |
 | input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
-| idle | 123 | No pane activity for `--idle-timeout`. Pane prints to stderr. |
+| provider-error | 122 | The pane shows a provider error (codex `unexpected status 404`, claude `API Error`) and then stays still. The matched line is the `message`; the pane prints to stderr. Fail or recast the attempt; waiting longer will not help. |
+| idle | 123 | Pane, events directory and transcript tree all still for `--idle-timeout`. The `message` names each source and how long it has been still, e.g. `idle 1.6s: pane still 1.6s · events still 1.9s · transcript still 1.8s · subagents none`; a source umbel could not locate reads `unresolved`. Pane prints to stderr. |
 | dead | 125 | Worker exited before finishing its turn. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |
 
-With `--json`, exit code is **always 0** — the `reason` field in the JSON object is the signal.
+With `--json` the exit code is the same; the JSON carries the `reason` and `message`.
 
 **Examples**
 
