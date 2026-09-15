@@ -52,3 +52,7 @@ reshaping was needed.
 | pl.confirm | c2 | 1 | 19m58s | — |
 | pl.not-submitted | c3 | 1 | 18m30s | — |
 | pl.e2e | c4 | 1 | 26m37s | — |
+- **CI refused the landing once, on a timing premise in an old test.** The workflow abort e2e aborted
+  100 ms in and assumed the fake had not answered; on the ubuntu runner the step had completed
+  first (umbel#88). Enforced with the fake's delay instead of the timer; the merge chain did what
+  it should — `&&` after the check watch, no merge on red.
