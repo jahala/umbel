@@ -194,7 +194,8 @@ async function executeStep(
       throw new Error(`Step '${workerName}' worker is blocked waiting for input${detail}`);
     }
     if (waitResult.reason === 'idle') {
-      throw new Error(`Step '${workerName}' worker is idle (no pane activity)`);
+      const detail = waitResult.message !== undefined ? `: ${waitResult.message}` : '';
+      throw new Error(`Step '${workerName}' worker is idle${detail}`);
     }
 
     // Capture outputs. Transcript is resolved lazily via resolveTranscriptContent

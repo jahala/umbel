@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { formatIdleMessage, type IdleSource, stillForMs } from '../core/idle.ts';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
@@ -38,7 +39,8 @@ export interface WaitResult {
   // When reason is 'input', the worker is awaiting the user. `inputReason` is the
   // classified sub-reason (permission = blocked on a tool prompt, idle = done +
   // idle, question = elicitation); `message` carries the prompt text — so the
-  // caller can branch without screen-scraping the pane.
+  // caller can branch without screen-scraping the pane. When reason is 'idle',
+  // `message` names each watched source and how long it has been still.
   inputReason?: NeedsInputReason;
   message?: string;
   // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
@@ -455,11 +457,12 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
     // idleTimeoutMs. Sources are the pane, the events dir (every hook fire lands
     // there) and the transcript tree, including a claude worker's subagent
     // transcripts — a subagent can work for minutes behind a silent pane. Any
-    // source moving resets the timer; an unresolvable source contributes nothing.
+    // source moving resets the timer; an unresolvable source contributes no time
+    // and the message names it unresolved.
     const idleMs = opts.idleTimeoutMs;
     if (idleMs !== undefined) {
-      let lastFingerprint: string | null = null;
-      let lastChangeAt = Date.now();
+      let lastPane: string | undefined;
+      let paneChangedAt = Date.now();
       let idlePolls = 0;
       let discoveredTranscript: string | undefined;
       const eventsDir = d.fs.eventsDir(name, env);
@@ -493,7 +496,12 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         return discoveredTranscript;
       };
 
-      const activityFingerprint = async (pane: string, poll: number): Promise<string> => {
+      // The pane has no timestamp, so its last change is when this wait first saw
+      // its current text. File sources carry their own: the newest mtime.
+      const onDisk = (mtime: number): IdleSource['lastChangeAt'] =>
+        mtime === 0 ? 'absent' : mtime;
+
+      const fileSources = async (poll: number): Promise<IdleSource[]> => {
         let meta: Session | undefined;
         try {
           meta = await d.fs.readMeta(name, env);
@@ -501,16 +509,24 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           meta = undefined;
         }
         const transcript = meta === undefined ? undefined : await resolveTranscript(meta, poll);
-        const subagents =
-          meta === undefined || transcript === undefined
-            ? undefined
-            : PROVIDERS[meta.provider]?.subagentTranscriptDir?.(transcript);
-        const mtimes = await Promise.all([
+        const subagentDir =
+          meta === undefined ? undefined : PROVIDERS[meta.provider]?.subagentTranscriptDir;
+        const [events, transcriptMtime, subagentsMtime] = await Promise.all([
           newestMtime(eventsDir),
           transcript === undefined ? 0 : newestMtime(transcript),
-          subagents === undefined ? 0 : newestMtime(subagents),
+          transcript === undefined || subagentDir === undefined
+            ? 0
+            : newestMtime(subagentDir(transcript)),
         ]);
-        return [pane, ...mtimes].join('\0');
+        const unresolvedOr = (mtime: number): IdleSource['lastChangeAt'] =>
+          transcript === undefined ? 'unresolved' : onDisk(mtime);
+        return [
+          { name: 'events', lastChangeAt: onDisk(events) },
+          { name: 'transcript', lastChangeAt: unresolvedOr(transcriptMtime) },
+          ...(subagentDir === undefined
+            ? []
+            : [{ name: 'subagents', lastChangeAt: unresolvedOr(subagentsMtime) }]),
+        ];
       };
 
       const idlePollMs = Math.max(250, Math.min(2000, Math.floor(idleMs / 4)));
@@ -523,17 +539,19 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           } catch {
             return;
           }
-          const fingerprint = await activityFingerprint(pane, idlePolls++);
+          const files = await fileSources(idlePolls++);
           if (settled) return;
-          if (fingerprint !== lastFingerprint) {
-            lastFingerprint = fingerprint;
-            lastChangeAt = Date.now();
-            return;
+          const now = Date.now();
+          if (pane !== lastPane) {
+            lastPane = pane;
+            paneChangedAt = now;
           }
-          if (Date.now() - lastChangeAt >= idleMs) {
+          const sources: IdleSource[] = [{ name: 'pane', lastChangeAt: paneChangedAt }, ...files];
+          if ((stillForMs(sources, now) ?? 0) >= idleMs) {
             settle({
               stopped: false,
               reason: 'idle',
+              message: formatIdleMessage(sources, now),
               ...(pane !== '' ? { paneSnapshot: pane } : {}),
             });
           }
