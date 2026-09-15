@@ -24,6 +24,21 @@ function describeSource(source: IdleSource, now: number): string {
   return `${source.name} still ${seconds(Math.max(0, now - source.lastChangeAt))}`;
 }
 
+const ERROR_SCAN_LINES = 15;
+
+// The newest of the pane's last non-empty lines matching a provider error
+// pattern, trimmed. Older output has scrolled past and no longer describes the
+// worker's state.
+export function matchProviderError(pane: string, patterns: readonly RegExp[]): string | undefined {
+  const lines = pane
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+    .slice(-ERROR_SCAN_LINES)
+    .reverse();
+  return lines.find((l) => patterns.some((p) => p.test(l)));
+}
+
 export function formatIdleMessage(sources: readonly IdleSource[], now: number): string {
   const idleFor = stillForMs(sources, now);
   const headline = idleFor === undefined ? 'idle' : `idle ${seconds(idleFor)}`;

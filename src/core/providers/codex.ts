@@ -191,6 +191,11 @@ const codexProvider: AgentProvider = {
 
   stopEventName: 'Stop',
 
+  // Seen on codex workers that then sat at their prompt with a live session
+  // (jahala/umbel#67): "unexpected status 404 Not Found: ..." on 2026-09-09 and
+  // "... does not exist or you do not have access to it" on 2026-09-10.
+  errorMatch: [/unexpected status \d{3}/i, /does not exist or you do not have access/i],
+
   // Codex's TUI shows up to THREE interactive gates on first launch in a
   // fresh cwd (verified against the real 0.133/0.135 binary). They appear in
   // this order, but each is matched independently against the live pane, so
