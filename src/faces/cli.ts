@@ -9,6 +9,7 @@ import {
   OpencodeConfigUnparsableError,
   OpencodeModelUnknownError,
   ProviderUnknownError,
+  SendNotSubmittedError,
   SessionDeadError,
   SessionNotCreatedError,
   SessionNotFoundError,
@@ -236,6 +237,7 @@ function errorExitCode(err: unknown): number {
   }
   if (
     err instanceof SessionDeadError ||
+    err instanceof SendNotSubmittedError ||
     err instanceof TmuxError ||
     err instanceof HookTimeoutError ||
     err instanceof JsonlMalformedError ||

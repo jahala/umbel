@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SessionDeadError } from '../core/errors.ts';
-import { isInputPending } from '../core/pending-input.ts';
+import { SendNotSubmittedError, SessionDeadError } from '../core/errors.ts';
+import { pendingInputLine } from '../core/pending-input.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -66,7 +66,8 @@ export async function send(opts: SendOpts): Promise<SendResult> {
 
 // ---------------------------------------------------------------------------
 // confirmSubmitted — the submitting Enter can be swallowed, leaving the prompt
-// in the input box and no turn running. Re-press Enter while it stays pending.
+// in the input box and no turn running. Re-press Enter while it stays pending;
+// once the bound is spent, fail rather than report a turn that never began.
 // ---------------------------------------------------------------------------
 
 const SUBMIT_POLL_MS = 300;
@@ -82,23 +83,27 @@ async function confirmSubmitted(
   env: Record<string, string | undefined>,
 ): Promise<void> {
   for (let extraEnters = 0; ; extraEnters++) {
-    if (!(await stillPendingAfterGrace(d, name, pendingInputMatch, env))) return;
-    if (extraEnters >= MAX_EXTRA_ENTERS) return;
+    const pending = await pendingAfterGrace(d, name, pendingInputMatch, env);
+    if (pending === undefined) return;
+    if (extraEnters >= MAX_EXTRA_ENTERS) {
+      throw new SendNotSubmittedError(name, pending.pane, 1 + extraEnters, pending.line);
+    }
     await d.tmux.sendKeys(name, ['Enter'], env);
   }
 }
 
-async function stillPendingAfterGrace(
+async function pendingAfterGrace(
   d: Pick<Deps, 'tmux'>,
   name: string,
   pendingInputMatch: RegExp,
   env: Record<string, string | undefined>,
-): Promise<boolean> {
+): Promise<{ pane: string; line: string } | undefined> {
   const deadline = Date.now() + SUBMIT_GRACE_MS;
   for (;;) {
     await Bun.sleep(SUBMIT_POLL_MS);
     const pane = await d.tmux.capturePane(name, 40, env);
-    if (!isInputPending(pane, pendingInputMatch)) return false;
-    if (Date.now() >= deadline) return true;
+    const line = pendingInputLine(pane, pendingInputMatch);
+    if (line === undefined) return undefined;
+    if (Date.now() >= deadline) return { pane, line };
   }
 }

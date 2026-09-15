@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { isInputPending } from '../../src/core/pending-input.ts';
+import { pendingInputLine } from '../../src/core/pending-input.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
 
 const match = CodexProvider.pendingInputMatch ?? /(?!)/;
 
-describe('isInputPending', () => {
-  test('codex placeholder in the input box, trailing blank rows below → pending', () => {
+describe('pendingInputLine', () => {
+  test('codex placeholder in the input box, trailing blank rows below → that line', () => {
     const pane = [
       '› Ask Codex to do anything',
       'go',
@@ -14,7 +14,7 @@ describe('isInputPending', () => {
       '',
       '',
     ].join('\n');
-    expect(isInputPending(pane, match)).toBe(true);
+    expect(pendingInputLine(pane, match)).toBe('› [Pasted Content 1125 chars]');
   });
 
   test('placeholder above a started turn is history → not pending', () => {
@@ -28,10 +28,10 @@ describe('isInputPending', () => {
       '› Ask Codex to do anything',
       '? for shortcuts',
     ].join('\n');
-    expect(isInputPending(pane, match)).toBe(false);
+    expect(pendingInputLine(pane, match)).toBeUndefined();
   });
 
   test('pane without the placeholder → not pending', () => {
-    expect(isInputPending('• Working\n', match)).toBe(false);
+    expect(pendingInputLine('• Working\n', match)).toBeUndefined();
   });
 });

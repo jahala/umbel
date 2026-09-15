@@ -3,11 +3,11 @@
 // placeholder further up is conversation history.
 const PENDING_SCAN_LINES = 6;
 
-export function isInputPending(pane: string, match: RegExp): boolean {
+export function pendingInputLine(pane: string, match: RegExp): string | undefined {
   return pane
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l !== '')
     .slice(-PENDING_SCAN_LINES)
-    .some((l) => match.test(l));
+    .find((l) => match.test(l));
 }
