@@ -63,6 +63,14 @@ async function tmux(
   return { stdout, stderr };
 }
 
+// tmux names the target it could not resolve, and the name depends on the
+// command: kill-session says session, list-panes says window even when asked
+// for a session. A socket with no server behind it — or none at all, before the
+// first worker of a state root — reports connecting rather than finding. All of
+// them mean the same thing here: the worker is not there.
+const NO_TARGET_RE =
+  /can't find session|can't find window|no current session|session not found|no server running|error connecting to/i;
+
 // ---------------------------------------------------------------------------
 // Exported types
 // ---------------------------------------------------------------------------
@@ -89,8 +97,33 @@ export async function newSession(
       envArgs.push('-e', `${k}=${v}`);
     }
   }
+  // remain-on-exit keeps the pane after the worker's process exits, so its last
+  // screen and its exit status survive the death (jahala/umbel#73).
+  //
+  // Set in the SAME tmux invocation as new-session, and BEFORE it: a second
+  // invocation loses the race against a worker that dies at once — the pane is
+  // reaped, and with it the session, before the option lands. Ahead of the
+  // command rather than chained after it because a `;` argument is what
+  // separates tmux commands, so a worker whose argv contained one would have
+  // the rest of it parsed as tmux commands. Server-global, which on umbel's
+  // private socket means every worker and nothing else.
   await tmux(
-    ['new-session', '-d', '-s', target, '-c', opts.cwd, ...envArgs, '--', ...opts.cmd],
+    [
+      'set-option',
+      '-g',
+      'remain-on-exit',
+      'on',
+      ';',
+      'new-session',
+      '-d',
+      '-s',
+      target,
+      '-c',
+      opts.cwd,
+      ...envArgs,
+      '--',
+      ...opts.cmd,
+    ],
     env,
   );
 }
@@ -113,10 +146,59 @@ export async function hasSession(
 }
 
 // ---------------------------------------------------------------------------
+// paneState — liveness, from the worker's pane rather than its session
+// ---------------------------------------------------------------------------
+//
+// With remain-on-exit the session outlives the worker, so `has-session` reports
+// a corpse as alive. The pane knows better: `#{pane_dead}` is 1 once the process
+// has exited and `#{pane_dead_status}` holds the status it exited with. A pane
+// killed by a signal is dead with no status at all, so exitCode is optional.
+//
+// Read through list-panes, not display-message: display-message answers for an
+// unknown target with an empty string and exit 0 (tmux 3.6), which would report
+// a session that never existed as alive.
+
+export interface PaneState {
+  exists: boolean;
+  dead: boolean;
+  exitCode?: number;
+}
+
+export async function paneState(
+  name: string,
+  env: Record<string, string | undefined> = {},
+): Promise<PaneState> {
+  let stdout: string;
+  try {
+    const result = await tmux(
+      ['list-panes', '-s', '-t', prefixed(name), '-F', '#{pane_dead} #{pane_dead_status}'],
+      env,
+    );
+    stdout = result.stdout;
+  } catch (err) {
+    if (err instanceof TmuxError && NO_TARGET_RE.test(err.stderr)) {
+      return { exists: false, dead: false };
+    }
+    throw err;
+  }
+
+  // The worker is the session's first pane — `-s` lists every window's panes in
+  // order, where without it tmux answers for the CURRENT window only. A worker
+  // has tmux in its own environment and can open a window of its own; that
+  // window's live pane would otherwise report the dead worker as running.
+  const [deadFlag = '', status = ''] = (stdout.split('\n')[0] ?? '').split(' ');
+  const dead = deadFlag === '1';
+  const exitCode = Number.parseInt(status, 10);
+  return {
+    exists: true,
+    dead,
+    ...(dead && Number.isInteger(exitCode) ? { exitCode } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // killSession — idempotent (swallows "no such session" errors)
 // ---------------------------------------------------------------------------
-
-const NO_SESSION_RE = /can't find session|no current session|session not found|no server running/i;
 
 export async function killSession(
   name: string,
@@ -125,7 +207,7 @@ export async function killSession(
   try {
     await tmux(['kill-session', '-t', prefixed(name)], env);
   } catch (err) {
-    if (err instanceof TmuxError && NO_SESSION_RE.test(err.stderr)) return;
+    if (err instanceof TmuxError && NO_TARGET_RE.test(err.stderr)) return;
     throw err;
   }
 }

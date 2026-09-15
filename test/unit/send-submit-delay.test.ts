@@ -24,7 +24,8 @@ function makeDeps(provider: string, calls: SendTextCall[]) {
       eventsDir: () => '/tmp/nonexistent-events',
     },
     tmux: {
-      hasSession: async () => true,
+      // Liveness is read from the worker's pane, not its session.
+      paneState: async () => ({ exists: true, dead: false }),
       sendText: async (name: string, text: string, opts?: { submitDelayMs?: number }) => {
         calls.push({ name, text, ...(opts !== undefined ? { opts } : {}) });
       },

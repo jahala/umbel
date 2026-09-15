@@ -329,7 +329,7 @@ describe('spawn — session verification', () => {
     const voidTmux = {
       ...tmuxAdapter,
       newSession: async () => undefined,
-      hasSession: async () => false,
+      paneState: async () => ({ exists: false, dead: false }),
       killSession: async (_n: string) => {
         killCalled = true;
       },
