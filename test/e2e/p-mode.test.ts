@@ -195,7 +195,9 @@ describe('p-mode', () => {
     // the stop hook. waitFor must detect the vanished session and runP must
     // surface it as SessionDeadError — not hang until the (generous) timeout.
     const dyingClaude = join(tmpDir, 'dying-claude.sh');
-    await writeFile(dyingClaude, '#!/usr/bin/env bash\nsleep 3\nexit 1\n', { mode: 0o755 });
+    await writeFile(dyingClaude, '#!/usr/bin/env bash\necho "? for shortcuts"\nsleep 3\nexit 1\n', {
+      mode: 0o755,
+    });
 
     const opts = makeOpts(env, tmpDir, {
       prompt: 'will crash',
