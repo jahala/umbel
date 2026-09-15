@@ -86,6 +86,12 @@ write_turn() {
 echo "› Ask Codex to do anything"
 
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF.
+# codex reads its tty raw, so typed input and Enters are never echoed; keeping the
+# echo would print a row per swallowed Enter below the placeholder.
+if [[ -n "$SWALLOW_ENTERS" ]]; then
+  stty -echo 2>/dev/null || true
+fi
+
 log_stdin() {
   [[ -n "$STDIN_LOG" ]] && printf '%s\n' "$1" >> "$STDIN_LOG"
   return 0
@@ -97,12 +103,14 @@ while IFS= read -r line || [[ -n "${line:-}" ]]; do
   if [[ -n "$SWALLOW_ENTERS" ]]; then
     # codex holds a paste as a placeholder in the input box until an Enter takes it;
     # once the turn starts the box is redrawn and the placeholder is gone.
+    # Redrawn in place (cursor up, erase to end): a screen clear would push the
+    # placeholder into tmux scrollback, where capture-pane still reads it.
     echo "› [Pasted Content ${#line} chars]"
     for ((i = 0; i < SWALLOW_ENTERS; i++)); do
       IFS= read -r enter || true
       log_stdin "${enter:-}"
     done
-    printf '\033[2J\033[H'
+    printf '\033[1A\033[J'
     echo "• Working"
   fi
   if [[ -n "$ERROR_LINE" ]]; then

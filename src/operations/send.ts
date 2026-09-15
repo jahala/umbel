@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SessionDeadError } from '../core/errors.ts';
+import { isInputPending } from '../core/pending-input.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -56,5 +57,48 @@ export async function send(opts: SendOpts): Promise<SendResult> {
     env,
   );
 
+  if (provider.pendingInputMatch !== undefined) {
+    await confirmSubmitted(d, opts.name, provider.pendingInputMatch, env);
+  }
+
   return { sinceMtime };
+}
+
+// ---------------------------------------------------------------------------
+// confirmSubmitted — the submitting Enter can be swallowed, leaving the prompt
+// in the input box and no turn running. Re-press Enter while it stays pending.
+// ---------------------------------------------------------------------------
+
+const SUBMIT_POLL_MS = 300;
+const SUBMIT_GRACE_MS = 1500;
+// Bounded: an Enter landing on an idle input line is harmless, but pressing
+// forever into a TUI that will never take the prompt is not.
+const MAX_EXTRA_ENTERS = 3;
+
+async function confirmSubmitted(
+  d: Pick<Deps, 'tmux'>,
+  name: string,
+  pendingInputMatch: RegExp,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  for (let extraEnters = 0; ; extraEnters++) {
+    if (!(await stillPendingAfterGrace(d, name, pendingInputMatch, env))) return;
+    if (extraEnters >= MAX_EXTRA_ENTERS) return;
+    await d.tmux.sendKeys(name, ['Enter'], env);
+  }
+}
+
+async function stillPendingAfterGrace(
+  d: Pick<Deps, 'tmux'>,
+  name: string,
+  pendingInputMatch: RegExp,
+  env: Record<string, string | undefined>,
+): Promise<boolean> {
+  const deadline = Date.now() + SUBMIT_GRACE_MS;
+  for (;;) {
+    await Bun.sleep(SUBMIT_POLL_MS);
+    const pane = await d.tmux.capturePane(name, 40, env);
+    if (!isInputPending(pane, pendingInputMatch)) return false;
+    if (Date.now() >= deadline) return true;
+  }
 }
