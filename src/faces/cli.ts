@@ -68,7 +68,8 @@ Exit codes:
   1    Generic error (session dead, tmux failure, JSONL malformed, hook timeout,
        session not created, provider has no unattended mode)
   2    Usage error (bad flags, missing required argument, unknown verb, unsupported option)
-  123  wait idle — no pane activity for --idle-timeout
+  122  wait provider-error — a provider error on the pane, then stillness
+  123  wait idle — pane, events and transcript still for --idle-timeout
   124  wait timeout — hard deadline hit
   125  wait dead — worker exited before finishing its turn
   126  wait input — worker is blocked waiting for input (permission / prompt)
@@ -514,49 +515,55 @@ async function verbWait(
 
   const result = await waitFor(waitOpts);
 
-  // JSON mode: emit a single JSON object on stdout and exit 0 regardless of
-  // reason — the JSON is the signal. No human-readable output on stderr.
+  // JSON mode: emit a single JSON object on stdout, no human-readable output on
+  // stderr. The exit code still carries the reason, so a caller can branch on
+  // either.
   if (jsonMode) {
     const payload: { reason: string; message?: string } = { reason: result.reason };
     if (result.message !== undefined && result.message.length > 0) {
       payload.message = result.message;
     }
     process.stdout.write(`${JSON.stringify(payload)}\n`);
-    return 0;
+    return WAIT_EXIT_CODES[result.reason];
   }
 
   if (result.reason === 'timeout') {
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
       process.stderr.write(`umbel: wait timed out. Last tmux pane:\n${result.paneSnapshot}\n`);
     }
-    return 124;
   }
   if (result.reason === 'dead') {
     process.stderr.write(
       `umbel: wait failed — session '${name}' died before completing its turn.\n`,
     );
-    return 125;
   }
-  if (result.reason === 'input') {
+  if (result.reason === 'input' || result.reason === 'idle' || result.reason === 'provider-error') {
     const hasMsg = result.message !== undefined && result.message.length > 0;
     const detail = hasMsg ? ` — ${result.message}` : '';
-    process.stderr.write(`umbel: session '${name}' is waiting for input${detail}\n`);
+    const state = {
+      input: 'is waiting for input',
+      idle: 'is idle',
+      'provider-error': 'hit a provider error',
+    }[result.reason];
+    process.stderr.write(`umbel: session '${name}' ${state}${detail}\n`);
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
       process.stderr.write(`${result.paneSnapshot}\n`);
     }
-    return 126;
   }
-  if (result.reason === 'idle') {
-    const detail = result.message !== undefined ? ` — ${result.message}` : '';
-    process.stderr.write(`umbel: session '${name}' is idle${detail}\n`);
-    if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
-      process.stderr.write(`${result.paneSnapshot}\n`);
-    }
-    return 123;
-  }
-  if (result.reason === 'aborted') return 130;
-  return 0;
+  return WAIT_EXIT_CODES[result.reason];
 }
+
+const WAIT_EXIT_CODES: Record<Awaited<ReturnType<typeof waitFor>>['reason'], number> = {
+  stop: 0,
+  file: 0,
+  pattern: 0,
+  'provider-error': 122,
+  idle: 123,
+  timeout: 124,
+  dead: 125,
+  input: 126,
+  aborted: 130,
+};
 
 // ---------------------------------------------------------------------------
 // status
