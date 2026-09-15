@@ -155,6 +155,12 @@ export interface AgentProvider {
   // file-based path (meta.jsonlPath / events/transcript-path).
   exportTranscript?(sessionId: string): readonly string[];
 
+  // Optional: the directory beside the transcript where this provider writes
+  // its subagents' transcripts. PURE. A subagent can work for minutes while the
+  // pane and the main transcript stay still, so wait's idle net counts writes
+  // here as activity. Omit for providers without subagent transcripts.
+  subagentTranscriptDir?(transcriptPath: string): string;
+
   // Optional: interactive startup dialogs this provider's TUI shows on first
   // launch in a fresh cwd (workspace-trust prompts, hook-review prompts).
   // spawn auto-dismisses them by watching the pane and sending each dialog's

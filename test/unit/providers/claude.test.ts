@@ -316,3 +316,11 @@ describe('getProvider', () => {
     expect((err as ProviderUnknownError).providerName).toBe('my-missing-provider');
   });
 });
+
+describe('ClaudeProvider.subagentTranscriptDir', () => {
+  test('is the <session>/subagents directory beside the transcript', () => {
+    expect(ClaudeProvider.subagentTranscriptDir?.('/p/-tmp/abc-123.jsonl')).toBe(
+      '/p/-tmp/abc-123/subagents',
+    );
+  });
+});

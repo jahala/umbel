@@ -1,7 +1,8 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
-import type { WaitCondition } from '../core/types.ts';
+import { PROVIDERS } from '../core/providers/registry.ts';
+import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
 import { applyDefaultTimeout, compile } from '../core/wait.ts';
@@ -22,10 +23,11 @@ export interface WaitOpts {
   signal?: AbortSignal;
   env?: Record<string, string | undefined>;
   defaultTimeoutMs?: number;
-  // Opt-in universal idle net: if the worker's tmux pane shows no change for
-  // this many ms, settle reason:'idle' + paneSnapshot. Catches a worker blocked
-  // on a prompt (or hung) on providers without a Notification hook. Off when
-  // undefined — a worker may legitimately run a long silent tool call.
+  // Opt-in universal idle net: if nothing the worker touches moves for this many
+  // ms — its tmux pane, its events dir, its transcript tree — settle
+  // reason:'idle' + paneSnapshot. Catches a worker blocked on a prompt (or hung)
+  // on providers without a Notification hook. Off when undefined — a worker may
+  // legitimately run a long silent tool call.
   idleTimeoutMs?: number;
   deps?: Partial<Deps>;
 }
@@ -83,6 +85,37 @@ function inspectReason(condition: WaitCondition, ctx: WaitContext): WaitResult['
 // most recent view is kept, and only a death ever reads it, so this trades a
 // couple of seconds of staleness against spawning a tmux process every poll.
 const ALIVE_PANE_CAPTURE_MS = 2000;
+
+// Transcript discovery scans a directory, so the idle net retries it only every
+// few polls while the hook has not yet told us where the transcript lives.
+const TRANSCRIPT_DISCOVERY_EVERY_POLLS = 4;
+
+// A file's mtime, or for a directory the newest mtime among it and its entries
+// (an append changes the file, not the directory). 0 when absent.
+async function newestMtime(path: string): Promise<number> {
+  let s: Awaited<ReturnType<typeof stat>>;
+  try {
+    s = await stat(path);
+  } catch {
+    return 0;
+  }
+  if (!s.isDirectory()) return s.mtimeMs;
+  let entries: string[];
+  try {
+    entries = await readdir(path);
+  } catch {
+    return s.mtimeMs;
+  }
+  const mtimes = await Promise.all(
+    entries.map((e) =>
+      stat(join(path, e)).then(
+        (es) => es.mtimeMs,
+        () => 0,
+      ),
+    ),
+  );
+  return Math.max(s.mtimeMs, ...mtimes);
+}
 
 export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
   const d = { ...defaultDeps, ...opts.deps };
@@ -418,13 +451,68 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
     }, 500);
     cleanupFns.push(() => clearInterval(livenessHandle));
 
-    // Idle net (opt-in): settle 'idle' when the pane shows no change for
-    // idleTimeoutMs. A static pane means the worker is blocked on a prompt or
-    // hung; a changing pane (output / spinner) keeps resetting the timer.
+    // Idle net (opt-in): settle 'idle' when no activity source has moved for
+    // idleTimeoutMs. Sources are the pane, the events dir (every hook fire lands
+    // there) and the transcript tree, including a claude worker's subagent
+    // transcripts — a subagent can work for minutes behind a silent pane. Any
+    // source moving resets the timer; an unresolvable source contributes nothing.
     const idleMs = opts.idleTimeoutMs;
     if (idleMs !== undefined) {
-      let lastPane: string | null = null;
+      let lastFingerprint: string | null = null;
       let lastChangeAt = Date.now();
+      let idlePolls = 0;
+      let discoveredTranscript: string | undefined;
+      const eventsDir = d.fs.eventsDir(name, env);
+
+      // Cheap sources first (meta, the hook-captured path); discovery only every
+      // few polls, and never for providers whose transcript is not a file.
+      const resolveTranscript = async (
+        meta: Session,
+        poll: number,
+      ): Promise<string | undefined> => {
+        if (meta.jsonlPath !== null && meta.jsonlPath !== '') return meta.jsonlPath;
+        try {
+          const hooked = (await readFile(join(eventsDir, 'transcript-path'), 'utf8')).trim();
+          if (hooked !== '') return hooked;
+        } catch {
+          // No hook has fired yet — fall through to discovery.
+        }
+        if (discoveredTranscript !== undefined) return discoveredTranscript;
+        if (poll % TRANSCRIPT_DISCOVERY_EVERY_POLLS !== 0) return undefined;
+        if (PROVIDERS[meta.provider]?.exportTranscript !== undefined) return undefined;
+        try {
+          discoveredTranscript = await d.jsonl.discoverSessionJsonl({
+            sessionName: name,
+            cwd: meta.cwd,
+            sinceMs: meta.createdAt,
+            timeoutMs: 0,
+          });
+        } catch {
+          // Not on disk yet — contributes nothing this poll.
+        }
+        return discoveredTranscript;
+      };
+
+      const activityFingerprint = async (pane: string, poll: number): Promise<string> => {
+        let meta: Session | undefined;
+        try {
+          meta = await d.fs.readMeta(name, env);
+        } catch {
+          meta = undefined;
+        }
+        const transcript = meta === undefined ? undefined : await resolveTranscript(meta, poll);
+        const subagents =
+          meta === undefined || transcript === undefined
+            ? undefined
+            : PROVIDERS[meta.provider]?.subagentTranscriptDir?.(transcript);
+        const mtimes = await Promise.all([
+          newestMtime(eventsDir),
+          transcript === undefined ? 0 : newestMtime(transcript),
+          subagents === undefined ? 0 : newestMtime(subagents),
+        ]);
+        return [pane, ...mtimes].join('\0');
+      };
+
       const idlePollMs = Math.max(250, Math.min(2000, Math.floor(idleMs / 4)));
       const idleHandle = setInterval(() => {
         void (async () => {
@@ -435,9 +523,10 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           } catch {
             return;
           }
+          const fingerprint = await activityFingerprint(pane, idlePolls++);
           if (settled) return;
-          if (pane !== lastPane) {
-            lastPane = pane;
+          if (fingerprint !== lastFingerprint) {
+            lastFingerprint = fingerprint;
             lastChangeAt = Date.now();
             return;
           }

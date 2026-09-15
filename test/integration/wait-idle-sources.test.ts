@@ -43,7 +43,8 @@ async function spawnFake(fakeEnv: Record<string, string>) {
     env: {
       ...env,
       ...fakeEnv,
-      FAKE_CLAUDE_JSONL_DIR: join(projectsDir, cwd.replace(/[^a-zA-Z0-9]/g, '-')),
+      // Discovery resolves the cwd like claude does (/tmp → /private/tmp on macOS).
+      FAKE_CLAUDE_JSONL_DIR: join(projectsDir, jsonlAdapter.encodeCwd(cwd)),
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
     },
     deps: { jsonl },
