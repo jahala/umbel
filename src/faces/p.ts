@@ -167,7 +167,7 @@ export async function runP(opts: PModeOpts): Promise<PModeResult> {
       throw new WorkerBlockedError(sessionName, waitResult.message ?? 'awaiting user input');
     }
     if (waitResult.reason === 'idle') {
-      throw new WorkerBlockedError(sessionName, 'idle — no pane activity');
+      throw new WorkerBlockedError(sessionName, waitResult.message ?? 'idle');
     }
 
     // Real claude doesn't write the transcript until first message arrives, so

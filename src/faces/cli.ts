@@ -547,7 +547,8 @@ async function verbWait(
     return 126;
   }
   if (result.reason === 'idle') {
-    process.stderr.write(`umbel: session '${name}' is idle — no pane activity.\n`);
+    const detail = result.message !== undefined ? ` — ${result.message}` : '';
+    process.stderr.write(`umbel: session '${name}' is idle${detail}\n`);
     if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
       process.stderr.write(`${result.paneSnapshot}\n`);
     }
