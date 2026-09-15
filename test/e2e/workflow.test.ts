@@ -303,11 +303,17 @@ steps:
     await writeFile(yamlFile, yaml, 'utf8');
 
     const ac = new AbortController();
-    // Abort after a very short time (before fake-claude responds)
+    // Abort after a very short time. The premise — the abort lands while the
+    // step is still waiting — is enforced by the fake's delay, not by the
+    // timer: spawn's latency varies by machine (the fakes go through the real
+    // startup path since #77), and on a fast runner the fake had answered and
+    // the wait had settled `stop` before the 100 ms timer fired.
     setTimeout(() => ac.abort(), 100);
 
+    const base = makeWorkflowOpts(env, yamlFile);
     const opts = {
-      ...makeWorkflowOpts(env, yamlFile),
+      ...base,
+      env: { ...base.env, FAKE_CLAUDE_DELAY: '3000' },
       signal: ac.signal,
       deps: {
         ...makeWorkflowOpts(env, yamlFile).deps,
