@@ -1,3 +1,4 @@
+import { basename, dirname, join } from 'node:path';
 import { buildSettingsJson } from '../../adapters/hooks.ts';
 import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './types.ts';
 
@@ -345,6 +346,12 @@ const claudeProvider: AgentProvider = {
 
   extractTurns(content: string): Turn[] {
     return extractTurnsFromContent(content);
+  },
+
+  // <dir>/<session>.jsonl keeps its subagents at <dir>/<session>/subagents/
+  // (verified on disk, Claude Code 2.1.x).
+  subagentTranscriptDir(transcriptPath: string): string {
+    return join(dirname(transcriptPath), basename(transcriptPath, '.jsonl'), 'subagents');
   },
 } as const;
 
