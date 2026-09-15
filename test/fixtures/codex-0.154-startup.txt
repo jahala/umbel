@@ -1,0 +1,100 @@
+# codex 0.154.0 starting under umbel spawn --provider codex --unattended, recorded 2026-09-11 (tmux capture-pane, trailing blanks stripped)
+
+## Recording 1 — captured 12 s after launch; the trust dialog arrived after the banner and stayed
+
+╭───────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)            │
+│                                       │
+│ model:     loading   /model to change │
+│ directory: loading                    │
+╰───────────────────────────────────────╯
+› Ask Codex to do anything
+  ? for shortcuts
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       loading   /model to change            │
+│ directory:   /private/tmp/umbel-codex-probe-HOJKN6 │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+› Ask Codex to do anything
+  ? for shortcuts
+> You are in /private/tmp/umbel-codex-probe-HOJKN6
+  Do you trust the contents of this directory? Working with untrusted contents
+  comes with higher risk of prompt injection. Trusting the directory allows
+  project-local config, hooks, and exec policies to load.
+› 1. Yes, continue
+  2. No, quit
+  Press enter to continue
+
+## Recording 2 — frames at 1 s, 3 s, 6 s, 10 s after spawn returned (1.1 s after launch); no dialog; the usage-limit line arrives at ~3 s
+
+spawn returned after 1.1s
+--- t=1s (2.1s since spawn call)
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       gpt-6-astra   /model to change        │
+│ directory:   /private/tmp/umbel-codex-probe-XUNDLH │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+--- t=3s (4.2s since spawn call)
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       gpt-6-astra   /model to change        │
+│ directory:   /private/tmp/umbel-codex-probe-XUNDLH │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+• You have 3 usage limit resets available. Run /usage to use one.
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+--- t=6s (7.2s since spawn call)
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       gpt-6-astra   /model to change        │
+│ directory:   /private/tmp/umbel-codex-probe-XUNDLH │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+• You have 3 usage limit resets available. Run /usage to use one.
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+--- t=10s (11.3s since spawn call)
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       gpt-6-astra   /model to change        │
+│ directory:   /private/tmp/umbel-codex-probe-XUNDLH │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+• You have 3 usage limit resets available. Run /usage to use one.
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+--- send Enter (empty prompt)
+--- after Enter
+╰────────────────────────────────────────────────────╯
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                         │
+│                                                    │
+│ model:       gpt-6-astra   /model to change        │
+│ directory:   /private/tmp/umbel-codex-probe-XUNDLH │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+• You have 3 usage limit resets available. Run /usage to use one.
+› Ask Codex to do anything
+  gpt-6-astra default · /private/tmp/umbel-codex-probe-XUNDLH

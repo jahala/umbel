@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>prompt-lands · umbel</title>
+<link rel="stylesheet" href="./loop.css">
+<body>
+<noscript>This page renders its markdown payload with JavaScript — enable JS, or read the raw payload in the page source.</noscript>
+<script type="text/markdown" id="loop">
+# The prompt lands, or the send fails
+
+**Goal.** A worker is ready when its input line is idle and nothing is still arriving, and a prompt is sent when the worker has taken it. `spawn` declares codex ready only once the idle prompt line is on the pane, no startup dialog is pending and the pane has settled; dialogs that appear late are still dismissed. `send` confirms the turn started — while the pasted prompt still sits in the input box after the submitting Enter, Enter is sent again, a bounded number of times — and fails with a typed error carrying the pane when it never lands, so no conductor waits thirty minutes on a turn that never began.
+
+jahala/umbel#77. On 2026-09-10 a codex 0.154.0 auditor under pleach received its prompt as a paste and never ran it: ten minutes later the pane still showed `› [Pasted Content 1125 chars]`, no turn, no stop hook. Recorded through umbel on 2026-09-11 (`.loop-scratch` captures, to become the fixture): `spawn` returns 1.1 s after launch, on the first banner frame with `model: loading`; the banner re-renders twice more over the next three seconds, the usage-limit line (`You have 3 usage limit resets available`) arrives two seconds in, and on one launch the workspace-trust dialog (`Do you trust the contents of this directory? › 1. Yes, continue`) appeared after the banner — after `readyMatch` had fired and the dialog loop had returned — and stayed on the pane. A prompt pasted into that window is typed onto a screen that is still being built.
+
+## How
+
+Ready means idle and settled. codex's `readyMatch` becomes the idle prompt line (`› Ask Codex to do anything`, or the older `Implement {`), and the provider declares `readySettleMs` (codex: 1500). `dismissStartupDialogs` returns only when `readyMatch` holds, no dialog is pending, and the pane has not changed for the settle window — dismissing any dialog that appears meanwhile. The recorded 0.154.0 frames are a fixture the unit test replays through the tmux dependency. The fakes print their provider's ready line at start, and the dialog loop runs for fakes too, so the e2e path is the real startup path.
+
+Send confirms. After the submitting Enter, `send` re-reads the pane; while the provider's `pendingInputMatch` (codex: `[Pasted Content N chars]`) still matches after a short grace, it sends Enter again, at most three times. If the prompt is still pending after the bound, `send` throws `SendNotSubmittedError` (session, pane snapshot), mapped to exit 1 with the pending input line in the message; nothing further is typed. Providers that declare no `pendingInputMatch` are unchanged.
+
+The fake grows the race. `fake-codex.sh` takes `FAKE_CODEX_SWALLOW_ENTERS=N` (print `› [Pasted Content N chars]` and require N further Enters before the turn runs) and `FAKE_CODEX_STARTUP=0154` (render the recorded sequence: banner, the usage line a second later, the trust dialog a second after that, idle prompt on Enter).
+
+## Tests
+- [ ] (code) `dismissStartupDialogs` declares codex ready only when the idle prompt line is on the pane, no startup dialog is pending and the pane has been unchanged for `readySettleMs`; replaying the recorded 0.154.0 frames (banner with `model: loading`, re-renders, the usage-limit line, the late trust dialog) it dismisses the dialog with Enter and returns only after the final frame settles · test/unit/codex-ready.test.ts
+- [ ] (code) After the submitting Enter, `send` confirms the turn started: while the provider's `pendingInputMatch` still matches the pane after a short grace, Enter is sent again, at most three times; a fake codex that swallows the first Enter still runs its turn and `send` returns normally · test/integration/send-confirm-submit.test.ts
+- [ ] (code) When the pasted prompt is still pending after the bound, `send` throws `SendNotSubmittedError` naming the session and carrying the pane snapshot, mapped to exit 1 with the pending input line in the message; nothing further is typed into the worker · test/integration/send-not-submitted.test.ts
+- [ ] (code) Through the CLI with the fake codex: `spawn` against the recorded 0.154.0 startup returns only after the trust dialog is dismissed and the prompt line has settled; `send` on a worker that swallows the first Enter exits 0 and `wait` reaches `stop`; on a worker that never takes the paste `send` exits 1 naming the pending input; docs/cli-reference.md's send section states the confirmation and its failure · test/e2e/send-confirm.test.ts
+
+## For
+#umbel
+
+## Tried
+- 2026-09-11 shaped from jahala/umbel#77 as the third loop of the tier-one order, after recording codex 0.154.0's startup through umbel twice: readiness fires on the first banner frame, the screen keeps building for three seconds, and the trust dialog can arrive after the loop has returned. Decided: readiness is idle-and-settled rather than a longer `submitDelayMs` — a delay guesses, a settled pane knows. Decided: the fakes print their ready line and go through the real dialog loop, so the e2e path stops bypassing startup. Scoped out: reading codex's provider errors from its log (0.154.0 moved it to sqlite journals; the pane carries them, see the wedged-worker loop) and a non-TUI `codex exec -` door.
+</script>
+<script src="./loop.js"></script>
