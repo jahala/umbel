@@ -8,12 +8,17 @@
 #   FAKE_CODEX_ERROR       optional, print this line to the pane on a prompt, then hang
 #                          forever: no turn, no hook (a provider error at its prompt)
 #   FAKE_CODEX_ERROR_THEN_CONTINUE optional, 1 = after the error line sleep 1 s and run the turn
+#   FAKE_CODEX_SWALLOW_ENTERS optional, N = on a prompt print codex's pasted-input placeholder
+#                          and swallow N further Enters (empty stdin lines) before the turn starts
+#   FAKE_CODEX_STDIN_LOG   optional, append every stdin line read here (one line per read)
 
 set -euo pipefail
 
 DELAY="${FAKE_CODEX_DELAY:-0}"
 ERROR_LINE="${FAKE_CODEX_ERROR:-}"
 ERROR_THEN_CONTINUE="${FAKE_CODEX_ERROR_THEN_CONTINUE:-0}"
+SWALLOW_ENTERS="${FAKE_CODEX_SWALLOW_ENTERS:-}"
+STDIN_LOG="${FAKE_CODEX_STDIN_LOG:-}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-codex-session}"
 
 if [[ -n "${FAKE_CODEX_JSONL_DIR:-}" ]]; then
@@ -81,8 +86,25 @@ write_turn() {
 echo "› Ask Codex to do anything"
 
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF.
+log_stdin() {
+  [[ -n "$STDIN_LOG" ]] && printf '%s\n' "$1" >> "$STDIN_LOG"
+  return 0
+}
+
 while IFS= read -r line || [[ -n "${line:-}" ]]; do
+  log_stdin "${line:-}"
   [[ "${line:-}" == "/exit" ]] && exit 0
+  if [[ -n "$SWALLOW_ENTERS" ]]; then
+    # codex holds a paste as a placeholder in the input box until an Enter takes it;
+    # once the turn starts the box is redrawn and the placeholder is gone.
+    echo "› [Pasted Content ${#line} chars]"
+    for ((i = 0; i < SWALLOW_ENTERS; i++)); do
+      IFS= read -r enter || true
+      log_stdin "${enter:-}"
+    done
+    printf '\033[2J\033[H'
+    echo "• Working"
+  fi
   if [[ -n "$ERROR_LINE" ]]; then
     echo "$ERROR_LINE"
     if [[ "$ERROR_THEN_CONTINUE" != "1" ]]; then
