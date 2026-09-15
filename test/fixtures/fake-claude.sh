@@ -10,8 +10,11 @@
 #                         one line every 300 ms to <transcript>/subagents/agent-fake.jsonl
 #   FAKE_CLAUDE_HANG_MS   optional, ms to hang mid-turn: nothing on the pane, nothing written
 #   FAKE_CLAUDE_PANE_MS   optional, ms to print a progress line to the pane every 500 ms
+#   FAKE_CLAUDE_ERROR     optional, print this line to the pane at the start of a turn
 
 set -euo pipefail
+
+ERROR_LINE="${FAKE_CLAUDE_ERROR:-}"
 
 DELAY="${FAKE_CLAUDE_DELAY:-0}"
 SUBAGENT_MS="${FAKE_CLAUDE_SUBAGENT_MS:-0}"
@@ -55,6 +58,8 @@ write_turn() {
   printf '{"type":"human","message":{"role":"user","content":[{"type":"text","text":%s}]},"uuid":"u-%s","timestamp":"%s"}\n' \
     "$(echo -n "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
     "$$" "$now" >> "$JSONL_FILE"
+
+  [[ -n "$ERROR_LINE" ]] && echo "$ERROR_LINE"
 
   # Real claude keeps a subagent's transcript beside the session's:
   # <dir>/<session>/subagents/agent-<id>.jsonl

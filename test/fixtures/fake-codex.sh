@@ -5,10 +5,15 @@
 #   FAKE_CODEX_DELAY       optional, ms to sleep before responding (default 0)
 #   FAKE_CODEX_JSONL_DIR   optional, write JSONL here instead of $CODEX_HOME/sessions/...
 #   FAKE_CODEX_HOOK        optional, exec this (stop.sh) when done
+#   FAKE_CODEX_ERROR       optional, print this line to the pane on a prompt, then hang
+#                          forever: no turn, no hook (a provider error at its prompt)
+#   FAKE_CODEX_ERROR_THEN_CONTINUE optional, 1 = after the error line sleep 1 s and run the turn
 
 set -euo pipefail
 
 DELAY="${FAKE_CODEX_DELAY:-0}"
+ERROR_LINE="${FAKE_CODEX_ERROR:-}"
+ERROR_THEN_CONTINUE="${FAKE_CODEX_ERROR_THEN_CONTINUE:-0}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-codex-session}"
 
 if [[ -n "${FAKE_CODEX_JSONL_DIR:-}" ]]; then
@@ -75,5 +80,12 @@ write_turn() {
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF.
 while IFS= read -r line || [[ -n "${line:-}" ]]; do
   [[ "${line:-}" == "/exit" ]] && exit 0
+  if [[ -n "$ERROR_LINE" ]]; then
+    echo "$ERROR_LINE"
+    if [[ "$ERROR_THEN_CONTINUE" != "1" ]]; then
+      while true; do sleep 3600; done
+    fi
+    sleep 1
+  fi
   write_turn "${line:-}"
 done
