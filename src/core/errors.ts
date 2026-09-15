@@ -190,3 +190,21 @@ export class ModelListUnavailableError extends Error {
     super(`Cannot check model ${model}: listing models failed. ${detail.trim()}`);
   }
 }
+
+// The worker kept the prompt in its input box through every Enter send is
+// allowed to press, so no turn began (jahala/umbel#77). The pane is carried so
+// the caller sees what the worker shows; the session is left alive.
+export class SendNotSubmittedError extends Error {
+  override name = 'SendNotSubmittedError';
+
+  constructor(
+    public sessionName: string,
+    public paneSnapshot: string,
+    public enters: number,
+    public pendingLine: string,
+  ) {
+    super(
+      `Prompt not submitted to ${sessionName}: input still pending (${pendingLine}) after ${enters} Enters.`,
+    );
+  }
+}
