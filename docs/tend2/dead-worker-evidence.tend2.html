@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dead-worker-evidence · umbel</title>
+<link rel="stylesheet" href="./loop.css">
+<body>
+<noscript>This page renders its markdown payload with JavaScript — enable JS, or read the raw payload in the page source.</noscript>
+<script type="text/markdown" id="loop">
+# A dead worker leaves its evidence
+
+**Goal.** A worker that dies leaves what a post-mortem needs, without anyone spawning another to watch. Its tmux pane outlives its process, so umbel reads the exact last screen and the exit status from the pane itself; `wait` settles `dead` with both and writes them into the session directory; `capture`, `logs`, `actions` and `read` keep answering for a dead session; `kill` leaves the directory as a tombstone unless told to purge, and `prune` sweeps tombstones. A conductor that kills on failure no longer erases the only record of why.
+
+jahala/umbel#73. On 2026-09-05 a worker died and `capture` said no server was running, `read` said the transcript path was unresolved, `logs` was empty; the only way to learn the cause was a second spawn watched by hand. On 2026-09-08 two codex workers were killed by another agent mid-`apply_patch`; pleach settled the node dead and terminated the sessions, and afterwards their `~/.umbel/sessions/<name>/` directories were gone, `logs` and `actions` had nothing and `ls` no longer listed them. #63 gave `wait` a periodic pane snapshot from while the worker was alive, at most a couple of seconds behind the death; the exit status, the exact final screen and anything after `kill` are still lost.
+
+## How
+
+The pane outlives the process. `newSession` sets `remain-on-exit` on the session, so when the worker's process exits the pane stays with `#{pane_dead}` set and `#{pane_dead_status}` holding the exit status. Liveness moves from `has-session` to a `paneState` read (`display-message -p '#{pane_dead} #{pane_dead_status}'`): `spawn`'s startup check, `wait`'s liveness probe and `status`'s `alive` all use it, so a session that exists with a dead pane is dead. The capture at death is exact, because the pane is still there to capture.
+
+Death is written down. When `wait` finds the pane dead it settles `dead` with `exitCode`, a `message` naming the exit status (the runner contract, `contracts/runner.md` on jahala/plotplot: no non-progress reason without what was observed; the reason and its exit code 125 are unchanged) and `paneSnapshot` from the dead pane and writes `events/dead` — `{at, exitCode, paneSnapshot}` — into the session directory; `status` and `ls` show `dead (exit N)`. `kill` captures the pane before tearing the session down and writes `events/dead` with `by: 'kill'`; the directory stays. `kill --purge` removes it, and `umbel prune [--older-than DURATION]` removes dead sessions' directories and their tmux remains, never a live session. `capture` answers from the pane while it remains and from `events/dead` once it is gone; `logs`, `actions` and `read` answer from the kept events and the transcript path when it was recorded.
+
+The fake grows a death. `fake-claude.sh` takes `FAKE_CLAUDE_DIE_MS` and `FAKE_CLAUDE_EXIT_CODE`: mid-turn it prints a last line, sleeps that long and exits with that status, so integration and e2e tests see a real death with a real pane.
+
+## Tests
+- [ ] (code) A worker's tmux pane outlives its process: `newSession` sets `remain-on-exit`, `paneState` reports `{dead: true, exitCode}` after the process exits while the session still exists, and `spawn`'s startup check and `wait`'s liveness probe read `paneState`, not `has-session` · test/integration/tmux-remain-on-exit.test.ts
+- [ ] (code) When the worker dies mid-turn, `wait` settles `dead` with `exitCode`, a `message` naming the exit status, and an exact `paneSnapshot` taken from the dead pane; writes `events/dead` ({at, exitCode, paneSnapshot}) into the session directory; and `status` and `ls` show `dead (exit N)` · test/integration/wait-dead-evidence.test.ts
+- [ ] (code) `kill` writes `events/dead` ({at, by: 'kill', paneSnapshot} captured before the session is torn down) and keeps the session directory; `kill --purge` removes it; for a dead session `capture` answers from the pane while it remains and from `events/dead` after, and `logs`, `actions` and `read` answer from the kept directory · test/integration/kill-tombstone.test.ts
+- [ ] (code) `umbel prune [--older-than DURATION]` removes dead sessions' directories and tmux remains and never touches a live session; docs/cli-reference.md states the lifecycle — the pane kept after death, `exitCode` on `dead`, the tombstone, `--purge`, `prune` · test/integration/prune.test.ts
+- [ ] (code) Through the CLI with a fake that exits 3 mid-turn: `wait --json` exits 125 with `{"reason":"dead","exitCode":3,"message":…,"paneSnapshot":…}`, `capture`, `logs` and `read` still answer, `kill` leaves the directory with `events/dead`, `kill --purge` removes it, and `prune` sweeps a killed session · test/e2e/dead-worker.test.ts
+
+## For
+#umbel
+
+## Tried
+- 2026-09-11 shaped from jahala/umbel#73 and its comment as the last loop of the tier-one order. Decided: `remain-on-exit` on the tmux session rather than a faster capture poll — the pane at the moment of death is exact and the exit status comes from tmux for free, and no poll can be exact. Decided: `kill` keeps the directory by default (a tombstone is small: meta, events, a capture) and `--purge` opts out, because the callers that kill on failure — pleach among them — are precisely the ones that need the record afterwards; `prune` is the sweep. Scoped out: keeping the provider's own log (codex's sqlite journals) — outside umbel's state.
+</script>
+<script src="./loop.js"></script>
