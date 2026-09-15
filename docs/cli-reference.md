@@ -56,6 +56,8 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 
 Exit 0 means the tmux session exists — `spawn` verifies it before returning, so a worker that never started (no tmux server bootable, e.g. detached under `nohup` with an unwritable socket dir) or that died during startup fails immediately with exit 1 rather than succeeding into the void and surfacing later as a `wait` timeout. Session, provider files, and state are cleaned up on that path.
 
+Before returning, `spawn` waits for the worker to be ready and dismisses the provider's startup dialogs (workspace trust, hook review, update notice) as they appear. Ready means the provider's idle prompt line is on the pane with no dialog pending. For providers that declare a settle window (codex: 1.5 s), the pane must also stay unchanged for that window, because codex keeps redrawing its banner and can raise the trust dialog seconds after the prompt line first appears. A dialog that arrives during the settle is still dismissed.
+
 `--provider` is only valid on `spawn` and `-p`. For `send`, `wait`, `read`, `kill`, `status`, `ls`, `attach`, `capture`, and `logs`, the provider is looked up automatically from `meta.json` — no `--provider` flag is accepted.
 
 **Examples**
@@ -112,6 +114,8 @@ umbel send [--json] <name> <prompt>
 | `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `umbel wait --since N` to make stop-detection race-free when send and wait run in separate processes. **`0` is a valid value, not a failure:** `events/stop` does not exist until a worker's first turn ends, so the first send to a fresh worker always reports 0, meaning "no turn has ended yet — any stop counts". A conductor that spawns a worker per node and sends one prompt will therefore see 0 every time, correctly. |
 
 Multi-line prompts are handled automatically via `tmux load-buffer` + `paste-buffer` (see `src/adapters/tmux.ts`).
+
+`send` returns once the worker has taken the prompt. After the submitting Enter it re-reads the pane. For a provider that shows pending input (codex: `[Pasted Content N chars]` in its input box), while that input is still pending after a short grace, `send` presses Enter again, at most three times. If the input is still pending after that, `send` exits 1 with a message naming the session and the pending input line, and types nothing more. The worker is left alive: inspect it with `umbel capture`, then retry or kill it.
 
 **Examples**
 
