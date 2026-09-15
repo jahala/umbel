@@ -192,6 +192,12 @@ export interface AgentProvider {
   // ingest the text first. Claude submits fine with no delay (omit → 0).
   readonly submitDelayMs?: number;
 
+  // Optional: matches the input box while a submitted prompt still sits in it
+  // unsent. send re-reads the pane after the submitting Enter and presses
+  // Enter again, a bounded number of times, while this still matches. Omit
+  // when the TUI takes the first Enter reliably.
+  readonly pendingInputMatch?: RegExp;
+
   // For providers without hook lifecycle (aider): anchor-string fallback.
   // Mutually exclusive with hook-based completion; the operations layer
   // checks this field to choose its wait strategy.

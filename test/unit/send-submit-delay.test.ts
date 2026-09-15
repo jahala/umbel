@@ -28,6 +28,8 @@ function makeDeps(provider: string, calls: SendTextCall[]) {
       sendText: async (name: string, text: string, opts?: { submitDelayMs?: number }) => {
         calls.push({ name, text, ...(opts !== undefined ? { opts } : {}) });
       },
+      // The prompt was taken: nothing pending, so send confirms and returns.
+      capturePane: async () => '• Working\n',
     },
   };
 }

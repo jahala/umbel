@@ -230,6 +230,9 @@ const codexProvider: AgentProvider = {
   // A pause before Enter lets it ingest the paste. 750ms verified sufficient
   // against the real binary (an immediate Enter consistently failed).
   submitDelayMs: 750,
+  // Even with the delay, 0.154.0 can keep a paste as this placeholder and never
+  // run it (jahala/umbel#77); send presses Enter again while it is on the pane.
+  pendingInputMatch: /\[Pasted Content \d+ chars\]/,
 
   buildLaunch(opts): ProviderLaunchSpec {
     // Hook delivery via a global $CODEX_HOME/hooks.json — NOT <cwd>/.codex/hooks.json,
