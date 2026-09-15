@@ -281,6 +281,10 @@ const claudeProvider: AgentProvider = {
 
   stopEventName: 'Stop',
 
+  // Claude Code prints "API Error: <status> ..." when a request fails
+  // (jahala/umbel#67); it retries on its own, so only a still pane settles.
+  errorMatch: [/API Error/],
+
   // Matched on the HIGHLIGHTED line (❯) rather than the dialog's prose, because
   // the right keys depend on where the cursor actually sits. Claude Code 2.1.261
   // defaults the trust prompt to "No, exit", and a bare Enter there exits the

@@ -1,6 +1,11 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { formatIdleMessage, type IdleSource, stillForMs } from '../core/idle.ts';
+import {
+  formatIdleMessage,
+  type IdleSource,
+  matchProviderError,
+  stillForMs,
+} from '../core/idle.ts';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
@@ -35,12 +40,22 @@ export interface WaitOpts {
 
 export interface WaitResult {
   stopped: boolean;
-  reason: 'stop' | 'file' | 'pattern' | 'timeout' | 'aborted' | 'dead' | 'input' | 'idle';
+  reason:
+    | 'stop'
+    | 'file'
+    | 'pattern'
+    | 'timeout'
+    | 'aborted'
+    | 'dead'
+    | 'input'
+    | 'idle'
+    | 'provider-error';
   // When reason is 'input', the worker is awaiting the user. `inputReason` is the
   // classified sub-reason (permission = blocked on a tool prompt, idle = done +
   // idle, question = elicitation); `message` carries the prompt text — so the
   // caller can branch without screen-scraping the pane. When reason is 'idle',
-  // `message` names each watched source and how long it has been still.
+  // `message` names each watched source and how long it has been still; when
+  // 'provider-error', it is the pane line matching the provider's errorMatch.
   inputReason?: NeedsInputReason;
   message?: string;
   // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
@@ -530,6 +545,10 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       };
 
       const idlePollMs = Math.max(250, Math.min(2000, Math.floor(idleMs / 4)));
+      // A provider error settles once the pane has held still this long: long
+      // enough to tell a dead end from a retry printing on, far below idleMs.
+      const errorGraceMs = Math.min(idleMs, Math.max(2 * idlePollMs, 3000));
+      let errorMatch: readonly RegExp[] | undefined;
       const idleHandle = setInterval(() => {
         void (async () => {
           if (settled) return;
@@ -545,6 +564,24 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           if (pane !== lastPane) {
             lastPane = pane;
             paneChangedAt = now;
+          }
+          if (errorMatch === undefined) {
+            try {
+              errorMatch = PROVIDERS[(await d.fs.readMeta(name, env)).provider]?.errorMatch ?? [];
+            } catch {
+              // Meta unreadable this poll — try again next poll.
+            }
+            if (settled) return;
+          }
+          const errorLine = matchProviderError(pane, errorMatch ?? []);
+          if (errorLine !== undefined && now - paneChangedAt >= errorGraceMs) {
+            settle({
+              stopped: false,
+              reason: 'provider-error',
+              message: errorLine,
+              paneSnapshot: pane,
+            });
+            return;
           }
           const sources: IdleSource[] = [{ name: 'pane', lastChangeAt: paneChangedAt }, ...files];
           if ((stillForMs(sources, now) ?? 0) >= idleMs) {

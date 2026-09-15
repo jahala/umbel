@@ -161,6 +161,12 @@ export interface AgentProvider {
   // here as activity. Omit for providers without subagent transcripts.
   subagentTranscriptDir?(transcriptPath: string): string;
 
+  // Optional: pane lines that mean the provider failed the turn and is sitting
+  // at its prompt (a 404 model, an overloaded API). wait's idle net settles
+  // 'provider-error' when one shows in the pane's last lines and the pane then
+  // stays still; further output is a retry in progress. Omit when unknown.
+  readonly errorMatch?: readonly RegExp[];
+
   // Optional: interactive startup dialogs this provider's TUI shows on first
   // launch in a fresh cwd (workspace-trust prompts, hook-review prompts).
   // spawn auto-dismisses them by watching the pane and sending each dialog's
