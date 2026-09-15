@@ -54,14 +54,16 @@ async function enrich(
   env: Record<string, string | undefined>,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
-  const [alive, logMtime, notifMtime, stopMtime] = await Promise.all([
-    d.tmux.hasSession(session.name, env),
+  const [pane, logMtime, notifMtime, stopMtime] = await Promise.all([
+    d.tmux.paneState(session.name, env),
     fileMtime(join(eventsDir, 'log')),
     fileMtime(join(eventsDir, 'notification')),
     fileMtime(join(eventsDir, 'stop')),
   ]);
 
-  const entry: StatusEntry = { ...session, alive, needsInput: false };
+  // Alive is the pane, not the session: remain-on-exit keeps a dead worker's
+  // session standing, and has-session would call that running.
+  const entry: StatusEntry = { ...session, alive: pane.exists && !pane.dead, needsInput: false };
   if (logMtime > 0) {
     entry.lastActivityAt = logMtime;
   }

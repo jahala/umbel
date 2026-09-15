@@ -129,12 +129,28 @@ export class UnattendedUnsupportedError extends Error {
 export class SessionNotCreatedError extends Error {
   override name = 'SessionNotCreatedError';
 
-  constructor(public sessionName: string) {
+  // The status the worker exited with, when it started and then died during
+  // startup and tmux recorded one. Absent when it was killed by a signal, and
+  // when no session came up at all.
+  readonly exitCode: number | undefined;
+
+  // `died` distinguishes the two ways a spawn comes back empty-handed: the
+  // worker's pane exists and is dead (it ran and exited — its status is the
+  // diagnosis), or there is no session at all.
+  constructor(
+    public sessionName: string,
+    died?: { exitCode: number | undefined },
+  ) {
     super(
-      `Session ${sessionName} was not created: tmux reported success but no session exists. ` +
-        'Most likely no tmux server could be started in this environment — check that the ' +
-        'socket directory is writable (TMUX_TMPDIR) when running detached (nohup/systemd).',
+      died === undefined
+        ? `Session ${sessionName} was not created: tmux reported success but no session exists. ` +
+            'Most likely no tmux server could be started in this environment — check that the ' +
+            'socket directory is writable (TMUX_TMPDIR) when running detached (nohup/systemd).'
+        : `Session ${sessionName} was not created: the worker exited during startup ` +
+            `${died.exitCode !== undefined ? `with status ${died.exitCode}` : 'without a status (killed by a signal)'}. ` +
+            'Run the same command by hand to see what it printed.',
     );
+    this.exitCode = died?.exitCode;
   }
 }
 

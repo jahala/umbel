@@ -34,10 +34,20 @@ export async function send(opts: SendOpts): Promise<SendResult> {
   const meta = await d.fs.readMeta(opts.name, env);
   const provider = getProvider(meta.provider);
 
-  // Verify tmux session is alive
-  const alive = await d.tmux.hasSession(opts.name, env);
-  if (!alive) {
+  // Verify the worker is alive. Its pane answers that, not its session: with
+  // remain-on-exit the session outlives the worker, so a send to a corpse would
+  // otherwise be accepted and silently go nowhere.
+  const pane = await d.tmux.paneState(opts.name, env);
+  if (!pane.exists) {
     throw new SessionDeadError(opts.name, 'tmux session not found');
+  }
+  if (pane.dead) {
+    throw new SessionDeadError(
+      opts.name,
+      pane.exitCode !== undefined
+        ? `worker exited with status ${pane.exitCode}`
+        : 'worker exited without a status (killed by a signal)',
+    );
   }
 
   // Snapshot mtime of events/stop before send (0 if absent)

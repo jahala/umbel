@@ -26,6 +26,8 @@ function makeFakeTmux(panes: string[]) {
       sendKeys: async (_name: string, keys: readonly string[]): Promise<void> => {
         sent.push([...keys]);
       },
+      // The worker is up throughout; a dead pane ends the loop early.
+      paneState: async () => ({ exists: true, dead: false }),
     },
   };
 }
@@ -251,6 +253,8 @@ function makeSwallowingTmux(dialogPane: string, readyPane: string, swallow: numb
       sendKeys: async (_name: string, keys: readonly string[]): Promise<void> => {
         sent.push([...keys]);
       },
+      // The worker is up throughout; a dead pane ends the loop early.
+      paneState: async () => ({ exists: true, dead: false }),
     },
   };
 }

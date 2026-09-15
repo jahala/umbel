@@ -368,14 +368,17 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           notificationSince = notifMtime;
         }
 
-        // Condition not met yet. If the worker's tmux session has vanished it
-        // crashed or exited without ever firing the stop hook, so no future
-        // wake can satisfy the condition. Re-check the condition once AFTER
-        // confirming death (the worker may have fired stop in the instant
-        // before exiting); only then give up with 'dead'.
+        // Condition not met yet. If the worker's pane is dead — or its session
+        // has vanished entirely — it crashed or exited without ever firing the
+        // stop hook, so no future wake can satisfy the condition. The pane is
+        // what is asked: remain-on-exit keeps the session standing after the
+        // worker is gone. Re-check the condition once AFTER confirming death
+        // (the worker may have fired stop in the instant before exiting); only
+        // then give up with 'dead'.
         let alive = true;
         try {
-          alive = await d.tmux.hasSession(name, env);
+          const pane = await d.tmux.paneState(name, env);
+          alive = pane.exists && !pane.dead;
         } catch {
           // Liveness probe itself failed — assume alive; never report false-dead.
         }

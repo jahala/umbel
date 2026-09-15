@@ -62,6 +62,16 @@ export async function dismissStartupDialogs(
       return;
     }
 
+    // The worker died during startup. Its pane is kept (remain-on-exit), so the
+    // capture above succeeds and would otherwise keep this loop typing at a
+    // corpse until the timeout. Stop; spawn's startup check reads the same pane
+    // and reports the exit status.
+    try {
+      if ((await d.tmux.paneState(name, env)).dead) return;
+    } catch {
+      // Probe failed — treat as alive and keep polling; the deadline bounds it.
+    }
+
     const idx = nextStartupDialog(pane, dialogs, exhausted);
     if (idx !== null) {
       const dialog = dialogs[idx];
@@ -384,9 +394,13 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // survive detachment leaves no session behind. The guarantee is point-in-time
   // — the session existed when spawn returned. A worker that dies later is the
   // wait layer's problem (reason: 'dead'), not something spawn can promise away.
-  if (!(await d.tmux.hasSession(name, env))) {
+  // Read the pane, not the session: with remain-on-exit a worker that refused to
+  // start (bad flag, missing auth) leaves its session standing with a dead pane,
+  // which has-session would have called success.
+  const pane = await d.tmux.paneState(name, env);
+  if (!pane.exists || pane.dead) {
     await unwind();
-    throw new SessionNotCreatedError(name);
+    throw new SessionNotCreatedError(name, pane.dead ? { exitCode: pane.exitCode } : undefined);
   }
 
   // jsonlPath is unknown at spawn-time: real claude doesn't create the
