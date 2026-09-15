@@ -11,8 +11,17 @@
 #   FAKE_CLAUDE_HANG_MS   optional, ms to hang mid-turn: nothing on the pane, nothing written
 #   FAKE_CLAUDE_PANE_MS   optional, ms to print a progress line to the pane every 500 ms
 #   FAKE_CLAUDE_ERROR     optional, print this line to the pane at the start of a turn
+#   FAKE_CLAUDE_EXIT_AT_START optional, exit with this status before printing or
+#                         writing anything — a binary that dies during startup
 
 set -euo pipefail
+
+# Dies before the main UI, like a real binary refused by its own startup (bad
+# flag, missing auth). Nothing is printed and nothing is written, so the pane
+# holds only what tmux puts there.
+if [[ -n "${FAKE_CLAUDE_EXIT_AT_START:-}" ]]; then
+  exit "${FAKE_CLAUDE_EXIT_AT_START}"
+fi
 
 ERROR_LINE="${FAKE_CLAUDE_ERROR:-}"
 
