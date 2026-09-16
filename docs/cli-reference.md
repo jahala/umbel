@@ -27,6 +27,12 @@ umbel --version                  Show version (0.0.1)
 
 The mapping lives in `errorExitCode` and, for `wait` reasons, `WAIT_EXIT_CODES` (`src/faces/cli.ts`).
 
+## Lifecycle
+
+A worker's pane is kept after its death. `remain-on-exit` is set on the tmux session, so when the process exits the pane stays, holding its last screen and the status it exited with. `wait` reads both from that pane — settling `dead` with `exitCode` and the exact final screen — and writes them to `~/.umbel/sessions/<name>/events/dead`.
+
+`kill` tears down the tmux session but keeps the directory as a tombstone, so `capture`, `logs`, `actions` and `read` still answer for a worker that is gone; `kill --purge` removes it instead. `umbel prune` is the sweep: it removes the directory and the tmux remains of every dead session, and never touches a live one.
+
 ---
 
 ## Verbs
@@ -140,7 +146,7 @@ EOF
 
 Block until a session reaches a condition. Default: wait for the Stop hook to fire (end of turn). Returns exit code 124 on timeout, or 125 if the worker's session dies before the condition is met (e.g. the CLI crashed or exited non-zero).
 
-A `dead` result carries `paneSnapshot`: the last view of the pane from while the worker was still alive. A dying session takes its pane with it, so without this a crashed worker leaves nothing at all to read — which is exactly what makes a mid-run death expensive to diagnose. The snapshot is refreshed periodically during the wait, so it is at most a couple of seconds behind the moment of death.
+A `dead` result carries the evidence: `exitCode`, the status the worker's process exited with, and `paneSnapshot`, its last screen. Both are read from the pane itself, which `remain-on-exit` keeps after the process is gone — so the screen is exactly what stood there at the death, not a sample taken shortly before it. A worker killed by a signal exits with no status: `exitCode` is absent and `message` names the signal.
 
 ```
 umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH] [--pattern REGEX] [--timeout DURATION] [--idle-timeout DURATION]
@@ -182,7 +188,7 @@ The default timeout (30 minutes) is enforced even when `--timeout` is not specif
 | input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
 | provider-error | 122 | The pane shows a provider error (codex `unexpected status 404`, claude `API Error`) and then stays still. The matched line is the `message`; the pane prints to stderr. Fail or recast the attempt; waiting longer will not help. |
 | idle | 123 | Pane, events directory and transcript tree all still for `--idle-timeout`. The `message` names each source and how long it has been still, e.g. `idle 1.6s: pane still 1.6s · events still 1.9s · transcript still 1.8s · subagents none`; a source umbel could not locate reads `unresolved`. Pane prints to stderr. |
-| dead | 125 | Worker exited before finishing its turn. |
+| dead | 125 | Worker exited before finishing its turn. `exitCode` is the status it exited with; `paneSnapshot` is its last screen, captured from the dead pane. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |
 
 With `--json` the exit code is the same; the JSON carries the `reason` and `message`.
@@ -289,6 +295,34 @@ umbel kill reviewer
 
 # Kill and leave nothing behind
 umbel kill reviewer --purge
+```
+
+---
+
+### prune
+
+Sweep tombstones. Removes the state directory and the tmux remains of every dead session — the pane a dead worker leaves standing, and the directory `kill` keeps. A live session is never touched: liveness is read from the pane, because a session whose worker has exited is still a session.
+
+```
+umbel prune [--older-than DURATION]
+```
+
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--older-than DURATION` | off | Grace period. Keep any session that died more recently than this, dated from `events/dead` (or, for a worker nobody waited on, from when it was spawned). Format: `5m`, `30s`, `1h`. Without it, every dead session goes. |
+
+Prints one `removed <name>` line per swept session and a `N removed, M kept` summary.
+
+**Examples**
+
+```bash
+# Sweep every dead session
+umbel prune
+
+# Keep the last day of post-mortems
+umbel prune --older-than 24h
 ```
 
 ---

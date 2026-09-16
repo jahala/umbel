@@ -27,6 +27,7 @@ import { capture } from '../operations/capture.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
+import { prune } from '../operations/prune.ts';
 import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
@@ -56,6 +57,7 @@ Verbs:
   status  Show session status
   ls      List all sessions
   kill    Kill a session (keeps its directory unless --purge)
+  prune   Remove dead sessions' directories and tmux remains
   attach  Attach to a session
   read    Read last assistant message
   actions Digest of what a worker did (tools, files, errors)
@@ -306,6 +308,8 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         return await verbLs();
       case 'kill':
         return await verbKill(flags, rest);
+      case 'prune':
+        return await verbPrune(flags);
       case 'attach':
         return await verbAttach(flags, rest);
       case 'read':
@@ -624,6 +628,23 @@ async function verbKill(
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new UmbelUsageError('kill: <name> is required');
   await kill({ name, purge: flagBool(flags, 'purge'), env: getCliEnv() });
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// prune
+// ---------------------------------------------------------------------------
+
+async function verbPrune(flags: Map<string, string | boolean>): Promise<number> {
+  const olderThan = flagStr(flags, 'older-than');
+  const result = await prune({
+    env: getCliEnv(),
+    ...(olderThan !== undefined ? { olderThanMs: parseDuration(olderThan) } : {}),
+  });
+  for (const name of result.removed) {
+    process.stdout.write(`removed ${name}\n`);
+  }
+  process.stdout.write(`${result.removed.length} removed, ${result.kept.length} kept\n`);
   return 0;
 }
 

@@ -9,6 +9,7 @@ import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
+import { prune } from '../operations/prune.ts';
 import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
@@ -45,6 +46,8 @@ export const TOOL_DESCRIPTIONS = {
   umbel_ls: 'List all sessions. Same as umbel_status with no name.',
   umbel_kill:
     'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
+  umbel_prune:
+    "Sweep tombstones: remove dead sessions' directories and their tmux remains. `olderThan` (e.g. '24h') spares younger records. Never touches a live session.",
   umbel_read:
     "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after umbel_wait returns.",
   umbel_actions:
@@ -110,6 +113,7 @@ export interface McpToolHandlers {
   umbel_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
   umbel_ls: (args: Record<string, never>) => Promise<ToolResult>;
   umbel_kill: (args: { name: string; purge: boolean }) => Promise<ToolResult>;
+  umbel_prune: (args: { olderThan?: string | undefined }) => Promise<ToolResult>;
   umbel_read: (args: {
     name: string;
     head?: number | undefined;
@@ -229,6 +233,17 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       return { content: [{ type: 'text' as const, text: 'killed' }] };
     },
 
+    umbel_prune: async (args) => {
+      const result = await prune({
+        env,
+        ...(args.olderThan !== undefined ? { olderThanMs: parseDuration(args.olderThan) } : {}),
+        ...(deps !== undefined ? { deps } : {}),
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+      };
+    },
+
     umbel_read: async (args) => {
       const session = await d.fs.readMeta(args.name, env);
       const provider = getProvider(session.provider);
@@ -332,6 +347,12 @@ export async function runMcpServer(opts: McpServerOpts): Promise<void> {
   );
   server.tool('umbel_ls', TOOL_DESCRIPTIONS.umbel_ls, VerbSchemas.ls.shape, tools.umbel_ls);
   server.tool('umbel_kill', TOOL_DESCRIPTIONS.umbel_kill, VerbSchemas.kill.shape, tools.umbel_kill);
+  server.tool(
+    'umbel_prune',
+    TOOL_DESCRIPTIONS.umbel_prune,
+    VerbSchemas.prune.shape,
+    tools.umbel_prune,
+  );
   server.tool('umbel_read', TOOL_DESCRIPTIONS.umbel_read, VerbSchemas.read.shape, tools.umbel_read);
   server.tool(
     'umbel_actions',
