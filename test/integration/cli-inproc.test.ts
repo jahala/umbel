@@ -18,7 +18,7 @@
  * - wait --until file --timeout → timeout → exit 124
  * - wait --until pattern → pattern condition
  * - status / ls → happy path + no sessions
- * - kill happy path + --keep-state
+ * - kill happy path + --purge
  * - read happy path + null jsonlPath
  * - capture happy path
  * - logs happy path
@@ -363,21 +363,15 @@ describe('cli — kill', () => {
     if (idx !== -1) CREATED.splice(idx, 1);
   });
 
-  test('kill --keep-state: exits 0 and state dir remains', async () => {
-    const name = sessionName('keepstate');
+  test('kill --purge: exits 0 and the state dir is gone', async () => {
+    const name = sessionName('purged');
     await cliSpawnSession(name);
 
-    const { code } = await runWithCapture(() => runCli(['kill', name, '--keep-state']));
+    const { code } = await runWithCapture(() => runCli(['kill', name, '--purge']));
     expect(code).toBe(0);
 
-    // State dir still exists (meta.json still there)
-    const { stat } = await import('node:fs/promises');
-    const metaPath = join(tmpDir, 'sessions', name, 'meta.json');
-    const s = await stat(metaPath);
-    expect(s.isFile()).toBe(true);
-
-    // Clean up state manually after test
-    await rm(join(tmpDir, 'sessions', name), { recursive: true, force: true });
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(join(tmpDir, 'sessions', name))).toBe(false);
     // Remove from CREATED since already killed
     const idx = CREATED.indexOf(name);
     if (idx !== -1) CREATED.splice(idx, 1);

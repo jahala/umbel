@@ -51,9 +51,11 @@ export type Session = z.infer<typeof SessionSchema>;
 // Written once, when a worker is found gone: the post-mortem outlives both the
 // process and the pane it died in. The exit status is absent when tmux recorded
 // none — a process killed by a signal has no status — and the snapshot is the
-// pane's final screen, which names the signal itself.
+// pane's final screen, which names the signal itself. `by` names umbel's own
+// hand: absent, the worker ended on its own and `wait` found it.
 export const DeadEventSchema = z.object({
   at: z.number().int().nonnegative(),
+  by: z.literal('kill').optional(),
   exitCode: z.number().int().optional(),
   paneSnapshot: z.string().optional(),
 });

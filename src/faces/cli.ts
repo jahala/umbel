@@ -23,6 +23,7 @@ import { isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
+import { capture } from '../operations/capture.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
 import { kill } from '../operations/kill.ts';
@@ -54,7 +55,7 @@ Verbs:
   wait    Wait for a session to finish
   status  Show session status
   ls      List all sessions
-  kill    Kill a session
+  kill    Kill a session (keeps its directory unless --purge)
   attach  Attach to a session
   read    Read last assistant message
   actions Digest of what a worker did (tools, files, errors)
@@ -89,16 +90,7 @@ interface ParsedArgs {
 // Flags that never take a value. Without this the `--flag value` form would
 // greedily consume the following positional (e.g. `send --json <name>` eating
 // the session name as --json's value).
-const BOOLEAN_FLAGS = new Set([
-  'help',
-  'h',
-  'version',
-  'json',
-  'follow',
-  'keep-state',
-  'keepState',
-  'unattended',
-]);
+const BOOLEAN_FLAGS = new Set(['help', 'h', 'version', 'json', 'follow', 'purge', 'unattended']);
 
 function parseArgv(argv: readonly string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
@@ -631,8 +623,7 @@ async function verbKill(
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new UmbelUsageError('kill: <name> is required');
-  const keepState = flagBool(flags, 'keep-state', 'keepState');
-  await kill({ name, removeState: !keepState, env: getCliEnv() });
+  await kill({ name, purge: flagBool(flags, 'purge'), env: getCliEnv() });
   return 0;
 }
 
@@ -733,8 +724,17 @@ async function verbCapture(
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new UmbelUsageError('capture: <name> is required');
   const linesStr = flagStr(flags, 'lines');
-  const lines = linesStr !== undefined ? Number.parseInt(linesStr, 10) : 100;
-  process.stdout.write(await defaultDeps.tmux.capturePane(name, lines, getCliEnv()));
+  const { text, source } = await capture({
+    name,
+    env: getCliEnv(),
+    ...(linesStr !== undefined ? { lines: Number.parseInt(linesStr, 10) } : {}),
+  });
+  // The pane is gone, so this is the screen as it was when the session was
+  // torn down — said on stderr so a pipe still gets only the screen.
+  if (source === 'dead') {
+    process.stderr.write(`umbel: ${name} has no pane; last screen from events/dead\n`);
+  }
+  process.stdout.write(text);
   return 0;
 }
 

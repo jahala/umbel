@@ -43,7 +43,8 @@ export const TOOL_DESCRIPTIONS = {
   umbel_status:
     "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, and needsInput + needsInputReason (permission/idle/question) — tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
   umbel_ls: 'List all sessions. Same as umbel_status with no name.',
-  umbel_kill: 'Kill a session and its tmux process. Removes state unless `keepState=true`.',
+  umbel_kill:
+    'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
   umbel_read:
     "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after umbel_wait returns.",
   umbel_actions:
@@ -108,7 +109,7 @@ export interface McpToolHandlers {
   }) => Promise<ToolResult>;
   umbel_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
   umbel_ls: (args: Record<string, never>) => Promise<ToolResult>;
-  umbel_kill: (args: { name: string; keepState: boolean }) => Promise<ToolResult>;
+  umbel_kill: (args: { name: string; purge: boolean }) => Promise<ToolResult>;
   umbel_read: (args: {
     name: string;
     head?: number | undefined;
@@ -220,7 +221,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     umbel_kill: async (args) => {
       const killOpts = {
         name: args.name,
-        removeState: !args.keepState,
+        purge: args.purge,
         env,
         ...(deps !== undefined ? { deps } : {}),
       };
