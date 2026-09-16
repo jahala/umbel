@@ -107,6 +107,11 @@ function inspectReason(condition: WaitCondition, ctx: WaitContext): WaitResult['
 // most recent view is kept, and only a death ever reads it, so this trades a
 // couple of seconds of staleness against spawning a tmux process every poll.
 const ALIVE_PANE_CAPTURE_MS = 2000;
+// How long a dead pane may go unrecorded before the death is read as such
+// (tmux records the status or signal moments after the pty closes), and how
+// often to look meanwhile.
+const DEAD_RECORD_SETTLE_MS = 1000;
+const DEAD_RECORD_POLL_MS = 100;
 
 // Transcript discovery scans a directory, so the idle net retries it only every
 // few polls while the hook has not yet told us where the transcript lives.
@@ -383,7 +388,24 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         let alive = true;
         let cause: DeathCause = { exists: false };
         try {
-          const pane = await d.tmux.paneState(name, env);
+          let pane = await d.tmux.paneState(name, env);
+          // A death reaches tmux in two steps: the pty closes (pane_dead) and,
+          // moments later, the child is reaped and its status or signal
+          // recorded. A probe that lands between the two sees a dead pane with
+          // nothing recorded — ubuntu's tmux 3.4 did, every time (#89). Give
+          // tmux that moment, bounded, before reading the death as unrecorded.
+          const settleBy = Date.now() + DEAD_RECORD_SETTLE_MS;
+          while (
+            pane.exists &&
+            pane.dead &&
+            pane.exitCode === undefined &&
+            pane.signal === undefined &&
+            Date.now() < settleBy
+          ) {
+            await Bun.sleep(DEAD_RECORD_POLL_MS);
+            if (settled) return;
+            pane = await d.tmux.paneState(name, env);
+          }
           alive = pane.exists && !pane.dead;
           cause = pane;
         } catch {
