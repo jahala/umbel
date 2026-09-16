@@ -54,3 +54,17 @@ check stamped by the pinned tend2. The sink found an honest red; no proof-node r
   difference lies in umbel's launch of the fake or in how long the runner takes; not diagnosable
   from a Mac without another runner cycle. Filed as 91 (https://github.com/jahala/umbel/issues/91); the PR stays open and
   unmerged, and the tier holds here.
+- **The umbrella's ruling (2026-09-16):** record the worker's exit status and signal through umbel's
+  own wrapper into the events directory at the moment the process ends, platform-independent;
+  tmux's pane status becomes a fallback, never the source; no tmux version special-cased. Shaped
+  as c6 and conducted alone from a one-node sub-plan (`plan-record.json`) whose worktree starts
+  from the branch tip, so the five landed nodes are neither re-dispatched nor touched; its audit
+  verifies the whole page. The page's payload pin moved with the new check (8760a48a21e6); the
+  landed nodes' receipts keep the old pin, as their audits happened under the old page.
+- **c6 built alone in one attempt (40m34s), red first.** The red test wraps the real tmux adapter so a
+  dead pane reports neither status nor signal — ubuntu's semantics on any machine — and asserts the
+  death is still read as exit 3 or SIGTERM. The wrapper (`<state>/hooks/exec.sh`, installed beside
+  the hooks) runs the worker, forwards the signals it can, records `events/exit` at the end and
+  exits with the same status; wait, kill and status read the record first through one helper and
+  fall back to tmux. Landed at deb207c; `bun run check` 893 green; the whole page (six checks)
+  stamped by the pinned tend2 after landing.
