@@ -72,6 +72,11 @@ export const VerbSchemas = {
     name: z.string(),
     purge: z.boolean().default(false),
   }),
+  prune: z.object({
+    // Grace period for a tombstone, e.g. '24h'. Omitted, every dead session
+    // is swept.
+    olderThan: z.string().optional(),
+  }),
   attach: z.object({
     name: z.string(),
   }),
