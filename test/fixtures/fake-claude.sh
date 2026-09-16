@@ -13,6 +13,14 @@
 #   FAKE_CLAUDE_ERROR     optional, print this line to the pane at the start of a turn
 #   FAKE_CLAUDE_EXIT_AT_START optional, exit with this status before printing or
 #                         writing anything — a binary that dies during startup
+#   FAKE_CLAUDE_DIE_MS    optional, ms into a turn the worker dies: it sleeps that
+#                         long, prints "dying now" and leaves — no assistant
+#                         entries, no hook
+#   FAKE_CLAUDE_EXIT_CODE optional, status the FAKE_CLAUDE_DIE_MS death exits with
+#                         (default 1)
+#   FAKE_CLAUDE_DIE_SIGNAL optional, signal the FAKE_CLAUDE_DIE_MS death dies by
+#                         instead of exiting — stands in for a worker killed by
+#                         someone else (tmux records the same wait status)
 
 set -euo pipefail
 
@@ -29,6 +37,9 @@ DELAY="${FAKE_CLAUDE_DELAY:-0}"
 SUBAGENT_MS="${FAKE_CLAUDE_SUBAGENT_MS:-0}"
 HANG_MS="${FAKE_CLAUDE_HANG_MS:-0}"
 PANE_MS="${FAKE_CLAUDE_PANE_MS:-0}"
+DIE_MS="${FAKE_CLAUDE_DIE_MS:-0}"
+DIE_SIGNAL="${FAKE_CLAUDE_DIE_SIGNAL:-}"
+EXIT_CODE="${FAKE_CLAUDE_EXIT_CODE:-1}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
@@ -69,6 +80,20 @@ write_turn() {
     "$$" "$now" >> "$JSONL_FILE"
 
   [[ -n "$ERROR_LINE" ]] && echo "$ERROR_LINE"
+
+  # Dies mid-turn: nothing more on the transcript, no hook, so the only record
+  # of the death is the pane and the status tmux keeps with it. The last line is
+  # printed at the moment of death, after the sleep, so a snapshot taken from
+  # the dead pane can be told apart from one sampled earlier while it was alive.
+  if [[ "$DIE_MS" -gt 0 ]]; then
+    sleep "$(echo "scale=3; $DIE_MS / 1000" | bc)"
+    echo "dying now"
+    if [[ -n "$DIE_SIGNAL" ]]; then
+      kill -s "$DIE_SIGNAL" $$
+      sleep 10
+    fi
+    exit "$EXIT_CODE"
+  fi
 
   # Real claude keeps a subagent's transcript beside the session's:
   # <dir>/<session>/subagents/agent-<id>.jsonl
