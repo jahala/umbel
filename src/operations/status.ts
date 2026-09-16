@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { parseQuota, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
+import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
@@ -75,15 +76,17 @@ async function enrich(
   }
 
   // How it went: the record written when the death was found, or — for a worker
-  // nobody was waiting on — the status its pane still holds. A tombstone whose
-  // remains have been swept answers from the record alone.
+  // nobody was waiting on — the launch wrapper's exit record, then the status
+  // its pane holds. A tombstone whose remains have been swept answers from the
+  // record alone.
   if (dead !== null) {
     entry.dead = {
       at: dead.at,
       ...(dead.exitCode !== undefined ? { exitCode: dead.exitCode } : {}),
     };
-  } else if (pane.dead && pane.exitCode !== undefined) {
-    entry.dead = { exitCode: pane.exitCode };
+  } else if (pane.dead) {
+    const { exitCode } = await readDeathCause(d, session.name, pane, env);
+    if (exitCode !== undefined) entry.dead = { exitCode };
   }
 
   // A notification newer than the last turn-end may mean the worker is awaiting

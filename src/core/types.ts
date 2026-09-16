@@ -63,6 +63,20 @@ export const DeadEventSchema = z.object({
 export type DeadEvent = z.infer<typeof DeadEventSchema>;
 
 // ---------------------------------------------------------------------------
+// ExitRecord (persisted as events/exit)
+// ---------------------------------------------------------------------------
+
+// Written by umbel's launch wrapper at the moment the worker's process ends:
+// the status it exited with, or the signal that ended it, by name (`SIGTERM`).
+// umbel's own record, so no tmux build decides whether a death has a cause.
+export const ExitRecordSchema = z.union([
+  z.object({ exitCode: z.number().int() }).strict(),
+  z.object({ signal: z.string().regex(/^SIG[A-Z0-9]+$/) }).strict(),
+]);
+
+export type ExitRecord = z.infer<typeof ExitRecordSchema>;
+
+// ---------------------------------------------------------------------------
 // Worker env value — literal or {fromEnv} reference
 // ---------------------------------------------------------------------------
 

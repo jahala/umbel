@@ -2,8 +2,8 @@ import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { SessionNotFoundError } from '../core/errors.ts';
-import type { DeadEvent, Session } from '../core/types.ts';
-import { DeadEventSchema, SessionSchema } from '../core/types.ts';
+import type { DeadEvent, ExitRecord, Session } from '../core/types.ts';
+import { DeadEventSchema, ExitRecordSchema, SessionSchema } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------
 // Path helpers — all accept env explicitly, no direct process.env reads
@@ -106,6 +106,33 @@ export async function readDead(
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// readExit / clearExit — events/exit, written by the launch wrapper
+// ---------------------------------------------------------------------------
+
+// null while the worker runs, and when the record is unreadable.
+export async function readExit(
+  name: string,
+  env: Record<string, string | undefined> = {},
+): Promise<ExitRecord | null> {
+  const file = Bun.file(join(eventsDir(name, env), 'exit'));
+  if (!(await file.exists())) return null;
+  try {
+    return ExitRecordSchema.parse(JSON.parse(await file.text()));
+  } catch {
+    return null;
+  }
+}
+
+// A name spawned again keeps its tombstone, and a record left from the last
+// worker would otherwise answer for the new one if it dies unrecorded.
+export async function clearExit(
+  name: string,
+  env: Record<string, string | undefined> = {},
+): Promise<void> {
+  await rm(join(eventsDir(name, env), 'exit'), { force: true });
 }
 
 // ---------------------------------------------------------------------------
