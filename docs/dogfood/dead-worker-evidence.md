@@ -49,3 +49,8 @@ check stamped by the pinned tend2. The sink found an honest red; no proof-node r
   branch with a draft PR (jahala/umbel#90, closed unmerged) printed the runner's raw formats; the
   fix — a bounded settle in the dead path and the platform's signal table in the describer —
   landed with two failing tests first. The merge chain did what it should: no merge on red.
+- **Still red on the runner with the settle.** The six death tests fail the same way on ubuntu's tmux
+  3.4 after the one-second re-read, while the bare-pane probe records the status there. The
+  difference lies in umbel's launch of the fake or in how long the runner takes; not diagnosable
+  from a Mac without another runner cycle. Filed as 91 (https://github.com/jahala/umbel/issues/91); the PR stays open and
+  unmerged, and the tier holds here.
