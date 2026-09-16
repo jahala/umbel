@@ -28,6 +28,10 @@ export interface StatusEntry extends Session {
   // a node to another provider before dispatch instead of losing its work to a
   // limit dialog mid-turn.
   quota?: Quota;
+  // Set once the worker is gone: what its pane recorded of the death — the
+  // status it exited with, absent when a signal killed it — and when that was
+  // written down. A caller reads the cause without a pane of its own.
+  dead?: { at: number; exitCode?: number };
 }
 
 export interface StatusOpts {

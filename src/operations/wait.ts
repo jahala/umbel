@@ -58,6 +58,10 @@ export interface WaitResult {
   // 'provider-error', it is the pane line matching the provider's errorMatch.
   inputReason?: NeedsInputReason;
   message?: string;
+  // When reason is 'dead', the status the worker's process exited with, read
+  // from its pane. Absent when it died by a signal: tmux records no status for
+  // one, and `message` names the signal instead.
+  exitCode?: number;
   // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
   // moment the wait settled — so a stuck worker's cause (e.g. an unexpected
   // provider dialog) is visible. Absent for clean reasons and when capture fails.
