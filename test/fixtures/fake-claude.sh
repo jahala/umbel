@@ -18,6 +18,10 @@
 #                         entries, no hook
 #   FAKE_CLAUDE_EXIT_CODE optional, status the FAKE_CLAUDE_DIE_MS death exits with
 #                         (default 1)
+#   FAKE_CLAUDE_DIE_ON    optional, substring a prompt must contain for the
+#                         FAKE_CLAUDE_DIE_MS death to fire — so a worker can
+#                         complete a turn before the turn it dies in. Unset,
+#                         every turn dies.
 #   FAKE_CLAUDE_DIE_SIGNAL optional, signal the FAKE_CLAUDE_DIE_MS death dies by
 #                         instead of exiting — stands in for a worker killed by
 #                         someone else (tmux records the same wait status)
@@ -39,6 +43,7 @@ HANG_MS="${FAKE_CLAUDE_HANG_MS:-0}"
 PANE_MS="${FAKE_CLAUDE_PANE_MS:-0}"
 DIE_MS="${FAKE_CLAUDE_DIE_MS:-0}"
 DIE_SIGNAL="${FAKE_CLAUDE_DIE_SIGNAL:-}"
+DIE_ON="${FAKE_CLAUDE_DIE_ON:-}"
 EXIT_CODE="${FAKE_CLAUDE_EXIT_CODE:-1}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
@@ -85,7 +90,7 @@ write_turn() {
   # of the death is the pane and the status tmux keeps with it. The last line is
   # printed at the moment of death, after the sleep, so a snapshot taken from
   # the dead pane can be told apart from one sampled earlier while it was alive.
-  if [[ "$DIE_MS" -gt 0 ]]; then
+  if [[ "$DIE_MS" -gt 0 && ( -z "$DIE_ON" || "$prompt" == *"$DIE_ON"* ) ]]; then
     sleep "$(echo "scale=3; $DIE_MS / 1000" | bc)"
     echo "dying now"
     if [[ -n "$DIE_SIGNAL" ]]; then
