@@ -152,7 +152,8 @@ export async function hasSession(
 // With remain-on-exit the session outlives the worker, so `has-session` reports
 // a corpse as alive. The pane knows better: `#{pane_dead}` is 1 once the process
 // has exited and `#{pane_dead_status}` holds the status it exited with. A pane
-// killed by a signal is dead with no status at all, so exitCode is optional.
+// killed by a signal is dead with no status at all — `#{pane_dead_signal}` names
+// the signal instead — so exitCode is optional and never parsed from nothing.
 //
 // Read through list-panes, not display-message: display-message answers for an
 // unknown target with an empty string and exit 0 (tmux 3.6), which would report
@@ -162,6 +163,8 @@ export interface PaneState {
   exists: boolean;
   dead: boolean;
   exitCode?: number;
+  // The signal that killed the process, as tmux names it ('term', 'kill').
+  signal?: string;
 }
 
 export async function paneState(
@@ -171,7 +174,14 @@ export async function paneState(
   let stdout: string;
   try {
     const result = await tmux(
-      ['list-panes', '-s', '-t', prefixed(name), '-F', '#{pane_dead} #{pane_dead_status}'],
+      [
+        'list-panes',
+        '-s',
+        '-t',
+        prefixed(name),
+        '-F',
+        '#{pane_dead} #{pane_dead_status} #{pane_dead_signal}',
+      ],
       env,
     );
     stdout = result.stdout;
@@ -186,13 +196,14 @@ export async function paneState(
   // order, where without it tmux answers for the CURRENT window only. A worker
   // has tmux in its own environment and can open a window of its own; that
   // window's live pane would otherwise report the dead worker as running.
-  const [deadFlag = '', status = ''] = (stdout.split('\n')[0] ?? '').split(' ');
+  const [deadFlag = '', status = '', signal = ''] = (stdout.split('\n')[0] ?? '').split(' ');
   const dead = deadFlag === '1';
   const exitCode = Number.parseInt(status, 10);
   return {
     exists: true,
     dead,
     ...(dead && Number.isInteger(exitCode) ? { exitCode } : {}),
+    ...(dead && signal !== '' ? { signal } : {}),
   };
 }
 

@@ -45,6 +45,22 @@ export const SessionSchema = z.object({
 export type Session = z.infer<typeof SessionSchema>;
 
 // ---------------------------------------------------------------------------
+// DeadEvent (persisted as events/dead)
+// ---------------------------------------------------------------------------
+
+// Written once, when a worker is found gone: the post-mortem outlives both the
+// process and the pane it died in. The exit status is absent when tmux recorded
+// none — a process killed by a signal has no status — and the snapshot is the
+// pane's final screen, which names the signal itself.
+export const DeadEventSchema = z.object({
+  at: z.number().int().nonnegative(),
+  exitCode: z.number().int().optional(),
+  paneSnapshot: z.string().optional(),
+});
+
+export type DeadEvent = z.infer<typeof DeadEventSchema>;
+
+// ---------------------------------------------------------------------------
 // Worker env value — literal or {fromEnv} reference
 // ---------------------------------------------------------------------------
 
