@@ -197,20 +197,20 @@ describe('VerbSchemas.ls', () => {
 });
 
 describe('VerbSchemas.kill', () => {
-  test('parses with required name, keepState defaults to false', () => {
+  test('parses with required name, purge defaults to false', () => {
     const result = VerbSchemas.kill.safeParse({ name: 'foo' });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.name).toBe('foo');
-      expect(result.data.keepState).toBe(false);
+      expect(result.data.purge).toBe(false);
     }
   });
 
-  test('parses with keepState=true', () => {
-    const result = VerbSchemas.kill.safeParse({ name: 'foo', keepState: true });
+  test('parses with purge=true', () => {
+    const result = VerbSchemas.kill.safeParse({ name: 'foo', purge: true });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.keepState).toBe(true);
+      expect(result.data.purge).toBe(true);
     }
   });
 

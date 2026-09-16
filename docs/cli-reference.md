@@ -264,10 +264,10 @@ umbel ls
 
 ### kill
 
-Kill a session and (by default) remove its state directory from `~/.umbel/sessions/`.
+Kill a session's tmux process and leave its state directory in `~/.umbel/sessions/` as a tombstone: `events/dead` (how it ended, with the pane read before the session was torn down), the event log and the transcript path, so a post-mortem needs nothing else. `umbel prune` sweeps tombstones.
 
 ```
-umbel kill <name> [--keep-state]
+umbel kill <name> [--purge]
 ```
 
 **Positionals**
@@ -280,15 +280,15 @@ umbel kill <name> [--keep-state]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--keep-state` | false | Kill the tmux session but leave `~/.umbel/sessions/<name>/` on disk. Useful for post-mortem inspection. |
+| `--purge` | false | Remove `~/.umbel/sessions/<name>/` too, leaving no record of the session. |
 
 **Examples**
 
 ```bash
 umbel kill reviewer
 
-# Kill but preserve logs and meta
-umbel kill reviewer --keep-state
+# Kill and leave nothing behind
+umbel kill reviewer --purge
 ```
 
 ---
@@ -402,6 +402,8 @@ umbel diff reviewer --from 0 --to 2
 ### capture
 
 Write the last N lines of the tmux pane to stdout. Uses `tmux capture-pane`. For human watching only; do not parse this output for agent responses (use `umbel read` instead).
+
+A dead worker's pane outlives its process, so its last screen reads the same as a live one's. Once the session is gone — killed — the screen recorded in `events/dead` is written instead, and a note on stderr says so; stdout carries only the screen either way.
 
 ```
 umbel capture <name> [--lines N]

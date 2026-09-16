@@ -162,13 +162,13 @@ describe('status — alive after kill', () => {
     CREATED.push(session.name);
 
     // Kill just the tmux part, leave state
-    await kill({ name, removeState: false, env });
+    await kill({ name, env });
 
     const entries = await status({ name, env });
     expect(entries[0]?.alive).toBe(false);
 
     // Cleanup state
-    await kill({ name, env });
+    await kill({ name, purge: true, env });
   });
 });
 

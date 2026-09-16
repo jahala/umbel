@@ -70,7 +70,7 @@ export const VerbSchemas = {
   ls: z.object({}),
   kill: z.object({
     name: z.string(),
-    keepState: z.boolean().default(false),
+    purge: z.boolean().default(false),
   }),
   attach: z.object({
     name: z.string(),

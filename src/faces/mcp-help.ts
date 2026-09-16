@@ -16,7 +16,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 - send: enqueues a prompt via tmux paste-buffer. Returns immediately. Does NOT wait.
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
-- kill: tears down the tmux session and clears state. Pass keepState=true to preserve for inspection.
+- kill: tears down the tmux session and leaves its directory as a tombstone (events/dead, logs, transcript). Pass purge=true to remove it.
 
 ## Anonymous vs named
 
@@ -31,7 +31,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
   await tools.umbel_wait({ name, until: "stop", timeout: "10m" });
   const { content: r } = await tools.umbel_read({ name });
   // r[0].text contains the assistant's response
-  await tools.umbel_kill({ name, keepState: false });
+  await tools.umbel_kill({ name });
 
 ## Wait kinds (umbel_wait \`until\` field)
 

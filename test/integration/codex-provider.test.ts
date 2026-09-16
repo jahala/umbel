@@ -228,7 +228,7 @@ describe('codex-provider — shared codex-home lifecycle', () => {
       const hooksPath = join(codexHome(), 'hooks.json');
       expect(existsSync(hooksPath)).toBe(true);
 
-      await kill({ name: session.name, env });
+      await kill({ name: session.name, purge: true, env });
 
       // The session dir is gone, but the shared codex-home survives.
       expect(existsSync(join(tmpDir, 'sessions', session.name))).toBe(false);

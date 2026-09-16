@@ -74,7 +74,7 @@ function makeSpawnOpts(
 // ---------------------------------------------------------------------------
 
 describe('kill — existing session', () => {
-  test('removes tmux session and state dir', async () => {
+  test('removes the tmux session and keeps the state dir', async () => {
     const env = await setup();
     const { session } = await spawn(makeSpawnOpts(env, '/tmp'));
     // Don't push to CREATED — kill under test handles cleanup
@@ -86,23 +86,21 @@ describe('kill — existing session', () => {
 
     const sessionDir = join(tmpDir, 'sessions', name);
     const { existsSync } = await import('node:fs');
-    expect(existsSync(sessionDir)).toBe(false);
+    expect(existsSync(sessionDir)).toBe(true);
   });
 
-  test('removeState=false leaves state dir intact', async () => {
+  test('purge removes the state dir too', async () => {
     const env = await setup();
     const { session } = await spawn(makeSpawnOpts(env, '/tmp'));
     const name = session.name;
 
-    await kill({ name, removeState: false, env });
+    await kill({ name, purge: true, env });
 
     expect(await hasSession(name)).toBe(false);
 
-    const metaPath = join(tmpDir, 'sessions', name, 'meta.json');
+    const sessionDir = join(tmpDir, 'sessions', name);
     const { existsSync } = await import('node:fs');
-    expect(existsSync(metaPath)).toBe(true);
-    // Clean up state manually since removeState=false
-    await rm(join(tmpDir, 'sessions', name), { recursive: true, force: true });
+    expect(existsSync(sessionDir)).toBe(false);
   });
 });
 

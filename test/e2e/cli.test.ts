@@ -177,14 +177,23 @@ describe('cli', () => {
     expect(lsResult.code).toBe(0);
     expect(lsResult.stdout).toContain(name);
 
-    // kill
+    // kill — the tmux session goes, the directory stays as a tombstone
     const killResult = await runCli(['kill', name], baseEnv);
     expect(killResult.code).toBe(0);
 
-    // ls again — session should be gone
+    // ls again — still listed, now dead
     const lsResult2 = await runCli(['ls'], baseEnv);
     expect(lsResult2.code).toBe(0);
-    expect(lsResult2.stdout).not.toContain(name);
+    expect(lsResult2.stdout).toContain(name);
+    expect(lsResult2.stdout).toContain('dead');
+
+    // purge — now there is nothing left to list
+    const purgeResult = await runCli(['kill', name, '--purge'], baseEnv);
+    expect(purgeResult.code).toBe(0);
+
+    const lsResult3 = await runCli(['ls'], baseEnv);
+    expect(lsResult3.code).toBe(0);
+    expect(lsResult3.stdout).not.toContain(name);
 
     // Remove from CREATED since we already killed it
     const idx = CREATED.indexOf(name);

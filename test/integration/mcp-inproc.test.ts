@@ -390,7 +390,7 @@ describe('umbel_kill', () => {
     await writeMeta(name, session, env);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.umbel_kill({ name, keepState: false });
+    const result = await tools.umbel_kill({ name, purge: true });
 
     expect(result.content[0]?.text).toBe('killed');
 

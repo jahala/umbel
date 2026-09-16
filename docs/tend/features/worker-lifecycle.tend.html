@@ -2609,7 +2609,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "spawn() → status() → alive=true; kill(removeState=false) → status() → alive=false; write permission_prompt notification → status() → needsInput=true, needsInputReason='permission'.",
+      "verification_recipe": "spawn() → status() → alive=true; kill() → status() → alive=false; write permission_prompt notification → status() → needsInput=true, needsInputReason='permission'.",
       "validates_job": "supervisor-dev:1"
     },
     {
