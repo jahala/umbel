@@ -186,10 +186,12 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         reason: string;
         inputReason?: string;
         message?: string;
+        exitCode?: number;
         paneSnapshot?: string;
       } = { reason: result.reason };
       if (result.inputReason !== undefined) payload.inputReason = result.inputReason;
       if (result.message !== undefined) payload.message = result.message;
+      if (result.exitCode !== undefined) payload.exitCode = result.exitCode;
       if (result.paneSnapshot !== undefined) payload.paneSnapshot = result.paneSnapshot;
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],

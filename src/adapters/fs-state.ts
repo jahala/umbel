@@ -2,8 +2,8 @@ import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { SessionNotFoundError } from '../core/errors.ts';
-import type { Session } from '../core/types.ts';
-import { SessionSchema } from '../core/types.ts';
+import type { DeadEvent, Session } from '../core/types.ts';
+import { DeadEventSchema, SessionSchema } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------
 // Path helpers — all accept env explicitly, no direct process.env reads
@@ -33,7 +33,19 @@ export async function ensureSessionDir(
 }
 
 // ---------------------------------------------------------------------------
-// writeMeta — atomic temp-then-rename
+// writeJson — atomic temp-then-rename
+// ---------------------------------------------------------------------------
+
+// A reader of a state file is a separate umbel invocation with no lock to take,
+// so the file has to appear whole or not at all.
+async function writeJson(dir: string, file: string, value: unknown): Promise<void> {
+  const tmp = join(dir, `.${file}.tmp.${Date.now()}`);
+  await writeFile(tmp, JSON.stringify(value, null, 2), 'utf8');
+  await rename(tmp, join(dir, file));
+}
+
+// ---------------------------------------------------------------------------
+// writeMeta
 // ---------------------------------------------------------------------------
 
 export async function writeMeta(
@@ -41,12 +53,7 @@ export async function writeMeta(
   session: Session,
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
-  const validated = SessionSchema.parse(session);
-  const dir = sessionDir(name, env);
-  const target = join(dir, 'meta.json');
-  const tmp = join(dir, `.meta.json.tmp.${Date.now()}`);
-  await writeFile(tmp, JSON.stringify(validated, null, 2), 'utf8');
-  await rename(tmp, target);
+  await writeJson(sessionDir(name, env), 'meta.json', SessionSchema.parse(session));
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +73,39 @@ export async function readMeta(
   const raw = await file.text();
   const parsed = SessionSchema.parse(JSON.parse(raw));
   return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// writeDead / readDead — events/dead, how the worker went
+// ---------------------------------------------------------------------------
+
+// The record outlives the pane it was read from, so a post-mortem needs only
+// the session directory. Written once per death; the events dir is created if
+// the writer got there before it existed.
+
+export async function writeDead(
+  name: string,
+  event: DeadEvent,
+  env: Record<string, string | undefined> = {},
+): Promise<void> {
+  const dir = eventsDir(name, env);
+  await mkdir(dir, { recursive: true });
+  await writeJson(dir, 'dead', DeadEventSchema.parse(event));
+}
+
+// null when the worker has not been found dead, or when the record on disk is
+// unreadable — a post-mortem that cannot be read is the same as none.
+export async function readDead(
+  name: string,
+  env: Record<string, string | undefined> = {},
+): Promise<DeadEvent | null> {
+  const file = Bun.file(join(eventsDir(name, env), 'dead'));
+  if (!(await file.exists())) return null;
+  try {
+    return DeadEventSchema.parse(JSON.parse(await file.text()));
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

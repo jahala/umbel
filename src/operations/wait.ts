@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { type DeathCause, describeDeath } from '../core/death.ts';
 import {
   formatIdleMessage,
   type IdleSource,
@@ -380,9 +381,11 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         // (the worker may have fired stop in the instant before exiting); only
         // then give up with 'dead'.
         let alive = true;
+        let cause: DeathCause = { exists: false };
         try {
           const pane = await d.tmux.paneState(name, env);
           alive = pane.exists && !pane.dead;
+          cause = pane;
         } catch {
           // Liveness probe itself failed — assume alive; never report false-dead.
         }
@@ -394,12 +397,36 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         ctx = await buildCtx();
         if (settled) return;
         if (!syncEvaluate(ctx)) {
+          // The pane outlives the process, so the last screen can be read exactly
+          // rather than sampled: capture it now. The view kept from while the
+          // worker was alive is the fallback for a session gone entirely.
+          let paneSnapshot: string | undefined;
+          try {
+            paneSnapshot = await d.tmux.capturePane(name, 30, env);
+          } catch {
+            // Nothing left to capture — the remains were swept.
+          }
+          if (paneSnapshot === undefined || paneSnapshot === '') paneSnapshot = lastAlivePane;
+          if (settled) return;
+          const evidence = {
+            ...(cause.exitCode !== undefined ? { exitCode: cause.exitCode } : {}),
+            ...(paneSnapshot !== undefined && paneSnapshot !== '' ? { paneSnapshot } : {}),
+          };
+          // The death outlives this process: written down so a post-mortem needs
+          // only the session directory. Best-effort — the result below carries
+          // the same evidence, so an unwritable state dir costs the record, not
+          // the wait.
+          try {
+            await d.fs.writeDead(name, { at: Date.now(), ...evidence }, env);
+          } catch {
+            // State dir gone or unwritable.
+          }
+          if (settled) return;
           settle({
             stopped: false,
             reason: 'dead',
-            ...(lastAlivePane !== undefined && lastAlivePane !== ''
-              ? { paneSnapshot: lastAlivePane }
-              : {}),
+            message: describeDeath(cause),
+            ...evidence,
           });
           return;
         }

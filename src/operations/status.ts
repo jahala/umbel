@@ -30,8 +30,9 @@ export interface StatusEntry extends Session {
   quota?: Quota;
   // Set once the worker is gone: what its pane recorded of the death — the
   // status it exited with, absent when a signal killed it — and when that was
-  // written down. A caller reads the cause without a pane of its own.
-  dead?: { at: number; exitCode?: number };
+  // written down, which only a death someone waited for has. A caller reads the
+  // cause without a pane of its own.
+  dead?: { exitCode?: number; at?: number };
 }
 
 export interface StatusOpts {
@@ -58,8 +59,9 @@ async function enrich(
   env: Record<string, string | undefined>,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
-  const [pane, logMtime, notifMtime, stopMtime] = await Promise.all([
+  const [pane, dead, logMtime, notifMtime, stopMtime] = await Promise.all([
     d.tmux.paneState(session.name, env),
+    d.fs.readDead(session.name, env),
     fileMtime(join(eventsDir, 'log')),
     fileMtime(join(eventsDir, 'notification')),
     fileMtime(join(eventsDir, 'stop')),
@@ -70,6 +72,18 @@ async function enrich(
   const entry: StatusEntry = { ...session, alive: pane.exists && !pane.dead, needsInput: false };
   if (logMtime > 0) {
     entry.lastActivityAt = logMtime;
+  }
+
+  // How it went: the record written when the death was found, or — for a worker
+  // nobody was waiting on — the status its pane still holds. A tombstone whose
+  // remains have been swept answers from the record alone.
+  if (dead !== null) {
+    entry.dead = {
+      at: dead.at,
+      ...(dead.exitCode !== undefined ? { exitCode: dead.exitCode } : {}),
+    };
+  } else if (pane.dead && pane.exitCode !== undefined) {
+    entry.dead = { exitCode: pane.exitCode };
   }
 
   // A notification newer than the last turn-end may mean the worker is awaiting

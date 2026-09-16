@@ -191,10 +191,19 @@ function truncateCwd(cwd: string, max = 30): string {
 
 type StatusEntry = Awaited<ReturnType<typeof status>>[0];
 
+// A dead worker's STATUS names what it died of, when tmux recorded a status, so
+// the post-mortem starts at the table. A death by signal recorded none; the
+// pane snapshot in events/dead names it.
+function statusWord(e: StatusEntry): string {
+  if (e.alive) return 'alive';
+  const exitCode = e.dead?.exitCode;
+  return exitCode === undefined ? 'dead' : `dead (exit ${exitCode})`;
+}
+
 function printStatusTable(entries: StatusEntry[]): void {
   const rows = entries.map((e) => ({
     name: e.name,
-    status: e.alive ? 'alive' : 'dead',
+    status: statusWord(e),
     model: e.model ?? '—',
     cwd: truncateCwd(e.cwd),
     created: formatTimestamp(e.createdAt),
@@ -521,9 +530,14 @@ async function verbWait(
   // stderr. The exit code still carries the reason, so a caller can branch on
   // either.
   if (jsonMode) {
-    const payload: { reason: string; message?: string } = { reason: result.reason };
+    const payload: { reason: string; message?: string; exitCode?: number } = {
+      reason: result.reason,
+    };
     if (result.message !== undefined && result.message.length > 0) {
       payload.message = result.message;
+    }
+    if (result.exitCode !== undefined) {
+      payload.exitCode = result.exitCode;
     }
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return WAIT_EXIT_CODES[result.reason];
@@ -535,8 +549,9 @@ async function verbWait(
     }
   }
   if (result.reason === 'dead') {
+    const cause = result.message !== undefined ? ` (${result.message})` : '';
     process.stderr.write(
-      `umbel: wait failed — session '${name}' died before completing its turn.\n`,
+      `umbel: wait failed — session '${name}' died before completing its turn${cause}.\n`,
     );
   }
   if (result.reason === 'input' || result.reason === 'idle' || result.reason === 'provider-error') {
