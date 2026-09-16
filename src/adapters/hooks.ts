@@ -68,6 +68,65 @@ mv -f "$state/events/quota.part" "$state/events/quota"
 `;
 
 // ---------------------------------------------------------------------------
+// EXEC_WRAPPER_SCRIPT — launches the worker and records how it ended
+// ---------------------------------------------------------------------------
+
+// The worker's pane runs this with the worker's argv. It writes events/exit
+// ({"exitCode":N} or {"signal":"SIGTERM"}) when the process ends, then ends the
+// same way, so tmux's own pane status still agrees. tmux builds differ in
+// whether they record a dead pane's status at all (ubuntu's 3.4 did not,
+// umbel#91); this record does not depend on one.
+//
+// The worker runs as a background job so the wrapper's traps fire while it
+// waits; `<&0` keeps the pane's tty as its stdin. HUP and TERM are forwarded and
+// remembered, so a worker that exits cleanly after one still reads as ended by
+// it. USR1 and USR2 are forwarded only. The events dir is never created here:
+// a purged session must stay purged. INT and QUIT come from the tty to the
+// whole process group, so the wrapper just survives them: a no-op trap, which
+// unlike an ignored signal is not inherited by the worker.
+export const EXEC_WRAPPER_SCRIPT: string = `#!/usr/bin/env bash
+events="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}/events"
+child=''
+trapped=''
+forward() {
+  if [ -n "$child" ]; then kill -s "$1" "$child" 2>/dev/null || true; fi
+}
+for sig in HUP TERM; do
+  trap "trapped=$sig; forward $sig" "$sig"
+done
+for sig in USR1 USR2; do
+  trap "forward $sig" "$sig"
+done
+trap ':' INT QUIT
+"$@" <&0 &
+child=$!
+# A trapped signal interrupts wait before the worker is gone; wait again until
+# it is, then once more for the status bash kept for it.
+while wait "$child"; [ $? -gt 128 ] && kill -0 "$child" 2>/dev/null; do :; done
+wait "$child" 2>/dev/null
+status=$?
+signal=''
+if [ "$status" -gt 128 ] && name=$(kill -l "$((status - 128))" 2>/dev/null); then
+  signal="SIG\${name#SIG}"
+elif [ -n "$trapped" ]; then
+  signal="SIG$trapped"
+fi
+if [ -d "$events" ]; then
+  if [ -n "$signal" ]; then
+    printf '{"signal":"%s"}' "$signal" > "$events/.exit.tmp.$$"
+  else
+    printf '{"exitCode":%d}' "$status" > "$events/.exit.tmp.$$"
+  fi
+  mv -f "$events/.exit.tmp.$$" "$events/exit" 2>/dev/null
+fi
+if [ -n "$signal" ]; then
+  trap - "\${signal#SIG}"
+  kill -s "\${signal#SIG}" $$
+fi
+exit "$status"
+`;
+
+// ---------------------------------------------------------------------------
 // buildSettingsJson — inline JSON for claude's --settings flag
 // ---------------------------------------------------------------------------
 
@@ -145,9 +204,12 @@ export function buildSettingsJson(opts: {
 // ensureGlobalHooks — install stop.sh idempotently
 // ---------------------------------------------------------------------------
 
-export async function ensureGlobalHooks(
-  env: Record<string, string | undefined> = {},
-): Promise<{ stopScriptPath: string; notifyScriptPath: string; statusLineScriptPath: string }> {
+export async function ensureGlobalHooks(env: Record<string, string | undefined> = {}): Promise<{
+  stopScriptPath: string;
+  notifyScriptPath: string;
+  statusLineScriptPath: string;
+  execScriptPath: string;
+}> {
   const hooksDir = join(stateDir(env), 'hooks');
   await mkdir(hooksDir, { recursive: true });
 
@@ -163,7 +225,11 @@ export async function ensureGlobalHooks(
   await writeFile(statusLineScriptPath, STATUSLINE_SCRIPT, { encoding: 'utf8' });
   await chmod(statusLineScriptPath, 0o755);
 
-  return { stopScriptPath, notifyScriptPath, statusLineScriptPath };
+  const execScriptPath = join(hooksDir, 'exec.sh');
+  await writeFile(execScriptPath, EXEC_WRAPPER_SCRIPT, { encoding: 'utf8' });
+  await chmod(execScriptPath, 0o755);
+
+  return { stopScriptPath, notifyScriptPath, statusLineScriptPath, execScriptPath };
 }
 
 // ---------------------------------------------------------------------------

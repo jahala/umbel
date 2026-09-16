@@ -1,5 +1,6 @@
 import { unlink } from 'node:fs/promises';
 import type { DeadEvent } from '../core/types.ts';
+import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
@@ -49,7 +50,27 @@ export async function kill(opts: KillOpts): Promise<void> {
   }
 
   if (opts.purge === true) {
+    // The launch wrapper writes events/exit as the worker goes down, which is
+    // after the session is torn down; removing the directory first would race
+    // that write.
+    if (meta !== undefined) await awaitExitRecord(d, opts.name, env);
     await d.fs.rmSession(opts.name, env);
+  }
+}
+
+// A worker the wrapper cannot record (SIGKILL, launched before the wrapper)
+// never writes one, so the wait is bounded.
+const EXIT_RECORD_WAIT_MS = 1000;
+const EXIT_RECORD_POLL_MS = 25;
+
+async function awaitExitRecord(
+  d: Deps,
+  name: string,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  const by = Date.now() + EXIT_RECORD_WAIT_MS;
+  while ((await d.fs.readExit(name, env).catch(() => null)) === null && Date.now() < by) {
+    await Bun.sleep(EXIT_RECORD_POLL_MS);
   }
 }
 
@@ -82,7 +103,9 @@ async function recordDeath(
         .capturePane(name, TOMBSTONE_PANE_LINES, env)
         .catch(() => undefined);
     }
-    const exitCode = existing?.exitCode ?? pane.exitCode;
+    const exitCode =
+      existing?.exitCode ??
+      (pane.dead ? (await readDeathCause(d, name, pane, env)).exitCode : undefined);
 
     const dead: DeadEvent = {
       at: existing?.at ?? Date.now(),

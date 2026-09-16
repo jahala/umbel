@@ -16,6 +16,7 @@ import type { ProviderLaunchSpec } from '../core/providers/types.ts';
 import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
 import type { EnvValue, Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
+import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
@@ -224,7 +225,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   }
 
   // Install global stop hook
-  const { stopScriptPath, notifyScriptPath, statusLineScriptPath } =
+  const { stopScriptPath, notifyScriptPath, statusLineScriptPath, execScriptPath } =
     await d.hooks.ensureGlobalHooks(env);
 
   // codex needs an isolated CODEX_HOME — a project .codex/hooks.json is ignored
@@ -254,7 +255,9 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // claudeBin overrides the provider's default bin (used by tests to inject
   // fake-claude.sh). When not provided, use the provider's bin.
   const bin = opts.claudeBin ?? launchSpec.bin;
-  const cmd: string[] = [bin, ...launchSpec.args];
+  // The wrapper records how the worker ends into events/exit; the worker's own
+  // argv passes through it untouched.
+  const cmd: string[] = [execScriptPath, bin, ...launchSpec.args];
 
   // Build env for the tmux session. The worker runs with the user's
   // environment by default — it should behave like running the CLI yourself,
@@ -322,6 +325,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
 
   // Create session directory
   await d.fs.ensureSessionDir(name, env);
+  await d.fs.clearExit(name, env);
 
   // Write any provider-required files before tmux launch. If a later write
   // fails mid-list, unlink the ones already written so we don't leak partial
@@ -399,8 +403,12 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // which has-session would have called success.
   const pane = await d.tmux.paneState(name, env);
   if (!pane.exists || pane.dead) {
+    const cause = pane.dead ? await readDeathCause(d, name, pane, env) : undefined;
     await unwind();
-    throw new SessionNotCreatedError(name, pane.dead ? { exitCode: pane.exitCode } : undefined);
+    throw new SessionNotCreatedError(
+      name,
+      cause !== undefined ? { exitCode: cause.exitCode } : undefined,
+    );
   }
 
   // jsonlPath is unknown at spawn-time: real claude doesn't create the

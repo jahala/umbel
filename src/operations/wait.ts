@@ -13,6 +13,7 @@ import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
 import { applyDefaultTimeout, compile } from '../core/wait.ts';
+import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
@@ -389,25 +390,28 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         let cause: DeathCause = { exists: false };
         try {
           let pane = await d.tmux.paneState(name, env);
-          // A death reaches tmux in two steps: the pty closes (pane_dead) and,
-          // moments later, the child is reaped and its status or signal
-          // recorded. A probe that lands between the two sees a dead pane with
-          // nothing recorded — ubuntu's tmux 3.4 did, every time (#89). Give
-          // tmux that moment, bounded, before reading the death as unrecorded.
+          // How it died is read from events/exit, which the launch wrapper
+          // writes before it ends, and from tmux's pane status only when that
+          // is absent. Either can trail the dead pane by a moment — the
+          // record's rename, or tmux reaping the child (#89) — so give both
+          // that moment, bounded, before reading the death as unrecorded.
           const settleBy = Date.now() + DEAD_RECORD_SETTLE_MS;
+          const causeOf = async (p: typeof pane): Promise<DeathCause> =>
+            p.exists && !p.dead ? p : readDeathCause(d, name, p, env);
+          cause = await causeOf(pane);
           while (
             pane.exists &&
             pane.dead &&
-            pane.exitCode === undefined &&
-            pane.signal === undefined &&
+            cause.exitCode === undefined &&
+            cause.signal === undefined &&
             Date.now() < settleBy
           ) {
             await Bun.sleep(DEAD_RECORD_POLL_MS);
             if (settled) return;
             pane = await d.tmux.paneState(name, env);
+            cause = await causeOf(pane);
           }
           alive = pane.exists && !pane.dead;
-          cause = pane;
         } catch {
           // Liveness probe itself failed — assume alive; never report false-dead.
         }
