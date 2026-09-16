@@ -526,7 +526,12 @@ async function verbWait(
   // stderr. The exit code still carries the reason, so a caller can branch on
   // either.
   if (jsonMode) {
-    const payload: { reason: string; message?: string; exitCode?: number } = {
+    const payload: {
+      reason: string;
+      message?: string;
+      exitCode?: number;
+      paneSnapshot?: string;
+    } = {
       reason: result.reason,
     };
     if (result.message !== undefined && result.message.length > 0) {
@@ -534,6 +539,12 @@ async function verbWait(
     }
     if (result.exitCode !== undefined) {
       payload.exitCode = result.exitCode;
+    }
+    // The last screen goes in the JSON, not only on stderr: a caller branching
+    // on this object has nothing else to read, and when the worker died it is
+    // the only account of what it was doing.
+    if (result.paneSnapshot !== undefined && result.paneSnapshot.trim().length > 0) {
+      payload.paneSnapshot = result.paneSnapshot;
     }
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return WAIT_EXIT_CODES[result.reason];

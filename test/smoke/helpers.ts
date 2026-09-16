@@ -1,7 +1,7 @@
 import { describe as bunDescribe } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { killSession } from '../../src/adapters/tmux.ts';
+import { kill } from '../../src/operations/kill.ts';
 
 // ---------------------------------------------------------------------------
 // Provider-aware gating
@@ -82,8 +82,13 @@ export function makeCleanupGuard(): CleanupGuard {
     register(name: string): void {
       names.push(name);
     },
+    // Purging: a smoke worker's tombstone is worth nothing once its test has
+    // passed, and `kill` keeps the directory by default, so a plain kill would
+    // silt up the real state root one run at a time.
     async cleanup(): Promise<void> {
-      await Promise.all(names.splice(0).map((n) => killSession(n).catch(() => undefined)));
+      await Promise.all(
+        names.splice(0).map((n) => kill({ name: n, purge: true }).catch(() => undefined)),
+      );
     },
   };
 }
