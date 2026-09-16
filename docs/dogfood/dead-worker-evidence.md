@@ -42,3 +42,10 @@ check stamped by the pinned tend2. The sink found an honest red; no proof-node r
 - **The nodes of this loop ran long** (24–45 minutes each, against 13–20 for the earlier loops): the
   tmux liveness change touched spawn, wait, status and kill at once, and each worker re-ran the whole
   suite several times. One attempt each; nothing retried.
+- **CI refused the landing on Linux tmux, twice over.** On the ubuntu runner (tmux 3.4) every
+  death settled with "tmux recorded no status": the liveness probe landed between the pane's EOF
+  and tmux reaping the child, and the status was there a moment later. The same tmux names a
+  signal by number (15) where macOS tmux 3.6b names it `term`. With no Linux at hand, a probe
+  branch with a draft PR (jahala/umbel#90, closed unmerged) printed the runner's raw formats; the
+  fix — a bounded settle in the dead path and the platform's signal table in the describer —
+  landed with two failing tests first. The merge chain did what it should: no merge on red.
