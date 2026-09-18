@@ -6,8 +6,11 @@ import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './
 // Internal JSONL parsing — Codex rollout format
 // ---------------------------------------------------------------------------
 // NOTE: Codex docs warn that "the transcript format is not a stable interface
-// for hooks and may change over time." This parser reads only the
-// event_msg/agent_message envelope, which is the most stable public shape.
+// for hooks and may change over time." It did: codex-cli 0.154.0 writes no
+// event_msg/agent_message at all (jahala/umbel#97). The turn's text now lives
+// in event_msg/task_complete.last_agent_message and in event_msg/item_completed
+// carrying an AgentMessage item. This parser reads those first and keeps the
+// agent_message shape for older rollouts. It reads event_msg records only.
 // ---------------------------------------------------------------------------
 
 type JsonObj = Record<string, unknown>;
@@ -20,9 +23,45 @@ function parseLine(raw: string): unknown {
   }
 }
 
-// Codex JSONL uses: { "type": "event_msg", "payload": { "type": "agent_message", "message": "..." } }
-// Walk backward to find the last agent_message (arrives once per turn; no
-// partial streaming — Codex fully writes before firing Stop).
+// The text an event_msg payload carries for the assistant's turn, or null when
+// it carries none. Three shapes, newest first:
+//   0.154.0  { type: "task_complete", last_agent_message: "..." }
+//   0.154.0  { type: "item_completed", item: { type: "AgentMessage", content: [{ type: "Text", text }] } }
+//   older    { type: "agent_message", message: "..." }
+// A task_complete whose last_agent_message is null says nothing (the item or
+// an older shape may still carry the text), so it is null here, not ''.
+function agentTextOf(p: JsonObj): string | null {
+  if (p.type === 'task_complete' && typeof p.last_agent_message === 'string') {
+    return p.last_agent_message;
+  }
+  if (p.type === 'item_completed' && p.item !== null && typeof p.item === 'object') {
+    const item = p.item as JsonObj;
+    if (item.type === 'AgentMessage' && Array.isArray(item.content)) {
+      const parts = item.content
+        .filter((c): c is JsonObj => c !== null && typeof c === 'object')
+        .map((c) => (typeof c.text === 'string' ? c.text : ''));
+      return parts.join('');
+    }
+  }
+  if (p.type === 'agent_message' && typeof p.message === 'string') {
+    return p.message;
+  }
+  return null;
+}
+
+function eventPayload(line: string): JsonObj | null {
+  const parsed = parseLine(line);
+  if (parsed === null || typeof parsed !== 'object') return null;
+  const obj = parsed as JsonObj;
+  if (obj.type !== 'event_msg') return null;
+  const payload = obj.payload;
+  if (payload === null || typeof payload !== 'object') return null;
+  return payload as JsonObj;
+}
+
+// Walk backward to the newest record that carries the assistant's text (each
+// arrives once per turn; no partial streaming — Codex fully writes before
+// firing Stop).
 function extractLastAgentMessage(content: string): string {
   const lines = content
     .split('\n')
@@ -30,19 +69,10 @@ function extractLastAgentMessage(content: string): string {
     .reverse();
 
   for (const line of lines) {
-    const parsed = parseLine(line);
-    if (parsed === null || typeof parsed !== 'object') continue;
-    const obj = parsed as JsonObj;
-
-    if (obj.type !== 'event_msg') continue;
-
-    const payload = obj.payload;
-    if (payload === null || typeof payload !== 'object') continue;
-    const p = payload as JsonObj;
-
-    if (p.type === 'agent_message' && typeof p.message === 'string') {
-      return p.message;
-    }
+    const p = eventPayload(line);
+    if (p === null) continue;
+    const text = agentTextOf(p);
+    if (text !== null) return text;
   }
 
   return '';
@@ -152,9 +182,10 @@ export function extractCodexActionsFromContent(content: string): ActionManifest 
 }
 
 // Pure: split a Codex rollout transcript into completed turns. A turn ends at
-// each event_msg/task_complete event. The turn's text is the most recent
-// event_msg/agent_message seen before that task_complete. Pure — never throws;
-// returns [] for empty/malformed input.
+// each event_msg/task_complete event. The turn's text is task_complete's own
+// last_agent_message when it carries one, else the most recent agent text seen
+// before it (an AgentMessage item, or agent_message in older rollouts). Pure —
+// never throws; returns [] for empty/malformed input.
 export function extractCodexTurnsFromContent(content: string): Turn[] {
   const lines = content.split('\n').filter((l) => l.trim().length > 0);
 
@@ -162,21 +193,17 @@ export function extractCodexTurnsFromContent(content: string): Turn[] {
   let currentMessage = '';
   let idx = 0;
   for (const line of lines) {
-    const parsed = parseLine(line);
-    if (parsed === null || typeof parsed !== 'object') continue;
-    const obj = parsed as JsonObj;
-    if (obj.type !== 'event_msg') continue;
-    const payload = obj.payload;
-    if (payload === null || typeof payload !== 'object') continue;
-    const p = payload as JsonObj;
+    const p = eventPayload(line);
+    if (p === null) continue;
 
-    if (p.type === 'agent_message' && typeof p.message === 'string') {
-      currentMessage = p.message;
-    } else if (p.type === 'task_complete') {
-      turns.push({ index: idx, text: currentMessage });
+    if (p.type === 'task_complete') {
+      turns.push({ index: idx, text: agentTextOf(p) ?? currentMessage });
       idx++;
       currentMessage = '';
+      continue;
     }
+    const text = agentTextOf(p);
+    if (text !== null) currentMessage = text;
   }
   return turns;
 }

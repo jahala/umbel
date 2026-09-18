@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CodexProvider } from '../../../src/core/providers/codex.ts';
+import { CodexProvider, extractCodexTurnsFromContent } from '../../../src/core/providers/codex.ts';
 import { getProvider, PROVIDERS } from '../../../src/core/providers/registry.ts';
 
 // ---------------------------------------------------------------------------
@@ -261,6 +262,113 @@ describe('CodexProvider.parseTranscript', () => {
     });
     const content = lines(impostor, makeAgentMsg('Real answer.'));
     expect(CodexProvider.parseTranscript(content)).toBe('Real answer.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CodexProvider.parseTranscript on codex-cli 0.154.0 rollouts (jahala/umbel#97)
+// ---------------------------------------------------------------------------
+//
+// 0.154.0 writes no event_msg/agent_message. The turn's text is in
+// event_msg/task_complete.last_agent_message, in event_msg/item_completed with
+// an AgentMessage item, and in the assistant response_item. The fixture is a
+// real rollout with the instruction records cut out.
+
+const ROLLOUT_0154 = readFileSync(
+  join(import.meta.dir, '../../fixtures/codex-0.154-rollout.jsonl'),
+  'utf8',
+);
+
+function makeItemCompletedAgentMessage(text: string): string {
+  return JSON.stringify({
+    timestamp: '2026-09-17T22:21:32.368Z',
+    type: 'event_msg',
+    payload: {
+      type: 'item_completed',
+      thread_id: 't',
+      turn_id: 'u',
+      item: {
+        type: 'AgentMessage',
+        id: 'msg_1',
+        content: [{ type: 'Text', text }],
+        phase: 'final_answer',
+      },
+    },
+  });
+}
+
+function makeTaskCompleteWithLast(lastAgentMessage: string | null): string {
+  return JSON.stringify({
+    timestamp: '2026-09-17T22:21:32.451Z',
+    type: 'event_msg',
+    payload: { type: 'task_complete', turn_id: 'u', last_agent_message: lastAgentMessage },
+  });
+}
+
+describe('CodexProvider.parseTranscript (codex 0.154.0 rollout)', () => {
+  test('reads the final answer from a real 0.154.0 rollout', () => {
+    expect(CodexProvider.parseTranscript(ROLLOUT_0154)).toBe('quadrat-smoke-ok');
+  });
+
+  test('task_complete.last_agent_message is the turn text', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeItemCompletedAgentMessage('from the item'),
+      makeTaskCompleteWithLast('from task_complete'),
+    );
+    expect(CodexProvider.parseTranscript(content)).toBe('from task_complete');
+  });
+
+  test('falls back to the last item_completed AgentMessage when task_complete carries no text', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeItemCompletedAgentMessage('from the item'),
+      makeTaskCompleteWithLast(null),
+    );
+    expect(CodexProvider.parseTranscript(content)).toBe('from the item');
+  });
+
+  test('the newest turn wins across two 0.154.0 turns', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeItemCompletedAgentMessage('one'),
+      makeTaskCompleteWithLast('one'),
+      makeItemCompletedAgentMessage('two'),
+      makeTaskCompleteWithLast('two'),
+    );
+    expect(CodexProvider.parseTranscript(content)).toBe('two');
+  });
+
+  test('the old agent_message shape still reads when it is the newest record', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeTaskCompleteWithLast('older turn'),
+      makeAgentMsg('old shape answer'),
+      makeTaskComplete(),
+    );
+    expect(CodexProvider.parseTranscript(content)).toBe('old shape answer');
+  });
+});
+
+describe('CodexProvider.extractTurns (codex 0.154.0 rollout)', () => {
+  test('one turn carrying the final answer from a real 0.154.0 rollout', () => {
+    expect(extractCodexTurnsFromContent(ROLLOUT_0154)).toEqual([
+      { index: 0, text: 'quadrat-smoke-ok' },
+    ]);
+  });
+
+  test('a turn without task_complete text takes the last AgentMessage item', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeItemCompletedAgentMessage('first'),
+      makeTaskCompleteWithLast(null),
+      makeItemCompletedAgentMessage('second'),
+      makeTaskCompleteWithLast('second'),
+    );
+    expect(extractCodexTurnsFromContent(content)).toEqual([
+      { index: 0, text: 'first' },
+      { index: 1, text: 'second' },
+    ]);
   });
 });
 
