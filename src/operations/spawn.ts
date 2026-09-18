@@ -269,10 +269,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // operational env < explicit workerEnv override < provider launch env
   // (RESERVED) < UMBEL_STATE/UMBEL_SESSION_ID. The last two are forced so the
   // stop hook can always locate the session dir.
-  const composedEnv: Record<string, string> = inheritedEnv(
-    process.env,
-    provider.inheritEnvPrefixes ?? [],
-  );
+  const composedEnv: Record<string, string> = inheritedEnv(process.env, provider.inheritEnv ?? []);
   // Operational env (UMBEL_STATE, test-injected vars).
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) composedEnv[k] = v;

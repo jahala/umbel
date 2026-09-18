@@ -137,11 +137,14 @@ export interface AgentProvider {
   // JSONL/JSON envelopes per provider.
   parseTranscript(content: string): string;
 
-  // Optional: name prefixes of the caller's environment variables this
-  // provider reads, so a worker inherits its own configuration (claude's
-  // ANTHROPIC_BASE_URL, codex's OPENAI_API_KEY) and nothing else of the
-  // caller's (umbel#93). Anything outside them must be passed explicitly.
-  readonly inheritEnvPrefixes?: readonly string[];
+  // Optional: the caller's environment variables this provider reads as its
+  // configuration, as exact names or prefixes written with a trailing `*`. A
+  // worker inherits these and nothing else of the caller's (umbel#93). Name
+  // configuration only. A vendor prefix such as CLAUDE_ also holds the markers
+  // a session of the same CLI sets for its children, and a worker that inherits
+  // them is not a session of its own: CLAUDE_CODE_CHILD_SESSION turns claude's
+  // transcript off.
+  readonly inheritEnv?: readonly string[];
 
   // Optional: does the transcript already hold the end of the worker's latest
   // turn? PURE and total. The stop hook can fire before the turn's final message

@@ -427,7 +427,7 @@ function unparsable(text: string, offset: number, reason: string): OpencodePlugi
 const opencodeProvider: AgentProvider = {
   name: 'opencode',
   supportsUnattended: true,
-  inheritEnvPrefixes: ['OPENCODE_'],
+  inheritEnv: ['OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR', 'OPENCODE_CONFIG_CONTENT'],
 
   stopEventName: 'session.status',
 
