@@ -339,6 +339,10 @@ const claudeProvider: AgentProvider = {
     { match: /❯\s*No, disable external imports/, keys: ['Enter'] },
   ],
   readyMatch: /Try |for shortcuts|│/,
+  // With no credentials, 2.1.276 opens on its first-run setup (a theme picker)
+  // and then its login menu; either means a person must run claude once here.
+  signInMatch:
+    /^\s*(?:Select login method:|Choose the text style that looks best with your terminal)\s*$/m,
 
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsJson = buildSettingsJson({

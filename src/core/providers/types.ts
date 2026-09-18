@@ -191,6 +191,12 @@ export interface AgentProvider {
   // dismissed. Omit/empty for providers with no startup dialogs.
   readonly startupDialogs?: readonly StartupDialog[];
 
+  // Optional: the CLI's sign-in screen, as a whole-line pattern (`^…$`, m
+  // flag) taken from its installed binary. A CLI with no credentials opens on
+  // it and waits for a person, so spawn refuses the worker, and a wait that
+  // meets it later settles `input` (umbel#105). Absent for a CLI that has none.
+  readonly signInMatch?: RegExp;
+
   // Optional: a marker that the main UI has rendered (past all dialogs). Lets
   // spawn stop polling early when the cwd is already trusted (no dialogs
   // appear) instead of waiting out the full timeout.

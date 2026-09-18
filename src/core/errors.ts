@@ -114,6 +114,22 @@ export class UnattendedUnsupportedError extends Error {
   }
 }
 
+// A CLI with no credentials opens on its sign-in screen and waits for a person
+// there, so every wait on it would run to its deadline (umbel#105).
+export class ProviderNotSignedInError extends Error {
+  override name = 'ProviderNotSignedInError';
+
+  constructor(
+    public providerName: string,
+    public line: string,
+  ) {
+    super(
+      `${providerName} is not signed in here: it opened on its sign-in screen ("${line}"). ` +
+        `A person must run ${providerName} once in a terminal and sign in; then spawn again.`,
+    );
+  }
+}
+
 // `tmux new-session -d` exits 0 once the server accepts the command, which is
 // not the same as the session existing afterwards: with no server already
 // running (under nohup, systemd, a detached CI step) the server can fail to

@@ -7,6 +7,7 @@ import {
   ModelListUnavailableError,
   OpencodeConfigUnparsableError,
   OpencodeModelUnknownError,
+  ProviderNotSignedInError,
   ProviderUnknownError,
   SendNotSubmittedError,
   SessionDeadError,
@@ -247,6 +248,7 @@ function errorExitCode(err: unknown): number {
     err instanceof SessionNotFoundError ||
     err instanceof SessionNotCreatedError ||
     err instanceof UnattendedUnsupportedError ||
+    err instanceof ProviderNotSignedInError ||
     err instanceof OpencodeConfigUnparsableError ||
     err instanceof ModelListUnavailableError
   ) {
@@ -521,12 +523,16 @@ async function verbWait(
   if (jsonMode) {
     const payload: {
       reason: string;
+      inputReason?: string;
       message?: string;
       exitCode?: number;
       paneSnapshot?: string;
     } = {
       reason: result.reason,
     };
+    // What the worker is waiting for, as the MCP face reports it: a sign-in
+    // needs a person, where a permission or a question can be answered.
+    if (result.inputReason !== undefined) payload.inputReason = result.inputReason;
     if (result.message !== undefined && result.message.length > 0) {
       payload.message = result.message;
     }

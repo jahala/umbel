@@ -6,6 +6,7 @@ import {
   AllowedToolsUnsupportedError,
   ModelListUnavailableError,
   OpencodeModelUnknownError,
+  ProviderNotSignedInError,
   SessionNotCreatedError,
   UmbelUsageError,
   UnattendedUnsupportedError,
@@ -13,7 +14,7 @@ import {
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { ProviderLaunchSpec } from '../core/providers/types.ts';
-import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
+import { nextStartupDialog, type StartupDialog, signInLine } from '../core/startup-dialogs.ts';
 import type { EnvValue, Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
 import { envExports, inheritedEnv } from '../core/worker-env.ts';
@@ -28,7 +29,9 @@ import { defaultDeps } from './deps.ts';
 // render after earlier ones clear). Bails early when every declared dialog has
 // been handled OR the provider's readyMatch shows the main UI is up
 // (already-trusted cwd → no dialogs appear). Best-effort throughout — never
-// throws.
+// throws. Returns the line of the provider's sign-in screen when the CLI opened
+// on it instead of starting (umbel#105): no dialog or readiness follows that,
+// only a person.
 const DIALOG_POLL_INTERVAL_MS = 150;
 const DIALOG_POLL_TIMEOUT_MS = 8000;
 const DIALOG_KEY_SETTLE_MS = 300;
@@ -44,9 +47,12 @@ export async function dismissStartupDialogs(
   readyMatch?: RegExp,
   readySettleMs?: number,
   env: Record<string, string | undefined> = {},
-): Promise<void> {
+  signInMatch?: RegExp,
+): Promise<string | undefined> {
   // Nothing to wait for: no dialogs to dismiss AND no ready signal to poll for.
-  if (dialogs.length === 0 && readyMatch === undefined) return;
+  if (dialogs.length === 0 && readyMatch === undefined && signInMatch === undefined) {
+    return undefined;
+  }
   const deadline = Date.now() + DIALOG_POLL_TIMEOUT_MS;
   // Keystrokes sent per dialog. Its size doubles as "dialogs handled at least
   // once", which is how a provider with no readyMatch knows it is done.
@@ -61,15 +67,20 @@ export async function dismissStartupDialogs(
     try {
       pane = await d.tmux.capturePane(name, 40, env);
     } catch {
-      return;
+      return undefined;
     }
+
+    // Checked before readiness: claude's readyMatch includes a box border,
+    // which a sign-in screen can draw too.
+    const signIn = signInLine(pane, signInMatch);
+    if (signIn !== undefined) return signIn;
 
     // The worker died during startup. Its pane is kept (remain-on-exit), so the
     // capture above succeeds and would otherwise keep this loop typing at a
     // corpse until the timeout. Stop; spawn's startup check reads the same pane
     // and reports the exit status.
     try {
-      if ((await d.tmux.paneState(name, env)).dead) return;
+      if ((await d.tmux.paneState(name, env)).dead) return undefined;
     } catch {
       // Probe failed — treat as alive and keep polling; the deadline bounds it.
     }
@@ -103,19 +114,20 @@ export async function dismissStartupDialogs(
       if (!readyMatch.test(pane)) {
         settling = null;
       } else if (readySettleMs === undefined) {
-        return;
+        return undefined;
       } else if (settling === null || settling.pane !== pane) {
         settling = { pane, since: Date.now() };
       } else if (Date.now() - settling.since >= readySettleMs) {
-        return;
+        return undefined;
       }
     } else if (attempts.size >= dialogs.length) {
       // No ready signal to wait for; done once all known dialogs are dismissed.
-      return;
+      return undefined;
     }
 
     await Bun.sleep(DIALOG_POLL_INTERVAL_MS);
   }
+  return undefined;
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -378,17 +390,27 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // readyMatch (gemini) gives a fake nothing to print, and the loop would poll
   // to its timeout, so its fake keeps the warm-up.
   const fakeWithoutReadySignal = opts.claudeBin !== undefined && provider.readyMatch === undefined;
+  let signIn: string | undefined;
   if (provider.startupDialogs !== undefined && !fakeWithoutReadySignal) {
-    await dismissStartupDialogs(
+    signIn = await dismissStartupDialogs(
       d,
       name,
       provider.startupDialogs,
       provider.readyMatch,
       provider.readySettleMs,
       env,
+      provider.signInMatch,
     ).catch(() => undefined);
   } else {
     await Bun.sleep(800);
+  }
+
+  // A CLI with no credentials opened on its sign-in screen and will wait there
+  // for a person. Reporting it spawned let every wait run to its deadline, and a
+  // conductor's retry met the same screen (umbel#105).
+  if (signIn !== undefined) {
+    await unwind();
+    throw new ProviderNotSignedInError(providerName, signIn);
   }
 
   // Returning success is a promise to the caller that a worker exists to talk

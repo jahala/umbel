@@ -9,6 +9,7 @@ import {
 } from '../core/idle.ts';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
+import { signInLine } from '../core/startup-dialogs.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
@@ -307,6 +308,23 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       }
     }
 
+    // The worker's sign-in screen, from its provider, read from meta once. A
+    // failed read is not kept, so the next check tries again.
+    let signInScreen: Promise<{ provider: string; match: RegExp } | undefined> | undefined;
+    function signInScreenOf(): Promise<{ provider: string; match: RegExp } | undefined> {
+      signInScreen ??= d.fs.readMeta(name, env).then(
+        (meta) => {
+          const match = PROVIDERS[meta.provider]?.signInMatch;
+          return match === undefined ? undefined : { provider: meta.provider, match };
+        },
+        () => {
+          signInScreen = undefined;
+          return undefined;
+        },
+      );
+      return signInScreen;
+    }
+
     // Claude fires its Stop hook before it writes the turn's final message, so a
     // stop seen here can precede the handback by a few hundred ms (umbel#86).
     // 'stop' is reported once the handback is readable; if the window closes
@@ -458,6 +476,21 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         if (settled) return;
         if (alive) {
           await refreshAlivePane();
+          // A live worker on its sign-in screen is asking a person to act, and
+          // will until one does: its credentials expired, or it never had any.
+          // Waiting out the deadline gave a conductor a timeout to retry, and
+          // the retry met the same screen (umbel#105).
+          const screen = await signInScreenOf();
+          const line = signInLine(lastAlivePane ?? '', screen?.match);
+          if (screen !== undefined && line !== undefined && lastAlivePane !== undefined) {
+            settle({
+              stopped: false,
+              reason: 'input',
+              inputReason: 'sign-in',
+              message: `${screen.provider} is asking a person to sign in: "${line}"`,
+              paneSnapshot: lastAlivePane,
+            });
+          }
           return;
         }
         ctx = await buildCtx();

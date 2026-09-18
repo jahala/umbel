@@ -1,0 +1,24 @@
+
+⚠  Warning: True color (24-bit) support not detected. Using a terminal with true
+   color enabled will result in a better visual experience.
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│ ? Get started                                                                │
+│                                                                              │
+│   How would you like to authenticate for this project?                       │
+│                                                                              │
+│   ● 1. Sign in with Google                                                   │
+│     2. Use Gemini API Key                                                    │
+│     3. Vertex AI                                                             │
+│                                                                              │
+│   No authentication method selected.                                         │
+│                                                                              │
+│   (Use Enter to select)                                                      │
+│                                                                              │
+│   Terms of Services and Privacy Notice for Gemini CLI                        │
+│                                                                              │
+│   https://geminicli.com/docs/resources/tos-privacy/                          │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
