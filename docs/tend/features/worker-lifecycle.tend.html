@@ -2632,7 +2632,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c008",
-      "description": "Workers never live on the default tmux socket. adapters/tmux.ts derives a private socket from the state root (UMBEL_TMUX_SOCKET overrides) and every invocation carries -L, so a kill-server or cleanup on the default socket cannot reach an umbel worker, and two state roots hold independent worker sets.",
+      "description": "Workers never live on the default tmux socket. adapters/tmux.ts derives a private socket from the state root (UMBEL_TMUX_SOCKET overrides) and every invocation carries -L, `umbel attach` included; a test fails on any tmux argv built outside the adapter, so a kill-server or cleanup on the default socket cannot reach an umbel worker, and two state roots hold independent worker sets.",
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
@@ -2668,9 +2668,9 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     }
   ],
   "smoke": {
-    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts",
-    "verify": "133 pass",
-    "last_run": "2026-09-18T13:43:43Z",
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts test/unit/no-bare-tmux.test.ts test/integration/attach.test.ts",
+    "verify": "136 pass",
+    "last_run": "2026-09-18T14:17:25Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2722,7 +2722,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c008",
         "verdict": "pass",
-        "evidence_path": "test/integration/tmux-isolation.test.ts (7 tests: cross-socket invisibility, absence from the default socket read with bare tmux, socketFor derivation); src/adapters/tmux.ts socketFor + tmuxArgs (every invocation carries -L); test/setup.ts + bunfig.toml (the test run is pinned to its own socket, so a test run cannot reach a real worker). Regression context: the old default-socket behaviour let tmux.test.ts's kill-server reap other agents' live workers — #58 removed the trigger, this closes the class.",
+        "evidence_path": "test/integration/tmux-isolation.test.ts (7 tests: cross-socket invisibility, absence from the default socket read with bare tmux, socketFor derivation); test/unit/no-bare-tmux.test.ts (no source file but the adapter builds a tmux argv; RED on the old `umbel attach`); test/integration/attach.test.ts (umbel attach calls tmux with the state root's socket; RED before, when it looked on the default socket and found no worker); src/adapters/tmux.ts socketFor + tmuxArgs (every invocation carries -L); test/setup.ts + bunfig.toml (the test run is pinned to its own socket, so a test run cannot reach a real worker). Regression context: the old default-socket behaviour let tmux.test.ts's kill-server reap other agents' live workers — #58 removed the trigger, this closes the class.",
         "evidence_sha": "39cb12c955edf2831efedab3c86c5b71fffa05ec"
       },
       {

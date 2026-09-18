@@ -665,13 +665,7 @@ async function verbAttach(
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
   if (name === undefined) throw new UmbelUsageError('attach: <name> is required');
-  const proc = Bun.spawn(['tmux', 'attach', '-t', `umbel-${name}`], {
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
-  const code = await proc.exited;
-  return typeof code === 'number' ? code : 0;
+  return await defaultDeps.tmux.attach(name, getCliEnv());
 }
 
 // ---------------------------------------------------------------------------
