@@ -20,6 +20,16 @@ export interface StartupDialog {
   readonly keys: readonly string[];
 }
 
+// PURE. The line of the provider's sign-in screen on this pane, trimmed of
+// whitespace and box borders, or undefined when the screen is not showing.
+// `match` is a whole-line pattern (`^…$` with the m flag): a worker's own output
+// can hold the same words, in a diff or a reply, but never alone on a line.
+export function signInLine(pane: string, match: RegExp | undefined): string | undefined {
+  if (match === undefined) return undefined;
+  const hit = pane.match(match);
+  return hit === null ? undefined : hit[0].replace(/^[\s│]+|[\s│]+$/g, '');
+}
+
 // Pure: given the current pane text, the provider's dialog specs, and the set
 // of dialog indices to skip (those whose keys have been re-sent to the attempt
 // limit without the dialog clearing), return the index of the first remaining

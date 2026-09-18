@@ -267,6 +267,8 @@ const codexProvider: AgentProvider = {
   // seconds after, hence the settle window.
   readyMatch: /› Ask Codex to do anything|Implement \{/,
   readySettleMs: 1500,
+  // 0.154.0 with no credentials opens on its sign-in menu.
+  signInMatch: /^\s*or connect an API key for usage-based billing\s*$/m,
 
   // Codex's TUI ignores a submitting Enter that lands immediately after the
   // pasted prompt — the text stays in the input box, unsent, and no turn runs.

@@ -6,7 +6,8 @@
 // the orchestrator can branch on, so `needsInput:true` is no longer ambiguous
 // between "blocked on a permission prompt" and "done and idling".
 
-export type NeedsInputReason = 'permission' | 'idle' | 'question';
+// 'sign-in' comes from the pane, not a hook: the CLI is on its sign-in screen.
+export type NeedsInputReason = 'permission' | 'idle' | 'question' | 'sign-in';
 
 export interface NotificationClassification {
   // null = the latest notification is informational (auth_success, elicitation

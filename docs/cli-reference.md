@@ -16,7 +16,7 @@ umbel --version                  Show version (0.0.1)
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Generic error (session dead, tmux failure, hook timeout, session not created, provider has no unattended mode) |
+| 1 | Generic error (session dead, tmux failure, hook timeout, session not created, provider has no unattended mode, provider not signed in) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
 | 122 | `wait` provider-error — a provider error on the pane, then stillness |
 | 123 | `wait` idle — pane, events directory and transcript tree all still for `--idle-timeout` |
@@ -61,6 +61,8 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 **Output:** `spawned: <name>` on stdout.
 
 Exit 0 means the tmux session exists — `spawn` verifies it before returning, so a worker that never started (no tmux server bootable, e.g. detached under `nohup` with an unwritable socket dir) or that died during startup fails immediately with exit 1 rather than succeeding into the void and surfacing later as a `wait` timeout. Session, provider files, and state are cleaned up on that path.
+
+A CLI with no credentials opens on its sign-in screen and waits there for a person. `spawn` refuses such a worker (exit 1), names the screen's line, and cleans up. Run the CLI once in a terminal on that machine to sign in, then spawn again. The screens are taken from the installed binaries: claude's first-run setup and login menu, codex's sign-in menu, and gemini's authentication menu. opencode has none.
 
 Before returning, `spawn` waits for the worker to be ready and dismisses the provider's startup dialogs (workspace trust, hook review, update notice) as they appear. Ready means the provider's idle prompt line is on the pane with no dialog pending. For providers that declare a settle window (codex: 1.5 s), the pane must also stay unchanged for that window, because codex keeps redrawing its banner and can raise the trust dialog seconds after the prompt line first appears. A dialog that arrives during the settle is still dismissed.
 
@@ -180,7 +182,7 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `message` is included for `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line). |
+| `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `message` is included for `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line). For `input`, `inputReason` says what the worker waits for: `permission`, `idle`, `question`, or `sign-in`. |
 | `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `umbel send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
@@ -207,7 +209,7 @@ The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `
 | Reason | Exit | Meaning |
 |--------|------|---------|
 | stop | 0 | Turn completed — `umbel read` the result. |
-| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
+| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. A worker on its CLI's sign-in screen, for instance after its credentials expired, is also `input`, with `inputReason: "sign-in"`: only a person signing in on that machine clears it. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
 | provider-error | 122 | The pane shows a provider error (codex `unexpected status 404`, claude `API Error`) and then stays still. The matched line is the `message`; the pane prints to stderr. Fail or recast the attempt; waiting longer will not help. |
 | idle | 123 | Pane, events directory and transcript tree all still for `--idle-timeout`. The `message` names each source and how long it has been still, e.g. `idle 1.6s: pane still 1.6s · events still 1.9s · transcript still 1.8s · subagents none`; a source umbel could not locate reads `unresolved`. Pane prints to stderr. |
 | dead | 125 | Worker exited before finishing its turn. `exitCode` is the status it exited with, read from `events/exit` (umbel's launch wrapper), with tmux's pane status as the fallback; `paneSnapshot` is its last screen, captured from the dead pane. |

@@ -249,6 +249,8 @@ const geminiProvider: AgentProvider = {
   // AFTER trust; umbel does not auto-dismiss it (completing OAuth needs a
   // browser, and silently picking an auth method is a poor default).
   startupDialogs: [{ match: /trust the files in this folder/i, keys: ['Enter'] }],
+  // 0.46.0 with no credentials opens on its authentication menu, after trust.
+  signInMatch: /^[\s│]*How would you like to authenticate for this project\?[\s│]*$/m,
 
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsPath = join(opts.cwd, '.gemini', 'settings.json');

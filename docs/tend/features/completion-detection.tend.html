@@ -2646,12 +2646,21 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Drive waitFor with injected tmux calls that never resolve and a 300 ms deadline: assert reason='timeout' within the grace, the message, and the alive pane carried. Put a tmux that never answers first on PATH: assert capturePane rejects at the bound and hasSession rejects rather than answering false. Confirm both RED with the backstop and the bound disabled.",
       "validates_job": "supervisor-dev:1"
+    },
+    {
+      "id": "c010",
+      "description": "A live worker on its CLI's sign-in screen settles wait as reason='input' with inputReason='sign-in', the screen's line in message and the pane in paneSnapshot, well before the deadline; a worker at work is left to its deadline. `wait --json` carries inputReason as umbel_wait does.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "Drive waitFor with a pane holding gemini's real sign-in screen and a 20 s deadline: assert input, sign-in, the line and the pane within 5 s; with a working pane assert the deadline. Run `umbel wait --json` against a real tmux session showing that screen: assert exit 126 and inputReason 'sign-in'. RED before: the wait ran to its deadline and the JSON had no inputReason.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts test/integration/read-at-stop.test.ts test/unit/wait-deadline.test.ts test/integration/tmux-timeout.test.ts",
-    "verify": "89 pass",
-    "last_run": "2026-09-18T14:06:18Z",
+    "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts test/integration/read-at-stop.test.ts test/unit/wait-deadline.test.ts test/integration/tmux-timeout.test.ts test/unit/wait-sign-in.test.ts test/e2e/wait-sign-in.test.ts",
+    "verify": "92 pass",
+    "last_run": "2026-09-18T14:35:03Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2711,6 +2720,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/unit/wait-deadline.test.ts:32-76 (the deadline ends the wait while every tmux call hangs, and carries the last alive pane; RED with the backstop disabled); test/unit/wait-deadline.test.ts:78-104 (deadlineOf: top-level and any, never all); test/integration/tmux-timeout.test.ts:39-58 (an unanswered call ends at its bound and is not read as no session; RED with the bound disabled); src/operations/wait.ts:559-579 (the deadline's own timer); src/core/wait.ts:122-127 (deadlineOf); src/adapters/tmux.ts:74-115 (runTmux bounds the wait for output, not only the process)",
         "evidence_sha": "2afd95a680ab057cb0091b6af08b2555082d2259"
+      },
+      {
+        "check_id": "c010",
+        "verdict": "pass",
+        "evidence_path": "test/unit/wait-sign-in.test.ts:22-101 (input with sign-in, the line and the pane long before the deadline; a working pane runs to it; RED before: timeout at 20 s); test/e2e/wait-sign-in.test.ts:28-68 (the CLI against a real tmux pane with gemini's real sign-in screen exits 126 with inputReason sign-in; RED before: no inputReason in the JSON); src/operations/wait.ts:311-326,477-495 (the provider's screen from meta; settled in the alive path); src/faces/cli.ts wait --json payload",
+        "evidence_sha": "33df06f44b72729805356411528b3c5df87956da"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

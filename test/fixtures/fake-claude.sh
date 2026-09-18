@@ -36,6 +36,8 @@
 #   FAKE_CLAUDE_DIE_SIGNAL optional, signal the FAKE_CLAUDE_DIE_MS death dies by
 #                         instead of exiting — stands in for a worker killed by
 #                         someone else (tmux records the same wait status)
+#   FAKE_CLAUDE_SIGN_IN   optional, a file: print it and wait there, as a CLI with no
+#                         credentials opens on its sign-in screen and stays on it
 
 set -euo pipefail
 
@@ -44,6 +46,11 @@ set -euo pipefail
 # holds only what tmux puts there.
 if [[ -n "${FAKE_CLAUDE_EXIT_AT_START:-}" ]]; then
   exit "${FAKE_CLAUDE_EXIT_AT_START}"
+fi
+
+if [[ -n "${FAKE_CLAUDE_SIGN_IN:-}" ]]; then
+  cat "$FAKE_CLAUDE_SIGN_IN"
+  exec sleep 600
 fi
 
 ERROR_LINE="${FAKE_CLAUDE_ERROR:-}"

@@ -2665,12 +2665,21 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Sample ps -axww -o args= every 25 ms from before spawn until the worker is up, with one canary in process.env and one in workerEnv. Assert neither canary is in any sample, in tmux show-environment -g or -t, or in any file under the state dir, and that the fake worker's probe records the passed canary's sha256 and the withheld one as unset. Confirm RED against the -e K=V code.",
       "validates_job": "supervisor-dev:0"
+    },
+    {
+      "id": "c012",
+      "description": "A CLI with no credentials opens on its sign-in screen and waits for a person. spawn refuses such a worker with ProviderNotSignedInError naming the screen's line (exit 1), and leaves no session, state dir or provider files behind. Each provider names its screen as a whole-line pattern taken from its installed binary; opencode has none.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Spawn the claude fake printing the real claude login pane: assert ProviderNotSignedInError naming 'Select login method:', no pane and no session dir after. Match each provider's pattern against its real captured pane, a working pane, and a worker's own output quoting the phrase. Confirm RED with the refusal disabled and with the anchors removed.",
+      "validates_job": "supervisor-dev:0"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts test/unit/no-bare-tmux.test.ts test/integration/attach.test.ts",
-    "verify": "136 pass",
-    "last_run": "2026-09-18T14:17:25Z",
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts test/unit/no-bare-tmux.test.ts test/integration/attach.test.ts test/unit/sign-in.test.ts test/integration/spawn-sign-in.test.ts",
+    "verify": "144 pass",
+    "last_run": "2026-09-18T14:34:10Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2742,6 +2751,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/integration/worker-env.test.ts:70-148 (argv sampled across the spawn, tmux global and session env, worker probe, state-dir sweep; RED against origin/master and against each of two sabotages: inherit everything, full tmux client env); test/integration/worker-env.test.ts:150-172 (exports round-trip quotes, $, newline, backslash, unicode, empty through bash); src/adapters/tmux.ts:42-67,120-173 (minimal client env, load-buffer from stdin ahead of new-session, deleteBuffer); src/adapters/hooks.ts:71-152 (launch.sh reads, deletes, clears, evaluates); src/faces/cli.ts parseEnvFlags (--env NAME by reference)",
         "evidence_sha": "01e7e517a2cdbe7a11465ecc826ca61f7a008dda"
+      },
+      {
+        "check_id": "c012",
+        "verdict": "pass",
+        "evidence_path": "test/integration/spawn-sign-in.test.ts:28-58 (a fake at the real claude login pane is refused, naming the line, with no session or state left; RED with the refusal disabled); test/unit/sign-in.test.ts:19-62 (each provider's pattern names its line in its real pane; a working pane and a worker's own output quoting the phrase do not match; RED with the anchors removed); test/fixtures/sign-in/ (claude 2.1.276, codex 0.154.0 and gemini 0.46.0 captured with an empty config home); src/operations/spawn.ts:73-76,408-414 (seen before readiness; refused and unwound); src/core/startup-dialogs.ts:23-31 (signInLine); signInMatch in src/core/providers/{claude,codex,gemini}.ts",
+        "evidence_sha": "ba165cf2cc3e653a55edc3d90ba46b25846eb031"
       }
     ],
     "verified_at_commit": "ebceffdce052407326d9f66210cf2b5bce570fed"
