@@ -75,7 +75,8 @@ Exit codes:
   123  wait idle — pane, events and transcript still for --idle-timeout
   124  wait timeout — hard deadline hit
   125  wait dead — worker exited before finishing its turn
-  126  wait input — worker is blocked waiting for input (permission / prompt)
+  126  wait input — worker is blocked waiting for input (permission / prompt);
+       spawn refused: the CLI needs a person to sign in first
   130  Aborted (SIGINT)
 `;
 
@@ -240,6 +241,7 @@ function errorExitCode(err: unknown): number {
   ) {
     return 2;
   }
+  if (err instanceof ProviderNotSignedInError) return SPAWN_EXIT_CODES['not-signed-in'];
   if (
     err instanceof SessionDeadError ||
     err instanceof SendNotSubmittedError ||
@@ -248,7 +250,6 @@ function errorExitCode(err: unknown): number {
     err instanceof SessionNotFoundError ||
     err instanceof SessionNotCreatedError ||
     err instanceof UnattendedUnsupportedError ||
-    err instanceof ProviderNotSignedInError ||
     err instanceof OpencodeConfigUnparsableError ||
     err instanceof ModelListUnavailableError
   ) {
@@ -589,6 +590,16 @@ const WAIT_EXIT_CODES: Record<Awaited<ReturnType<typeof waitFor>>['reason'], num
   dead: 125,
   input: 126,
   aborted: 130,
+};
+
+// A refused spawn's exit code, where it says more than failure. The runner
+// contract reads this table (jahala/plotplot contracts/runner.md, "A spawn that
+// needs a person is blocked, and says so by its exit code"): a CLI at its
+// sign-in screen shares 126 with the wait reason `input`, since a person is
+// needed and a retry meets the same screen. Every other spawn failure keeps its
+// code (umbel#110).
+const SPAWN_EXIT_CODES: Record<'not-signed-in', number> = {
+  'not-signed-in': 126,
 };
 
 // ---------------------------------------------------------------------------

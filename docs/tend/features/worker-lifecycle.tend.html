@@ -2668,7 +2668,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c012",
-      "description": "A CLI with no credentials opens on its sign-in screen and waits for a person. spawn refuses such a worker with ProviderNotSignedInError naming the screen's line (exit 1), and leaves no session, state dir or provider files behind. Each provider names its screen as a whole-line pattern taken from its installed binary; opencode has none.",
+      "description": "A CLI with no credentials opens on its sign-in screen and waits for a person. spawn refuses such a worker with ProviderNotSignedInError naming the screen's line, exit 126 from SPAWN_EXIT_CODES (the runner contract's code for a spawn that needs a person, umbel#110), and leaves no session, state dir or provider files behind. Each provider names its screen as a whole-line pattern taken from its installed binary; opencode has none.",
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
@@ -2677,9 +2677,9 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     }
   ],
   "smoke": {
-    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts test/unit/no-bare-tmux.test.ts test/integration/attach.test.ts test/unit/sign-in.test.ts test/integration/spawn-sign-in.test.ts",
-    "verify": "144 pass",
-    "last_run": "2026-09-18T14:34:10Z",
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts test/unit/no-bare-tmux.test.ts test/integration/attach.test.ts test/unit/sign-in.test.ts test/integration/spawn-sign-in.test.ts test/integration/spawn-exit-codes.test.ts",
+    "verify": "147 pass",
+    "last_run": "2026-09-18T14:53:44Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2755,7 +2755,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c012",
         "verdict": "pass",
-        "evidence_path": "test/integration/spawn-sign-in.test.ts:28-58 (a fake at the real claude login pane is refused, naming the line, with no session or state left; RED with the refusal disabled); test/unit/sign-in.test.ts:19-62 (each provider's pattern names its line in its real pane; a working pane and a worker's own output quoting the phrase do not match; RED with the anchors removed); test/fixtures/sign-in/ (claude 2.1.276, codex 0.154.0 and gemini 0.46.0 captured with an empty config home); src/operations/spawn.ts:73-76,408-414 (seen before readiness; refused and unwound); src/core/startup-dialogs.ts:23-31 (signInLine); signInMatch in src/core/providers/{claude,codex,gemini}.ts",
+        "evidence_path": "test/integration/spawn-sign-in.test.ts:28-58 (a fake at the real claude login pane is refused, naming the line, with no session or state left; RED with the refusal disabled); test/integration/spawn-exit-codes.test.ts (the CLI exits 126 for the refusal, still 2 for an unknown provider and 1 for a worker dead at startup; RED before, when the refusal exited 1); test/unit/sign-in.test.ts:19-62 (each provider's pattern names its line in its real pane; a working pane and a worker's own output quoting the phrase do not match; RED with the anchors removed); test/fixtures/sign-in/ (claude 2.1.276, codex 0.154.0 and gemini 0.46.0 captured with an empty config home); src/operations/spawn.ts:73-76,408-414 (seen before readiness; refused and unwound); src/core/startup-dialogs.ts:23-31 (signInLine); signInMatch in src/core/providers/{claude,codex,gemini}.ts",
         "evidence_sha": "ba165cf2cc3e653a55edc3d90ba46b25846eb031"
       }
     ],
