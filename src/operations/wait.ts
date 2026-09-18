@@ -12,7 +12,7 @@ import { PROVIDERS } from '../core/providers/registry.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
-import { applyDefaultTimeout, compile } from '../core/wait.ts';
+import { applyDefaultTimeout, compile, deadlineOf } from '../core/wait.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -116,6 +116,10 @@ const ALIVE_PANE_CAPTURE_MS = 2000;
 // often to look meanwhile.
 const DEAD_RECORD_SETTLE_MS = 1000;
 const DEAD_RECORD_POLL_MS = 100;
+// How long past its deadline a wait may spend capturing the pane for its
+// timeout. A tmux that has not answered by then no longer holds the wait
+// (umbel#98).
+export const DEADLINE_GRACE_MS = 2000;
 
 // Transcript discovery scans a directory, so the idle net retries it only every
 // few polls while the hook has not yet told us where the transcript lives.
@@ -163,6 +167,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
 
   const condition = applyDefaultTimeout(rawCondition, defaultTimeoutMs);
   const { evaluate, wakeSources } = compile(condition);
+  const deadlineMs = deadlineOf(condition);
 
   const startedAt = Date.now();
 
@@ -549,6 +554,28 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         }, ws.ms);
         cleanupFns.push(() => clearTimeout(handle));
       }
+    }
+
+    // The deadline settles through check(), and check() awaits tmux. When tmux
+    // does not answer, no check finishes and nothing else would end the wait: a
+    // wait asked for 120s held for 46 minutes (umbel#98). So the deadline also
+    // ends the wait on its own, with the last pane seen alive. A stop already
+    // being read out outranks it, and that read is bounded.
+    if (deadlineMs !== undefined) {
+      const handle = setTimeout(() => {
+        if (settled || stopHeld) return;
+        const pane =
+          lastAlivePane === undefined
+            ? 'no pane was captured'
+            : 'the pane shown is the last one seen while the worker was alive';
+        settle({
+          stopped: false,
+          reason: 'timeout',
+          message: `tmux did not answer within ${DEADLINE_GRACE_MS / 1000}s of the deadline; ${pane}`,
+          ...(lastAlivePane !== undefined ? { paneSnapshot: lastAlivePane } : {}),
+        });
+      }, deadlineMs + DEADLINE_GRACE_MS);
+      cleanupFns.push(() => clearTimeout(handle));
     }
 
     // Set up polling interval for pattern wake sources

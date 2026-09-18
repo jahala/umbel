@@ -2605,12 +2605,21 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "e2e",
       "verification_recipe": "Spawn `umbel mcp`, complete initialize handshake, close stdin, race proc.exited against a 4 s timeout; assert the process exits (not the timeout symbol).",
       "validates_job": "supervisor-dev:1"
+    },
+    {
+      "id": "c007",
+      "description": "umbel_wait honours every field it declares: until, file, pattern, timeout, idleTimeout and sinceMtime reach waitFor through waitRequest, the same translation the CLI's wait uses. `umbel mcp` works in the state root UMBEL_STATE names, as every other verb does.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "e2e",
+      "verification_recipe": "In process, give umbel_wait timeout '1s' on a live worker that never stops and assert reason='timeout' within 5 s; give it until=pattern and until=file and assert each settles; omit the pattern and assert a usage error. Start `umbel mcp` over stdio with UMBEL_STATE naming a temp root that holds one worker and assert umbel_ls lists it. All RED before the change: the timeout ran to the 30-minute default and the server listed ~/.umbel.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/e2e/mcp-smoke.test.ts test/unit/mcp-help.test.ts",
-    "verify": "11 pass, 0 fail",
-    "last_run": "2026-06-21T00:00:00Z",
+    "cmd": "bun test test/e2e/mcp-smoke.test.ts test/unit/mcp-help.test.ts test/integration/mcp-inproc.test.ts test/e2e/mcp-state.test.ts",
+    "verify": "28 pass, 0 fail",
+    "last_run": "2026-09-18T14:06:18Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2652,6 +2661,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/e2e/mcp-smoke.test.ts:297 (test 'umbel mcp exits promptly when stdin closes', 4 s race); src/faces/mcp.ts:371-394 (stdin end/close SIGINT/SIGTERM Promise + stdin.resume())",
         "evidence_sha": "a0df4b159373c4075298398fcdba9cbad26df63d"
+      },
+      {
+        "check_id": "c007",
+        "verdict": "pass",
+        "evidence_path": "test/integration/mcp-inproc.test.ts:411-528 (timeout, pattern, file and a missing pattern through umbel_wait; RED before); test/e2e/mcp-state.test.ts (umbel mcp in the state root it is started with; RED before); src/faces/verbs.ts:119-140 (waitRequest); src/faces/mcp.ts umbel_wait; src/faces/cli.ts verbWait and verbMcp",
+        "evidence_sha": "3c4c5bbcb22611a6f750d6d1d1a88e522cb1836d"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

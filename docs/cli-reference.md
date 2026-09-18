@@ -196,6 +196,10 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 The default timeout (30 minutes) is enforced even when `--timeout` is not specified. No wait runs forever.
 
+The deadline holds whatever the pane or tmux does. Every tmux call umbel makes is bounded at 5 seconds. A wait that cannot capture the pane within 2 seconds of its deadline still returns `timeout`, with the last pane seen while the worker was alive and a `message` saying tmux did not answer.
+
+The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `pattern`, `timeout`, `idleTimeout`, `sinceMtime`), through the same translation.
+
 **Outcomes / exit codes**
 
 `wait` reports *why* it ended so a supervisor can act instead of hanging when a worker needs attention:

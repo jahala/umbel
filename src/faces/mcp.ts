@@ -16,7 +16,7 @@ import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
 import { waitFor } from '../operations/wait.ts';
 import { HELP_TOPICS, type HelpTopic, helpForTopic } from './mcp-help.ts';
-import { parseDuration, VerbSchemas } from './verbs.ts';
+import { parseDuration, VerbSchemas, waitRequest } from './verbs.ts';
 
 // ---------------------------------------------------------------------------
 // Agent-facing copy. Exported so tests can snapshot the strings.
@@ -173,13 +173,10 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     },
 
     umbel_wait: async (args) => {
-      const idleTimeoutMs =
-        args.idleTimeout !== undefined ? parseDuration(args.idleTimeout) : undefined;
       const waitOpts = {
         name: args.name,
         env,
-        ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
-        ...(args.sinceMtime !== undefined ? { sinceMtime: args.sinceMtime } : {}),
+        ...waitRequest(args),
         ...(deps !== undefined ? { deps } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
       };

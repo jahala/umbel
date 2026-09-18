@@ -20,7 +20,7 @@ import {
 } from '../core/errors.ts';
 import { isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
-import { type EnvValue, SessionNameSchema } from '../core/types.ts';
+import type { EnvValue } from '../core/types.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
 import { capture } from '../operations/capture.ts';
 import { defaultDeps } from '../operations/deps.ts';
@@ -31,11 +31,10 @@ import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
 import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
-import type { WaitCondition } from '../operations/wait.ts';
 import { waitFor } from '../operations/wait.ts';
 import { runMcpServer } from './mcp.ts';
 import { runP } from './p.ts';
-import { parseDuration } from './verbs.ts';
+import { parseDuration, waitRequest } from './verbs.ts';
 import { runWorkflow } from './workflow.ts';
 
 const VERSION = '0.0.1';
@@ -484,7 +483,6 @@ async function verbWait(
   const jsonMode = flagBool(flags, 'json');
   const until = (flagStr(flags, 'until') ?? 'stop') as 'stop' | 'file' | 'pattern';
   const rawTimeout = flagStr(flags, 'timeout');
-  const timeoutMs = rawTimeout !== undefined ? parseDuration(rawTimeout) : undefined;
 
   // --since provides the stop-mtime baseline captured before send, making
   // send-in-one-process and wait-in-another race-free.
@@ -497,28 +495,22 @@ async function verbWait(
     }
   }
 
-  let condition: WaitCondition | undefined;
-  if (until === 'file') {
-    const file = flagStr(flags, 'file');
-    if (file === undefined) throw new UmbelUsageError('wait: --file required when --until=file');
-    condition = { kind: 'file', path: file };
-  } else if (until === 'pattern') {
-    const pat = flagStr(flags, 'pattern');
-    if (pat === undefined)
-      throw new UmbelUsageError('wait: --pattern required when --until=pattern');
-    condition = { kind: 'pattern', session: SessionNameSchema.parse(name), regex: pat };
-  }
-
-  const rawIdle = flagStr(flags, 'idle-timeout');
-  const idleTimeoutMs = rawIdle !== undefined ? parseDuration(rawIdle) : undefined;
-
+  // The same translation the MCP face uses, so a flag and a tool argument ask
+  // for the same wait (umbel#98).
   const waitOpts = {
     name,
     env: getCliEnv(),
-    ...(condition !== undefined ? { condition } : {}),
-    ...(timeoutMs !== undefined ? { defaultTimeoutMs: timeoutMs } : {}),
-    ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
-    ...(sinceMtime !== undefined ? { sinceMtime } : {}),
+    ...waitRequest({
+      name,
+      until,
+      ...(flagStr(flags, 'file') !== undefined ? { file: flagStr(flags, 'file') } : {}),
+      ...(flagStr(flags, 'pattern') !== undefined ? { pattern: flagStr(flags, 'pattern') } : {}),
+      ...(rawTimeout !== undefined ? { timeout: rawTimeout } : {}),
+      ...(flagStr(flags, 'idle-timeout') !== undefined
+        ? { idleTimeout: flagStr(flags, 'idle-timeout') }
+        : {}),
+      ...(sinceMtime !== undefined ? { sinceMtime } : {}),
+    }),
   };
 
   const result = await waitFor(waitOpts);
@@ -847,6 +839,8 @@ async function verbRun(positionals: string[]): Promise<number> {
 // ---------------------------------------------------------------------------
 
 async function verbMcp(): Promise<number> {
-  await runMcpServer({});
+  // The same environment every other verb forwards. Started with none, the
+  // server worked on ~/.umbel whatever UMBEL_STATE said (umbel#98).
+  await runMcpServer({ env: getCliEnv() });
   return 0;
 }

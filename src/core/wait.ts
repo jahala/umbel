@@ -111,3 +111,17 @@ export function applyDefaultTimeout(cond: WaitCondition, defaultMs: number): Wai
     conditions: [cond, { kind: 'timeout', ms: defaultMs }],
   };
 }
+
+// ---------------------------------------------------------------------------
+// deadlineOf: the time after which the condition holds whatever else happens
+// ---------------------------------------------------------------------------
+
+// PURE. A timeout ends the wait on its own at the top or inside `any`. Inside
+// `all` it only asks for time to have passed alongside the rest, so it sets no
+// deadline.
+export function deadlineOf(cond: WaitCondition): number | undefined {
+  if (cond.kind === 'timeout') return cond.ms;
+  if (cond.kind !== 'any') return undefined;
+  const deadlines = cond.conditions.map(deadlineOf).filter((ms): ms is number => ms !== undefined);
+  return deadlines.length === 0 ? undefined : Math.min(...deadlines);
+}

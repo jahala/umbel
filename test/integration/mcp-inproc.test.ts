@@ -446,4 +446,83 @@ describe('umbel_wait', () => {
     const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { reason: string };
     expect(parsed.reason).toBe('aborted');
   });
+  // umbel#98: umbel_wait took timeout, until, file and pattern in its schema and
+  // passed none of them on, so a wait asked for 120s ran to the 30-minute
+  // default. Each is given here to a worker that never stops.
+  async function liveWorker(
+    env: Record<string, string | undefined>,
+    suffix: string,
+    cmd: string[],
+  ): Promise<string> {
+    const name = sessionName(suffix);
+    const { newSession } = await import('../../src/adapters/tmux.ts');
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+    await ensureSessionDir(name, env);
+    await newSession({ name, cwd: '/tmp', cmd }, env);
+    CREATED.push(name);
+    const session = SessionSchema.parse({
+      name,
+      cwd: '/tmp',
+      anonymous: true,
+      createdAt: Date.now(),
+      jsonlPath: null,
+    });
+    await writeMeta(name, session, env);
+    return name;
+  }
+
+  const reasonOf = (result: { content: Array<{ text?: string }> }): string =>
+    (JSON.parse(result.content[0]?.text ?? '{}') as { reason: string }).reason;
+
+  test('ends at the timeout it is given', async () => {
+    const env = await setup();
+    const name = await liveWorker(env, 'waitto', ['bash']);
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+
+    const started = Date.now();
+    const result = await tools.umbel_wait({ name, until: 'stop', timeout: '1s' });
+
+    expect(reasonOf(result)).toBe('timeout');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  }, 15_000);
+
+  test('waits for the pattern it is given', async () => {
+    const env = await setup();
+    const name = await liveWorker(env, 'waitpat', [
+      'bash',
+      '-c',
+      'sleep 0.3; echo READY-98; exec sleep 60',
+    ]);
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+
+    const result = await tools.umbel_wait({
+      name,
+      until: 'pattern',
+      pattern: 'READY-98',
+      timeout: '10s',
+    });
+
+    expect(reasonOf(result)).toBe('pattern');
+  }, 15_000);
+
+  test('waits for the file it is given', async () => {
+    const env = await setup();
+    const name = await liveWorker(env, 'waitfile', ['bash']);
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+    const file = join(tmpDir, 'done-98');
+    setTimeout(() => void Bun.write(file, 'x'), 300);
+
+    const result = await tools.umbel_wait({ name, until: 'file', file, timeout: '10s' });
+
+    expect(reasonOf(result)).toBe('file');
+  }, 15_000);
+
+  test('refuses until=pattern without a pattern', async () => {
+    const env = await setup();
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+    await expect(
+      tools.umbel_wait({ name: sessionName('nopat'), until: 'pattern' }),
+    ).rejects.toThrow('pattern');
+  });
 });

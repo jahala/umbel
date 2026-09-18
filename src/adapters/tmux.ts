@@ -66,11 +66,19 @@ export function tmuxClientEnv(): Record<string, string> {
   return out;
 }
 
-async function tmux(
+// A tmux command answers in milliseconds. Past this it is not slow, it is not
+// answering, and every deadline umbel keeps is evaluated between such calls
+// (umbel#98). The client is ended and the caller told, rather than held.
+export const TMUX_CALL_TIMEOUT_MS = 5_000;
+
+// Every tmux client umbel starts runs through here, bounded. The bound is on
+// the wait, not only on the process: a client that is killed can leave a child
+// holding the pipe, and reading to its end would hold the caller anyway.
+async function runTmux(
   args: string[],
-  env: Record<string, string | undefined> = {},
+  env: Record<string, string | undefined>,
   input?: string,
-): Promise<{ stdout: string; stderr: string }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   // stdin is 'ignore' unless the command reads data from it, so the tmux client
   // never consumes our parent's stdin. Bun.spawn otherwise inherits it, and a
   // tmux client that briefly reads on startup can pull a byte from the test
@@ -81,11 +89,37 @@ async function tmux(
     stderr: 'pipe',
     env: tmuxClientEnv(),
   });
-  const [stdout, stderr, exitCode] = await Promise.all([
+  const answered = Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), TMUX_CALL_TIMEOUT_MS);
+  });
+  try {
+    const settled = await Promise.race([answered, bound]);
+    if (settled === undefined) {
+      proc.kill('SIGKILL');
+      throw new TmuxError(
+        args[0] ?? 'tmux',
+        `tmux did not answer within ${TMUX_CALL_TIMEOUT_MS / 1000}s`,
+      );
+    }
+    const [stdout, stderr, exitCode] = settled;
+    return { stdout, stderr, exitCode };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function tmux(
+  args: string[],
+  env: Record<string, string | undefined> = {},
+  input?: string,
+): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr, exitCode } = await runTmux(args, env, input);
   if (exitCode !== 0) {
     throw new TmuxError(args[0] ?? 'tmux', stderr.trim());
   }
@@ -179,14 +213,10 @@ export async function hasSession(
   name: string,
   env: Record<string, string | undefined> = {},
 ): Promise<boolean> {
-  const proc = Bun.spawn(['tmux', ...tmuxArgs(['has-session', '-t', prefixed(name)], env)], {
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: tmuxClientEnv(),
-  });
-  const code = await proc.exited;
-  return code === 0;
+  // A tmux that never answers says nothing about the session, so runTmux throws
+  // rather than let `false` report a live worker as gone (umbel#98).
+  const { exitCode } = await runTmux(['has-session', '-t', prefixed(name)], env);
+  return exitCode === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,16 +342,11 @@ export async function sendText(
   if (useBuffer) {
     const bufName = `umbel-buf-${randomBytes(6).toString('hex')}`;
     // Write text to buffer via stdin (this call MUST pipe stdin)
-    const loadProc = Bun.spawn(['tmux', ...tmuxArgs(['load-buffer', '-b', bufName, '-'], env)], {
-      stdin: new TextEncoder().encode(text),
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: tmuxClientEnv(),
-    });
-    const [loadStderr, loadCode] = await Promise.all([
-      new Response(loadProc.stderr).text(),
-      loadProc.exited,
-    ]);
+    const { stderr: loadStderr, exitCode: loadCode } = await runTmux(
+      ['load-buffer', '-b', bufName, '-'],
+      env,
+      text,
+    );
     if (loadCode !== 0) {
       throw new TmuxError('load-buffer', loadStderr.trim());
     }
