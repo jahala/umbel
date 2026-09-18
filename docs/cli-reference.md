@@ -351,7 +351,7 @@ umbel prune --older-than 24h
 
 ### attach
 
-Attach your terminal to a running session's tmux pane. Hands control directly to tmux; exit with the normal tmux detach key (`Ctrl-b d`).
+Attach your terminal to a running session's tmux pane. Hands control directly to tmux; exit with the normal tmux detach key (`Ctrl-b d`). Workers live on their state root's private tmux socket, so a plain `tmux attach` does not see them; `umbel attach` goes to the right socket, and honours `UMBEL_STATE`.
 
 ```
 umbel attach <name>

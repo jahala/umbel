@@ -206,6 +206,25 @@ export async function deleteBuffer(
 }
 
 // ---------------------------------------------------------------------------
+// attach: a person's terminal on the worker's pane
+// ---------------------------------------------------------------------------
+
+// On the worker's own socket, like every other call. Not bounded: the client
+// lives for as long as the person stays attached.
+export async function attach(
+  name: string,
+  env: Record<string, string | undefined> = {},
+): Promise<number> {
+  const proc = Bun.spawn(['tmux', ...tmuxArgs(['attach', '-t', prefixed(name)], env)], {
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+    env: tmuxClientEnv(),
+  });
+  return await proc.exited;
+}
+
+// ---------------------------------------------------------------------------
 // hasSession
 // ---------------------------------------------------------------------------
 
