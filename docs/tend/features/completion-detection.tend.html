@@ -2637,12 +2637,21 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Run fake-claude with FAKE_CLAUDE_LATE_FINAL_MS. After waitFor returns 'stop', read the transcript file directly, with no waiting of its own, and assert parseTranscript returns the final message. Confirmed RED first: it returned 'Running the full check.'",
       "validates_job": "supervisor-dev:1"
+    },
+    {
+      "id": "c009",
+      "description": "The wait's deadline ends it whatever the pane or tmux does. Every tmux call is bounded at TMUX_CALL_TIMEOUT_MS and reported as unanswered past it, never read as a missing session; a deadline whose pane capture has not returned within DEADLINE_GRACE_MS settles reason='timeout' with the last pane seen alive and a message saying tmux did not answer.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Drive waitFor with injected tmux calls that never resolve and a 300 ms deadline: assert reason='timeout' within the grace, the message, and the alive pane carried. Put a tmux that never answers first on PATH: assert capturePane rejects at the bound and hasSession rejects rather than answering false. Confirm both RED with the backstop and the bound disabled.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts test/integration/read-at-stop.test.ts",
-    "verify": "83 pass",
-    "last_run": "2026-09-18T12:35:16Z",
+    "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts test/integration/read-at-stop.test.ts test/unit/wait-deadline.test.ts test/integration/tmux-timeout.test.ts",
+    "verify": "89 pass",
+    "last_run": "2026-09-18T14:06:18Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2696,6 +2705,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/integration/read-at-stop.test.ts:98-109 (after wait returns stop, a plain read already holds the final message), :111-124 (a final message that misses the window yields stop plus a warning, held no longer than the window; confirmed to fail when the warning branch is broken), :170-179 (the same for a second turn answered without a tool); src/operations/wait.ts:305-335 (handbackGap, stopHeld), :512-517 (stop held on it). RED first with the production symptom. On the installed binary, snapshots taken the instant events/stop moved showed the closing text missing in 6 of 8 real turns; a build of this fix returned the right handback in 8 of 8, including a turn answered without a tool, where the previous read logic returned the previous turn's answer.",
         "evidence_sha": "c98bc0a7b1aea81a0fcb58c3a067dfcd61f211f5"
+      },
+      {
+        "check_id": "c009",
+        "verdict": "pass",
+        "evidence_path": "test/unit/wait-deadline.test.ts:32-76 (the deadline ends the wait while every tmux call hangs, and carries the last alive pane; RED with the backstop disabled); test/unit/wait-deadline.test.ts:78-104 (deadlineOf: top-level and any, never all); test/integration/tmux-timeout.test.ts:39-58 (an unanswered call ends at its bound and is not read as no session; RED with the bound disabled); src/operations/wait.ts:559-579 (the deadline's own timer); src/core/wait.ts:122-127 (deadlineOf); src/adapters/tmux.ts:74-115 (runTmux bounds the wait for output, not only the process)",
+        "evidence_sha": "2afd95a680ab057cb0091b6af08b2555082d2259"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

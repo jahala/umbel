@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { UmbelUsageError } from '../core/errors.ts';
-import { EnvValueSchema, ProviderNameSchema } from '../core/types.ts';
+import type { WaitCondition } from '../core/types.ts';
+import { EnvValueSchema, ProviderNameSchema, SessionNameSchema } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------
 // parseDuration — e.g. '5m', '30s', '1h', '500ms' → milliseconds
@@ -100,6 +101,47 @@ export const VerbSchemas = {
   }),
   mcp: z.object({}),
 } as const;
+
+// ---------------------------------------------------------------------------
+// waitRequest: the wait a caller asked for, from the fields a face takes
+// ---------------------------------------------------------------------------
+
+export interface WaitRequest {
+  condition?: WaitCondition;
+  defaultTimeoutMs?: number;
+  idleTimeoutMs?: number;
+  sinceMtime?: number;
+}
+
+// PURE. Every face turns its arguments into a wait here. umbel_wait took until,
+// file, pattern and timeout in its schema and passed none of them on, so a wait
+// asked for 120s ran to the 30-minute default (umbel#98).
+export function waitRequest(args: VerbArgs<'wait'>): WaitRequest {
+  const out: WaitRequest = {};
+  if (args.until === 'file') {
+    if (args.file === undefined) {
+      throw new UmbelUsageError(
+        'wait: until=file needs the file to watch: --file PATH on the CLI, file over MCP.',
+      );
+    }
+    out.condition = { kind: 'file', path: args.file };
+  } else if (args.until === 'pattern') {
+    if (args.pattern === undefined) {
+      throw new UmbelUsageError(
+        'wait: until=pattern needs the pattern to match: --pattern REGEX on the CLI, pattern over MCP.',
+      );
+    }
+    out.condition = {
+      kind: 'pattern',
+      session: SessionNameSchema.parse(args.name),
+      regex: args.pattern,
+    };
+  }
+  if (args.timeout !== undefined) out.defaultTimeoutMs = parseDuration(args.timeout);
+  if (args.idleTimeout !== undefined) out.idleTimeoutMs = parseDuration(args.idleTimeout);
+  if (args.sinceMtime !== undefined) out.sinceMtime = args.sinceMtime;
+  return out;
+}
 
 export type VerbName = keyof typeof VerbSchemas;
 export type VerbArgs<V extends VerbName> = z.infer<(typeof VerbSchemas)[V]>;
