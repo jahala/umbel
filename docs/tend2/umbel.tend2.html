@@ -25,5 +25,6 @@ This map is the tier-one order of 2026-09-12 from the umbrella (jahala/plotplot)
 - 2026-09-11 #opencode-config-survives landed on master (501c781, jahala/umbel#80); #wedged-worker (jahala/umbel#67) placed next.
 - 2026-09-15 #wedged-worker landed on master (b772dbb, jahala/umbel#83); #prompt-lands (jahala/umbel#77) placed next, with the codex 0.154.0 startup recordings as test/fixtures/codex-0.154-startup.txt.
 - 2026-09-16 #prompt-lands landed on master (06aee5a, jahala/umbel#87); #dead-worker-evidence (jahala/umbel#73) placed last in the tier, aligned with the runner contract (contracts/runner.md on jahala/plotplot): dead keeps reason and exit code 125 and gains exitCode and a message.
+- 2026-09-18 hand hotfix, recorded as a deviation from the conducted path: `umbel read` returned nothing for codex-cli 0.154.0 sessions because the reader looked only for event_msg/agent_message, which that version no longer writes (jahala/umbel#97). Fixed by the quadrat agent on cape-town's ruling, test first from a real rollout, landed on master (3e2f5fe, jahala/umbel#99). It could not be conducted because every conducted node needs the audit lane the fault breaks; pleach relays the auditor's verdict through `read`
 </script>
 <script src="./loop.js"></script>
