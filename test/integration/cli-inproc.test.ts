@@ -557,7 +557,18 @@ describe('cli — -p mode', () => {
     process.env.FAKE_CLAUDE_HOOK = join(tmpDir, 'hooks', 'stop.sh');
 
     try {
-      const result = await runWithCapture(() => runCli(['-p', 'hello from test', '--cwd', tmpDir]));
+      const result = await runWithCapture(() =>
+        runCli([
+          '-p',
+          'hello from test',
+          '--cwd',
+          tmpDir,
+          '--env',
+          'FAKE_CLAUDE_JSONL_DIR',
+          '--env',
+          'FAKE_CLAUDE_HOOK',
+        ]),
+      );
       expect(result.code).toBe(0);
       expect(result.stdout).toContain('Response to: hello from test');
     } finally {

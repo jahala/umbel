@@ -9,17 +9,15 @@ import { EnvRefUnresolvedError } from '../../src/core/errors.ts';
 import { spawn } from '../../src/operations/spawn.ts';
 
 // ---------------------------------------------------------------------------
-// Worker env passthrough (TDD red)
+// The environment spawn hands a worker.
 //
-// umbel currently strips the worker's environment to a 7-var allowlist
-// (SAFE_INHERITED in src/operations/spawn.ts), so a user's exported env vars
-// (proxies, API keys, custom config dirs) silently never reach the worker.
-// These tests pin the intended behaviour: inherit the environment by default,
-// MINUS the shell-init vars that break tmux send-keys, plus an explicit
-// per-worker override channel.
+// A worker inherits only what any CLI needs to run as its user and the
+// variables its own provider reads (umbel#93), plus whatever the caller passes
+// explicitly. The shell-init vars that break tmux send-keys never travel.
 //
-// We inject a fake tmux whose newSession captures the env that WOULD be handed
-// to the session and assert on it — no real tmux session is created.
+// We inject a fake tmux whose newSession captures the environment handover that
+// WOULD reach the session's wrapper and parse it; no real tmux session is
+// created.
 // ---------------------------------------------------------------------------
 
 const RUN_ID = randomBytes(4).toString('hex');
@@ -70,15 +68,32 @@ function makeOpts(
   };
 }
 
-// Inject a fake tmux that captures the env handed to newSession (no real spawn).
+// The handover is envExports' output: `export K='v'` per variable, each '
+// inside a value written as '\''.
+const EXPORT = /export ([A-Za-z_][A-Za-z0-9_]*)='((?:[^']|'\\'')*)'\n/y;
+
+function parseHandover(content: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  let parsed = 0;
+  EXPORT.lastIndex = 0;
+  for (let m = EXPORT.exec(content); m !== null; m = EXPORT.exec(content)) {
+    out[m[1] as string] = (m[2] as string).replaceAll("'\\''", "'");
+    parsed = EXPORT.lastIndex;
+  }
+  expect(parsed).toBe(content.length);
+  return out;
+}
+
+// Inject a fake tmux that captures the environment handed to newSession (no
+// real spawn).
 async function captureWorkerEnv(
   opts: Parameters<typeof spawn>[0],
 ): Promise<Record<string, string>> {
   let captured: Record<string, string> = {};
   const fakeTmux = {
     ...tmuxAdapter,
-    newSession: async (o: { env: Record<string, string> }) => {
-      captured = o.env;
+    newSession: async (o: { envBuffer: { content: string } }) => {
+      captured = parseHandover(o.envBuffer.content);
     },
     // No real session is created here, so the pane must stand in for one: spawn
     // verifies the worker is up before returning (umbel#54), and in this fake's
@@ -98,34 +113,29 @@ describe('spawn — worker env passthrough', () => {
     expect(captured.HOME).toBeDefined();
   });
 
-  // RED: arbitrary exported vars are stripped by the 7-var allowlist today.
-  test('inherits an arbitrary exported env var into the worker', async () => {
+  test('withholds an exported variable no worker needs', async () => {
     const env = await setup();
-    const KEY = 'UMBEL_ENVTEST_PASSTHRU';
-    process.env[KEY] = 'inherited-value';
+    const KEY = 'UMBEL_ENVTEST_WITHHELD';
+    process.env[KEY] = 'withheld-value';
     try {
       const captured = await captureWorkerEnv(makeOpts(env, '/tmp', { name: sessionName('inh') }));
-      expect(captured[KEY]).toBe('inherited-value');
+      expect(captured[KEY]).toBeUndefined();
     } finally {
       delete process.env[KEY];
     }
   });
 
-  // RED: no per-worker override channel exists yet.
   test('forwards an explicit per-worker env override', async () => {
     const env = await setup();
-    // `workerEnv` is implemented in the follow-up (allowlist→denylist) task;
-    // the cast documents the forthcoming SpawnOpts field. RED until then.
-    const opts = {
-      ...makeOpts(env, '/tmp', { name: sessionName('over') }),
-      workerEnv: { UMBEL_ENVTEST_OVERRIDE: 'explicit-value' },
-    } as Parameters<typeof spawn>[0];
+    const opts = makeOpts(env, '/tmp', {
+      name: sessionName('over'),
+      workerEnv: { UMBEL_ENVTEST_OVERRIDE: "explicit 'quoted' value" },
+    });
     const captured = await captureWorkerEnv(opts);
-    expect(captured.UMBEL_ENVTEST_OVERRIDE).toBe('explicit-value');
+    expect(captured.UMBEL_ENVTEST_OVERRIDE).toBe("explicit 'quoted' value");
   });
 
-  // Guard: the vars that break tmux send-keys must NEVER reach the worker,
-  // even once we switch to inherit-by-default.
+  // Guard: the vars that break tmux send-keys must never reach the worker.
   test('does NOT leak tmux-breaking shell-init vars (regression guard)', async () => {
     const env = await setup();
     process.env.PROMPT_COMMAND = 'echo SHOULD_NOT_LEAK';

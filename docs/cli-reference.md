@@ -29,7 +29,7 @@ The mapping lives in `errorExitCode` and, for `wait` reasons, `WAIT_EXIT_CODES` 
 
 ## Lifecycle
 
-A worker's pane is kept after its death. `remain-on-exit` is set on the tmux session, so when the process exits the pane stays, holding its last screen. How the process ended is umbel's own record: the worker is launched through `~/.umbel/hooks/exec.sh`, which writes `~/.umbel/sessions/<name>/events/exit` (`{"exitCode":N}` or `{"signal":"SIGTERM"}`) the moment it ends. `wait` settles `dead` with `exitCode` from that record and the exact final screen from the pane, and writes both to `~/.umbel/sessions/<name>/events/dead`. tmux's own pane status is read only when `events/exit` is absent, such as after a SIGKILL; some tmux builds record none.
+A worker's pane is kept after its death. `remain-on-exit` is set on the tmux session, so when the process exits the pane stays, holding its last screen. How the process ended is umbel's own record: the worker is launched through `~/.umbel/hooks/launch.sh`, which writes `~/.umbel/sessions/<name>/events/exit` (`{"exitCode":N}` or `{"signal":"SIGTERM"}`) the moment it ends. `wait` settles `dead` with `exitCode` from that record and the exact final screen from the pane, and writes both to `~/.umbel/sessions/<name>/events/dead`. tmux's own pane status is read only when `events/exit` is absent, such as after a SIGKILL; some tmux builds record none.
 
 `kill` tears down the tmux session but keeps the directory as a tombstone, so `capture`, `logs`, `actions` and `read` still answer for a worker that is gone; `kill --purge` removes it instead. `umbel prune` is the sweep: it removes the directory and the tmux remains of every dead session, and never touches a live one.
 
@@ -42,7 +42,7 @@ A worker's pane is kept after its death. `remain-on-exit` is set on the tmux ses
 Create a named tmux session running a provider CLI interactively. The session is registered in `~/.umbel/sessions/<name>/meta.json` and appears in tmux as `umbel-<name>`.
 
 ```
-umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS] [--env KEY=VALUE]...
+umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--allowed-tools TOOLS] [--env KEY[=VALUE]]...
 ```
 
 **Flags**
@@ -56,7 +56,7 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
 | `--permission-mode MODE` | unset | Claude permission mode (`default`/`acceptEdits`/`bypassPermissions`/`plan`). **Claude only** (usage error otherwise), except `bypassPermissions` which codex also accepts. For the plain "nobody is watching" case prefer `--unattended`, which is provider-neutral; use this flag when you need a *specific* claude posture such as `acceptEdits` or `plan`. An explicit mode wins over `--unattended`. |
 | `--unattended` | off | No human is present: suppress every prompt the provider would raise. Maps per-provider — claude `permissions.defaultMode=bypassPermissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini `--approval-mode yolo --skip-trust`, opencode `--auto`. A provider with no unattended mode is **refused at spawn** (exit 1) rather than accepted and left to wedge on a prompt later. Safety for unattended work is the surrounding architecture — disposable worktree, publish through a gate, quarantine — never the prompt. |
-| `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. Use for per-worker proxies, API keys, or custom config dirs. Not persisted to `meta.json`. |
+| `--env KEY=VALUE`, `--env KEY` | — | Give the worker a variable (repeatable). `KEY=VALUE` sets it; a bare `KEY` passes umbel's own `$KEY` by name, which keeps a secret's value off every command line. Wins over what the worker inherits (see [Worker environment](#worker-environment)). Not persisted to `meta.json`. |
 
 **Output:** `spawned: <name>` on stdout.
 
@@ -84,15 +84,31 @@ umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model ope
 # OpenCode provider — local Ollama model (no API key needed)
 umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model ollama/qwen2.5-coder
 
-# OpenCode provider — cloud API model (key passed via --env; not subscription-billed)
-umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model openrouter/deepseek/deepseek-v4-flash --env OPENROUTER_API_KEY=sk-...
+# OpenCode provider: cloud API model (key passed by name; not subscription-billed)
+umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model openrouter/deepseek/deepseek-v4-flash --env OPENROUTER_API_KEY
 
-# Pass env vars to the worker (repeatable) — e.g. a proxy or a custom-endpoint key
-umbel spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --env FOO=bar
+# Pass env vars to the worker (repeatable): a value, or a name umbel reads from its own environment
+umbel spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --env GH_TOKEN
 
 # Anonymous (auto-killed after one turn via umbel -p)
 umbel spawn --cwd /tmp/scratch
 ```
+
+#### Worker environment
+
+A worker inherits only part of the environment umbel runs in: what any CLI needs to run as its user, and the variables its own provider reads. Everything else stays behind, so a key in the caller's shell reaches no worker unless it is passed.
+
+| Worker | Inherits |
+|---|---|
+| every provider | `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LANGUAGE`, `TZ`, `TMPDIR`, `SSH_AUTH_SOCK`, `LC_*`, `XDG_*`; the proxy variables `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and `ALL_PROXY` in either case; the CA bundle variables `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` |
+| claude | `ANTHROPIC_*`, `CLAUDE_*` |
+| codex | `OPENAI_*`, `CODEX_*` |
+| gemini | `GEMINI_*`, `GOOGLE_*` |
+| opencode | `OPENCODE_*` |
+
+Pass anything else with `--env` (CLI), `env:` (workflow) or `env` (MCP). Pass a secret by name: `--env OPENROUTER_API_KEY` hands over umbel's own `$OPENROUTER_API_KEY`. Writing the value into the flag (`--env OPENROUTER_API_KEY="$OPENROUTER_API_KEY"`) puts it on umbel's command line, which any local user can read while the command runs. Over MCP and in a workflow the reference is `{"fromEnv": "OPENROUTER_API_KEY"}`.
+
+The environment itself never travels on a command line. umbel loads it into a tmux buffer from stdin; the launch wrapper reads the buffer, deletes it, and starts the worker with exactly that environment.
 
 The keyless opencode models are a free lane, and they are slow: fine for a probe or a smoke check, too slow to sit on the critical path of a gate or an audit. Put gates on a subscription-billed provider and keep the free lane for questions you can afford to wait on.
 
@@ -560,7 +576,7 @@ If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time. For `opencode`, a model `opencode models` does not list is refused (exit 2) before a worker exists. |
 | `--allowed-tools TOOLS` | unset | Forwarded to the provider's equivalent of `--allowedTools`. |
-| `--env KEY=VALUE` | — | Set an environment variable for the worker (repeatable). Merged over the inherited environment. |
+| `--env KEY=VALUE`, `--env KEY` | — | Give the worker a variable (repeatable), as for [`spawn`](#worker-environment). |
 | `--output-format text\|json` | `text` | `json` emits `{"text": "...", "sessionName": "..."}`. |
 | `--timeout DURATION` | unset (30m default from wait layer) | Maximum wait time. Exit 124 on expiry. |
 
@@ -600,7 +616,7 @@ umbel -p --allowed-tools "Read,Bash" "Run the test suite and report failures."
 
 The `claude` provider can target any Anthropic-compatible API — DeepSeek, OpenRouter, a local proxy — by giving the worker its endpoint env. Same Claude Code binary (same hooks, transcript, tools), different model behind it. **Billed per-token by that endpoint, not your Claude subscription.**
 
-Cleanest is **inheritance**: export the vars in the shell (or process) that launches umbel and they reach the worker automatically — no secret in any spawn call.
+Cleanest is **inheritance**: export the vars in the shell (or process) that launches umbel. A claude worker inherits every `ANTHROPIC_*` variable, so no secret appears in any spawn call.
 
 ```bash
 export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
@@ -609,14 +625,15 @@ export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
 umbel spawn --provider claude --name ds --cwd ./work
 ```
 
-Or set them per-worker with `--env` (CLI) / `env:` (workflow):
+Or scope them to one worker. Put the key in umbel's environment for that one command, and the rest in `--env`:
 
 ```bash
-umbel spawn --provider claude --name ds --cwd ./work \
+ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" umbel spawn --provider claude --name ds --cwd ./work \
   --env ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic \
-  --env ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY" \
   --env 'ANTHROPIC_MODEL=deepseek-v4-pro[1m]'
 ```
+
+Never write the key itself into an `--env` value; see [Worker environment](#worker-environment).
 
 - Use **`ANTHROPIC_AUTH_TOKEN`**, not `ANTHROPIC_API_KEY`. umbel drops an inherited `ANTHROPIC_API_KEY` when a custom `AUTH_TOKEN` is set — it would otherwise shadow the endpoint and wedge the worker on Claude Code's "Detected a custom API key… use this key?" prompt.
 - Set **`ANTHROPIC_SMALL_FAST_MODEL`** (and/or `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`) to an endpoint-valid model, or Claude Code's background/subagent calls 404 against a model the endpoint lacks.
@@ -640,4 +657,4 @@ umbel spawn --provider claude --name ds --cwd ./work \
 
 **Note on OpenCode config:** umbel installs its stop plugin into `$XDG_CONFIG_HOME/opencode/opencode.jsonc` (default `~/.config/opencode/`). The file is read as JSONC, so comments and trailing commas are fine. umbel edits it in place, inserting only its own `plugin` entry and preserving every other byte, comments included. A file that already carries the entry is not written. An unparsable file refuses the spawn (exit 1) with its path, line and column, and is left untouched.
 
-**Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass keys via `--env KEY=VAL` or ensure they are in the inherited env. umbel does not manage opencode API keys.
+**Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass the key by name, as in `--env OPENROUTER_API_KEY`; an opencode worker inherits only `OPENCODE_*` on its own. umbel does not manage opencode API keys.

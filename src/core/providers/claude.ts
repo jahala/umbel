@@ -308,6 +308,7 @@ export function extractTurnsFromContent(content: string): Turn[] {
 const claudeProvider: AgentProvider = {
   name: 'claude',
   supportsUnattended: true,
+  inheritEnvPrefixes: ['ANTHROPIC_', 'CLAUDE_'],
 
   stopEventName: 'Stop',
 

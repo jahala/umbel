@@ -39,18 +39,47 @@ function tmuxArgs(args: string[], env: Record<string, string | undefined> = {}):
   return ['-L', socketFor(env), ...args];
 }
 
+// The tmux client's environment. The server a client starts keeps that
+// client's environment as its global environment and hands it to every pane,
+// so a client given the caller's whole environment would pass the caller's
+// keys to every later worker and hold them in the server for its lifetime
+// (umbel#93). tmux itself needs only these: where it runs, its socket dir,
+// locale (tmux decides UTF-8 from it) and the terminal for attach.
+const CLIENT_ENV_NAMES = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'LANG',
+  'LANGUAGE',
+  'TMPDIR',
+  'TMUX_TMPDIR',
+  'TERM',
+  'COLORTERM',
+];
+
+export function tmuxClientEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && (CLIENT_ENV_NAMES.includes(k) || k.startsWith('LC_'))) out[k] = v;
+  }
+  return out;
+}
+
 async function tmux(
   args: string[],
   env: Record<string, string | undefined> = {},
+  input?: string,
 ): Promise<{ stdout: string; stderr: string }> {
-  // Explicit 'ignore' for stdin so tmux client never consumes our parent's
-  // stdin. Without this, Bun.spawn defaults inherit stdin — and when the
-  // tmux client briefly reads on startup, it can pull a byte from the test
+  // stdin is 'ignore' unless the command reads data from it, so the tmux client
+  // never consumes our parent's stdin. Bun.spawn otherwise inherits it, and a
+  // tmux client that briefly reads on startup can pull a byte from the test
   // runner's stdin that was meant for the agent inside the new session.
   const proc = Bun.spawn(['tmux', ...tmuxArgs(args, env)], {
-    stdin: 'ignore',
+    stdin: input !== undefined ? new TextEncoder().encode(input) : 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
+    env: tmuxClientEnv(),
   });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -79,7 +108,9 @@ export interface SpawnSessionOpts {
   name: string;
   cwd: string;
   cmd: string[];
-  env?: Record<string, string>;
+  // The worker's environment, as the launch wrapper reads it, handed over in a
+  // named tmux buffer. Absent for a session that runs no launch wrapper.
+  envBuffer?: { name: string; content: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -91,12 +122,12 @@ export async function newSession(
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
   const target = prefixed(opts.name);
-  const envArgs: string[] = [];
-  if (opts.env) {
-    for (const [k, v] of Object.entries(opts.env)) {
-      envArgs.push('-e', `${k}=${v}`);
-    }
-  }
+  // The environment goes in by stdin to a buffer the pane's launch wrapper reads
+  // and deletes, never as `-e K=V`: those flags sit on the client's argv, and on
+  // the server's for its whole life when this client starts it (umbel#93). The
+  // buffer is loaded in this invocation, ahead of new-session, so it is there
+  // before the pane runs even when this client is the one starting the server.
+  //
   // remain-on-exit keeps the pane after the worker's process exits, so its last
   // screen and its exit status survive the death (jahala/umbel#73).
   //
@@ -107,8 +138,11 @@ export async function newSession(
   // separates tmux commands, so a worker whose argv contained one would have
   // the rest of it parsed as tmux commands. Server-global, which on umbel's
   // private socket means every worker and nothing else.
+  const handover =
+    opts.envBuffer === undefined ? [] : ['load-buffer', '-b', opts.envBuffer.name, '-', ';'];
   await tmux(
     [
+      ...handover,
       'set-option',
       '-g',
       'remain-on-exit',
@@ -120,12 +154,21 @@ export async function newSession(
       target,
       '-c',
       opts.cwd,
-      ...envArgs,
       '--',
       ...opts.cmd,
     ],
     env,
+    opts.envBuffer?.content,
   );
+}
+
+// Best-effort removal of a buffer newSession loaded, for a spawn that unwinds
+// before its worker could read and delete it.
+export async function deleteBuffer(
+  name: string,
+  env: Record<string, string | undefined> = {},
+): Promise<void> {
+  await tmux(['delete-buffer', '-b', name], env).catch(() => undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +183,7 @@ export async function hasSession(
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
+    env: tmuxClientEnv(),
   });
   const code = await proc.exited;
   return code === 0;
@@ -272,6 +316,7 @@ export async function sendText(
       stdin: new TextEncoder().encode(text),
       stdout: 'pipe',
       stderr: 'pipe',
+      env: tmuxClientEnv(),
     });
     const [loadStderr, loadCode] = await Promise.all([
       new Response(loadProc.stderr).text(),

@@ -225,6 +225,7 @@ export function extractGeminiTurnsFromContent(content: string): Turn[] {
 const geminiProvider: AgentProvider = {
   name: 'gemini',
   supportsUnattended: true,
+  inheritEnvPrefixes: ['GEMINI_', 'GOOGLE_'],
 
   stopEventName: 'AfterAgent',
 

@@ -45,8 +45,13 @@ function sessionName(suffix: string): string {
   return `d${RUN_ID}${suffix}`;
 }
 
-// The fake's death is configured per state root, because the worker inherits it
-// from the tmux server umbel starts for that root.
+// The fake's configuration rides in the CLI's environment and reaches the worker
+// by name, since a worker inherits no FAKE_* variable on its own (umbel#93).
+const passFake = (env: Record<string, string>): string[] =>
+  Object.keys(env)
+    .filter((k) => k.startsWith('FAKE_'))
+    .flatMap((k) => ['--env', k]);
+
 async function setup(fake: Record<string, string> = {}): Promise<Record<string, string>> {
   tmpDir = await mkdtemp(join(tmpdir(), 'umbel-dead-worker-'));
   return {
@@ -112,7 +117,7 @@ describe('a dead worker answers for itself through the CLI', () => {
     const name = sessionName('ev');
     CREATED.push(name);
 
-    const spawned = await runCli(['spawn', '--name', name, '--cwd', tmpDir], env);
+    const spawned = await runCli(['spawn', '--name', name, '--cwd', tmpDir, ...passFake(env)], env);
     expect(spawned.code).toBe(0);
 
     // One turn completed, so the hook has written the transcript path and the
@@ -160,7 +165,9 @@ describe('a dead worker answers for itself through the CLI', () => {
     const name = sessionName('tb');
     CREATED.push(name);
 
-    expect((await runCli(['spawn', '--name', name, '--cwd', tmpDir], env)).code).toBe(0);
+    expect(
+      (await runCli(['spawn', '--name', name, '--cwd', tmpDir, ...passFake(env)], env)).code,
+    ).toBe(0);
     expect((await turn(name, 'hello', env)).code).toBe(0);
     expect((await turn(name, `now ${DIE_PROMPT}`, env)).code).toBe(125);
 
@@ -198,7 +205,9 @@ describe('a dead worker answers for itself through the CLI', () => {
     const name = sessionName('pr');
     CREATED.push(name);
 
-    expect((await runCli(['spawn', '--name', name, '--cwd', tmpDir], env)).code).toBe(0);
+    expect(
+      (await runCli(['spawn', '--name', name, '--cwd', tmpDir, ...passFake(env)], env)).code,
+    ).toBe(0);
     expect((await runCli(['kill', name], env)).code).toBe(0);
     expect(existsSync(sessionDir(name))).toBe(true);
 
