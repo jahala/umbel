@@ -2623,7 +2623,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c008",
-      "description": "claude and codex declare turnEnded: whether the transcript already holds the end of the latest turn. claude's closes on a text block from a message that did not stop for a tool, since every per-block entry carries the whole message's stop_reason; codex's closes when its newest turn marker is task_complete or turn_aborted. Each answers true for a shape it cannot read, so no read stalls on it.",
+      "description": "claude and codex declare turnEnded: whether the transcript already holds the end of the latest turn. claude's closes on a text block from a message that did not stop for a tool, with no prompt or tool result after it, since every per-block entry carries the whole message's stop_reason and a turn answered without a tool leaves the previous turn's closing text newest on disk. codex's closes when its newest turn marker is task_complete or turn_aborted. Each answers true for a shape it cannot read, so no read stalls on it.",
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "unit",
@@ -2633,12 +2633,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   ],
   "smoke": {
     "cmd": "bun test test/unit/providers test/integration/codex-provider.test.ts test/integration/opencode-provider.test.ts test/unit/unattended.test.ts test/unit/turn-ended.test.ts",
-    "verify": "248 pass, 0 fail",
-    "last_run": "2026-09-18T12:12:55Z",
+    "verify": "250 pass, 0 fail",
+    "last_run": "2026-09-18T12:35:16Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-09-18T12:12:55Z",
+    "ran_at": "2026-09-18T12:35:16Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2686,8 +2686,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c008",
         "verdict": "pass",
-        "evidence_path": "test/unit/turn-ended.test.ts (13 cases, all RED before the method existed); src/core/providers/claude.ts:174-196 (turnEndedIn), :371 (turnEnded); src/core/providers/codex.ts:62-75 (turnEndedIn), :362 (turnEnded); src/core/providers/types.ts (the optional contract method).",
-        "evidence_sha": "932fc4fd94c5943964177d1e71c614d8f19ddb44"
+        "evidence_path": "test/unit/turn-ended.test.ts (15 cases, all RED before the method existed or before the multi-turn rule); src/core/providers/claude.ts:61-77 (isRoleEntry), :176-202 (turnEndedIn), :377 (turnEnded); src/core/providers/codex.ts:62-75 (turnEndedIn), :362 (turnEnded); src/core/providers/types.ts (the optional contract method). The claude rule agrees with the real outcome on all 8 stop-instant snapshots from a live worker.",
+        "evidence_sha": "0b18dba2334940edcd0b2398eabfd6083915a1cc"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

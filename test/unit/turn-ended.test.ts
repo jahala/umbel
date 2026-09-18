@@ -81,6 +81,20 @@ describe('ClaudeProvider.turnEnded', () => {
     );
   });
 
+  test("a new prompt after the last turn's closing text is an open turn", () => {
+    // Observed on a real worker: a turn answered without a tool has no
+    // assistant entry at all when its stop lands, so the newest closing text
+    // on disk is the previous turn's.
+    const closed = assistant('m1', { type: 'text', text: 'first answer' }, 'end_turn');
+    expect(claude(prompt, closed, metadata, prompt)).toBe(false);
+  });
+
+  test('a prompt recorded as human opens a turn too', () => {
+    const human = JSON.stringify({ type: 'human', message: { role: 'user', content: 'again' } });
+    const closed = assistant('m1', { type: 'text', text: 'first answer' }, 'end_turn');
+    expect(claude(prompt, closed, human)).toBe(false);
+  });
+
   test('no assistant entry yet is still open', () => {
     expect(claude(prompt)).toBe(false);
   });
