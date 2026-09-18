@@ -16,6 +16,7 @@ import { applyDefaultTimeout, compile } from '../core/wait.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
+import { readTranscriptAtStop, TURN_END_SETTLE_MS } from './resolve-transcript.ts';
 
 // Re-export WaitCondition for convenience at call sites
 export type { WaitCondition };
@@ -58,6 +59,8 @@ export interface WaitResult {
   // caller can branch without screen-scraping the pane. When reason is 'idle',
   // `message` names each watched source and how long it has been still; when
   // 'provider-error', it is the pane line matching the provider's errorMatch.
+  // When 'stop', it is present only if the worker's final message had not reached
+  // the transcript when the settle window closed, so a read may lag the handback.
   inputReason?: NeedsInputReason;
   message?: string;
   // When reason is 'dead', the status the worker's process exited with, read
@@ -299,6 +302,38 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       }
     }
 
+    // Claude fires its Stop hook before it writes the turn's final message, so a
+    // stop seen here can precede the handback by a few hundred ms (umbel#86).
+    // 'stop' is reported once the handback is readable; if the window closes
+    // first, the message says a read may return an earlier message.
+    // handbackGap must never reject: once stopHeld is set, 'stop' outranks the
+    // deadline, so a rejection would leave the wait holding forever.
+    let stopHeld = false;
+    async function handbackGap(): Promise<string | undefined> {
+      let meta: Session;
+      try {
+        meta = await d.fs.readMeta(name, env);
+      } catch {
+        return undefined;
+      }
+      const provider = PROVIDERS[meta.provider];
+      if (provider?.turnEnded === undefined) return undefined;
+      try {
+        const { ended } = await readTranscriptAtStop({
+          name,
+          cwd: meta.cwd,
+          sinceMs: meta.createdAt,
+          provider,
+          env,
+          ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
+        });
+        if (ended) return undefined;
+      } catch {
+        // Unreadable transcript: report the stop and say why the handback may lag.
+      }
+      return `the worker stopped, but its final message was not in the transcript within ${TURN_END_SETTLE_MS / 1000}s; read may return an earlier message`;
+    }
+
     function settle(result: WaitResult): void {
       if (settled) return;
       settled = true;
@@ -474,6 +509,12 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           reason,
           ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
         });
+      } else if (reason === 'stop') {
+        if (stopHeld) return;
+        stopHeld = true;
+        const message = await handbackGap();
+        if (settled) return;
+        settle({ stopped: true, reason, ...(message !== undefined ? { message } : {}) });
       } else {
         settle({ stopped: true, reason });
       }

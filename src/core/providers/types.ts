@@ -137,6 +137,14 @@ export interface AgentProvider {
   // JSONL/JSON envelopes per provider.
   parseTranscript(content: string): string;
 
+  // Optional: does the transcript already hold the end of the worker's latest
+  // turn? PURE and total. The stop hook can fire before the turn's final message
+  // is written, so a read taken at the stop waits on this, bounded, before it
+  // parses (umbel#86). Answer false only when the transcript proves the turn is
+  // still open; an unrecognised shape must answer true, or every read stalls.
+  // Omit when the provider's format carries no such marker.
+  turnEnded?(content: string): boolean;
+
   // Optional: extract a normalized digest of tool calls, files touched, and
   // errors from the transcript. Returned shape is ActionManifest. Pure —
   // never throws on malformed input; returns an empty/partial manifest.

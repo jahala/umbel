@@ -59,6 +59,21 @@ function eventPayload(line: string): JsonObj | null {
   return payload as JsonObj;
 }
 
+// A rollout brackets each turn with task_started and task_complete, or
+// turn_aborted when it is cut short. The turn is open only while the newest of
+// those is task_started. A rollout without the markers cannot prove a turn
+// open, so it never holds a read.
+function turnEndedIn(content: string): boolean {
+  let newest: unknown;
+  for (const line of content.split('\n')) {
+    const type = eventPayload(line)?.type;
+    if (type === 'task_started' || type === 'task_complete' || type === 'turn_aborted') {
+      newest = type;
+    }
+  }
+  return newest !== 'task_started';
+}
+
 // Walk backward to the newest record that carries the assistant's text (each
 // arrives once per turn; no partial streaming — Codex fully writes before
 // firing Stop).
@@ -342,6 +357,10 @@ const codexProvider: AgentProvider = {
 
   parseTranscript(content: string): string {
     return extractLastAgentMessage(content);
+  },
+
+  turnEnded(content: string): boolean {
+    return turnEndedIn(content);
   },
 
   extractActions(content: string): ActionManifest {

@@ -22,6 +22,11 @@
 #                         FAKE_CLAUDE_DIE_MS death to fire — so a worker can
 #                         complete a turn before the turn it dies in. Unset,
 #                         every turn dies.
+#   FAKE_CLAUDE_LATE_FINAL_MS optional, ms after the Stop hook that the turn's
+#                         final message lands, as real claude does: the hook
+#                         fires with the previous message (text, then a tool
+#                         use) last on disk, and the final message follows as
+#                         one entry per content block, each carrying end_turn
 #   FAKE_CLAUDE_DIE_SIGNAL optional, signal the FAKE_CLAUDE_DIE_MS death dies by
 #                         instead of exiting — stands in for a worker killed by
 #                         someone else (tmux records the same wait status)
@@ -45,6 +50,7 @@ DIE_MS="${FAKE_CLAUDE_DIE_MS:-0}"
 DIE_SIGNAL="${FAKE_CLAUDE_DIE_SIGNAL:-}"
 DIE_ON="${FAKE_CLAUDE_DIE_ON:-}"
 EXIT_CODE="${FAKE_CLAUDE_EXIT_CODE:-1}"
+LATE_FINAL_MS="${FAKE_CLAUDE_LATE_FINAL_MS:-0}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
@@ -128,6 +134,22 @@ write_turn() {
   # Sleep if requested
   if [[ "$DELAY" -gt 0 ]]; then
     sleep "$(echo "scale=3; $DELAY / 1000" | bc)"
+  fi
+
+  if [[ "$LATE_FINAL_MS" -gt 0 ]]; then
+    printf '{"type":"assistant","message":{"id":"m-prev-%s","role":"assistant","content":[{"type":"text","text":"Running the full check."}],"stop_reason":"tool_use"},"timestamp":"%s"}\n' \
+      "$$" "$now" >> "$JSONL_FILE"
+    printf '{"type":"assistant","message":{"id":"m-prev-%s","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"true"}}],"stop_reason":"tool_use"},"timestamp":"%s"}\n' \
+      "$$" "$now" >> "$JSONL_FILE"
+    printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},"timestamp":"%s"}\n' \
+      "$now" >> "$JSONL_FILE"
+    fire_hook
+    sleep "$(echo "scale=3; $LATE_FINAL_MS / 1000" | bc)"
+    printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"thinking","thinking":"done"}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
+      "$$" "$now" >> "$JSONL_FILE"
+    printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
+      "$$" "$(echo -n "Response to: $prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" "$now" >> "$JSONL_FILE"
+    return
   fi
 
   # Partial assistant entry (no stop_reason)

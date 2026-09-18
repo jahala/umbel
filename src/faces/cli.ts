@@ -4,7 +4,6 @@ import {
   AllowedToolsUnsupportedError,
   EnvRefUnresolvedError,
   HookTimeoutError,
-  JsonlMalformedError,
   ModelListUnavailableError,
   OpencodeConfigUnparsableError,
   OpencodeModelUnknownError,
@@ -69,7 +68,7 @@ Verbs:
 
 Exit codes:
   0    Success
-  1    Generic error (session dead, tmux failure, JSONL malformed, hook timeout,
+  1    Generic error (session dead, tmux failure, hook timeout,
        session not created, provider has no unattended mode)
   2    Usage error (bad flags, missing required argument, unknown verb, unsupported option)
   122  wait provider-error — a provider error on the pane, then stillness
@@ -243,7 +242,6 @@ function errorExitCode(err: unknown): number {
     err instanceof SendNotSubmittedError ||
     err instanceof TmuxError ||
     err instanceof HookTimeoutError ||
-    err instanceof JsonlMalformedError ||
     err instanceof SessionNotFoundError ||
     err instanceof SessionNotCreatedError ||
     err instanceof UnattendedUnsupportedError ||
@@ -560,6 +558,9 @@ async function verbWait(
     process.stderr.write(
       `umbel: wait failed — session '${name}' died before completing its turn${cause}.\n`,
     );
+  }
+  if (result.reason === 'stop' && result.message !== undefined) {
+    process.stderr.write(`umbel: ${result.message}\n`);
   }
   if (result.reason === 'input' || result.reason === 'idle' || result.reason === 'provider-error') {
     const hasMsg = result.message !== undefined && result.message.length > 0;

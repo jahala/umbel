@@ -427,7 +427,6 @@ describe('cli — read', () => {
           encodeCwd: jsonlAdapter.encodeCwd,
           discoverSessionJsonl: (opts) =>
             jsonlAdapter.discoverSessionJsonl({ ...opts, projectsRoot: projectsDir }),
-          lastAssistantMessage: jsonlAdapter.lastAssistantMessage,
         },
       },
     });
