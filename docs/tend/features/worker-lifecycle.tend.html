@@ -2512,7 +2512,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "impact": "A worker is one spawn away from any cwd, survives supervisor detach, and is always findable (status) and stoppable (kill) — the prerequisite for every dispatch and wait operation.",
   "fit": "The base verb set every face exposes; dispatch and wait assume a lifecycle-managed session exists.",
   "where": "src/operations/spawn.ts, kill.ts, status.ts; src/adapters/tmux.ts, exec.ts; src/core/env.ts, startup-dialogs.ts, id.ts.",
-  "how": "tmux new-session per worker; meta.json records provider/cwd/model; env inherits process.env minus SHELL/PROMPT_COMMAND/BASH_ENV/ZDOTDIR/ENV; capture-pane polling dismisses trust dialogs gated on real binaries; generateSessionName yields anon-XXXXXX.",
+  "how": "tmux new-session per worker; meta.json records provider/cwd/model; env is an allowlist plus the provider's own prefixes, handed over through a tmux buffer the launch wrapper reads and deletes, never on a command line (umbel#93); capture-pane polling dismisses trust dialogs gated on real binaries; generateSessionName yields anon-XXXXXX.",
   "progress": {
     "implementation": 100,
     "verification": 100
@@ -2587,11 +2587,11 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c003",
-      "description": "Worker env inherits full process.env minus the 5-var shell-init denylist (SHELL, PROMPT_COMMAND, BASH_ENV, ZDOTDIR, ENV); explicit workerEnv overrides layer on top.",
+      "description": "A worker inherits only an allowlist of operational variables (paths, locale, XDG_*, proxies, CA bundles, SSH_AUTH_SOCK) and its provider's own prefixes (claude ANTHROPIC_/CLAUDE_, codex OPENAI_/CODEX_, gemini GEMINI_/GOOGLE_, opencode OPENCODE_); every other variable, the shell-init ones included, stays behind. Explicit workerEnv overrides, literal or {fromEnv}, layer on top.",
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Set PROMPT_COMMAND and BASH_ENV in process.env; capture the env handed to newSession; assert denylist vars absent, arbitrary inherited var present, and explicit workerEnv override wins.",
+      "verification_recipe": "Set an arbitrary variable, PROMPT_COMMAND and BASH_ENV in process.env; capture and parse the environment handover given to newSession; assert all three absent, PATH and HOME present, and an explicit workerEnv override present byte for byte. Unit-test inheritedEnv for the allowlist and for one provider not receiving another's keys.",
       "validates_job": "supervisor-dev:0"
     },
     {
@@ -2656,12 +2656,21 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "integration",
       "verification_recipe": "Feed the real installed statusline.sh a payload on stdin with UMBEL_SESSION_ID set, then assert status() exposes quota. Unit-test parseQuota for totality on malformed input and for the no-rate_limits case. The rate_limits branch cannot be induced on demand \u2014 claude emits it only under real limit pressure \u2014 so the shape follows claude's own documented jq example.",
       "validates_job": "supervisor-dev:1"
+    },
+    {
+      "id": "c011",
+      "description": "No value of a worker's environment appears on any command line umbel creates or in any file under the state dir: a canary withheld from the worker and a canary passed to it are absent from every process's argv for the whole spawn, from the tmux server's and the session's environment, and from the state dir, while the passed one reaches the worker.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Sample ps -axww -o args= every 25 ms from before spawn until the worker is up, with one canary in process.env and one in workerEnv. Assert neither canary is in any sample, in tmux show-environment -g or -t, or in any file under the state dir, and that the fake worker's probe records the passed canary's sha256 and the withheld one as unset. Confirm RED against the -e K=V code.",
+      "validates_job": "supervisor-dev:0"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts",
-    "verify": "117 pass",
-    "last_run": "2026-09-05T19:45:28Z",
+    "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts",
+    "verify": "129 pass",
+    "last_run": "2026-09-18T13:23:55Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2683,8 +2692,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c003",
         "verdict": "pass",
-        "evidence_path": "test/integration/spawn-env.test.ts:98-108 (inherits arbitrary env var); test/integration/spawn-env.test.ts:125-140 (does NOT leak shell-init vars); test/integration/spawn-env.test.ts:111-121 (forwards explicit workerEnv override); src/operations/spawn.ts:245-254",
-        "evidence_sha": "8218815f64e6215b6582ff93f7da3f44ad8738a2"
+        "evidence_path": "test/integration/spawn-env.test.ts:107-155 (withholds an arbitrary exported var and the shell-init vars, keeps PATH/HOME, forwards an explicit override; confirmed RED against the inherit-everything code); test/unit/worker-env.test.ts:36-87 (allowlist, provider prefixes, one provider not receiving another's keys); src/core/worker-env.ts:43-57 (inheritedEnv); src/operations/spawn.ts:265-298 (composition and precedence)",
+        "evidence_sha": "7b8d586bc765271df584614607e28568d7f8442b"
       },
       {
         "check_id": "c004",
@@ -2727,6 +2736,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/unit/quota.test.ts (parseQuota totality + statusLine registration); test/integration/status.test.ts (drives the installed statusline.sh and asserts status().quota); src/core/quota.ts; src/adapters/hooks.ts:60-67 (STATUSLINE_SCRIPT, rename-into-place). Transport verified against the real binary: a claude worker spawned by umbel wrote events/quota with the full 13-key payload unprompted. The rate_limits branch itself is UNVERIFIED end-to-end \u2014 it was absent because no limit was in force, and a limit cannot be induced on demand.",
         "evidence_sha": "6c92e02298f6e98f07a1346ec5478a0db8597a86"
+      },
+      {
+        "check_id": "c011",
+        "verdict": "pass",
+        "evidence_path": "test/integration/worker-env.test.ts:70-148 (argv sampled across the spawn, tmux global and session env, worker probe, state-dir sweep; RED against origin/master and against each of two sabotages: inherit everything, full tmux client env); test/integration/worker-env.test.ts:150-172 (exports round-trip quotes, $, newline, backslash, unicode, empty through bash); src/adapters/tmux.ts:42-67,120-173 (minimal client env, load-buffer from stdin ahead of new-session, deleteBuffer); src/adapters/hooks.ts:71-152 (launch.sh reads, deletes, clears, evaluates); src/faces/cli.ts parseEnvFlags (--env NAME by reference)",
+        "evidence_sha": "01e7e517a2cdbe7a11465ecc826ca61f7a008dda"
       }
     ],
     "verified_at_commit": "ebceffdce052407326d9f66210cf2b5bce570fed"

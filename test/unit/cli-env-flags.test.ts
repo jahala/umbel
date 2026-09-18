@@ -30,8 +30,14 @@ describe('parseEnvFlags', () => {
     expect(parseEnvFlags(['EMPTY='])).toEqual({ EMPTY: '' });
   });
 
-  test('throws UmbelUsageError on a missing = (no silent drop)', () => {
-    expect(() => parseEnvFlags(['NOEQUALS'])).toThrow(UmbelUsageError);
+  // A bare name passes the variable through from umbel's own environment, so a
+  // secret never has to sit on the spawn's argv (umbel#93). It stays loud: a
+  // name that is unset fails at spawn, where the reference is resolved.
+  test('a bare name passes the variable through by reference', () => {
+    expect(parseEnvFlags(['ANTHROPIC_AUTH_TOKEN', 'MODE=fast'])).toEqual({
+      ANTHROPIC_AUTH_TOKEN: { fromEnv: 'ANTHROPIC_AUTH_TOKEN' },
+      MODE: 'fast',
+    });
   });
 
   test('throws UmbelUsageError on an empty key', () => {

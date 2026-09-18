@@ -119,7 +119,20 @@ describe('umbel send --json + wait --json integration', () => {
     };
 
     // spawn
-    const spawnR = await spawnCli(['spawn', '--name', name, '--cwd', tmpDir], baseEnv);
+    const spawnR = await spawnCli(
+      [
+        'spawn',
+        '--name',
+        name,
+        '--cwd',
+        tmpDir,
+        '--env',
+        'FAKE_CLAUDE_JSONL_DIR',
+        '--env',
+        'FAKE_CLAUDE_HOOK',
+      ],
+      baseEnv,
+    );
     expect(spawnR.code).toBe(0);
 
     try {
@@ -240,6 +253,10 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
           'claude',
           '--allowed-tools',
           'Read,Write',
+          '--env',
+          'FAKE_CLAUDE_JSONL_DIR',
+          '--env',
+          'FAKE_CLAUDE_HOOK',
         ],
         {
           UMBEL_STATE: tmpDir,

@@ -71,9 +71,19 @@ mv -f "$state/events/quota.part" "$state/events/quota"
 // EXEC_WRAPPER_SCRIPT — launches the worker and records how it ended
 // ---------------------------------------------------------------------------
 
-// The worker's pane runs this with the worker's argv. It writes events/exit
-// ({"exitCode":N} or {"signal":"SIGTERM"}) when the process ends, then ends the
-// same way, so tmux's own pane status still agrees. tmux builds differ in
+// The worker's pane runs this with the name of the tmux buffer holding the
+// worker's environment, then the worker's argv. The environment never rides an
+// argv (umbel#93): the buffer is read through a pipe and deleted, every variable
+// the pane inherited is dropped except the ones tmux sets to describe the pane,
+// and the worker's own exports are applied, all with builtins, so no process
+// the wrapper starts carries a value on its command line.
+//
+// Installed as launch.sh, not exec.sh: every spawn rewrites its wrapper, and an
+// older umbel still running (a long-lived MCP server) owns exec.sh. Sharing one
+// file would hand each version the other's argv.
+//
+// It then writes events/exit ({"exitCode":N} or {"signal":"SIGTERM"}) when the
+// process ends, and ends the same way, so tmux's own pane status still agrees. tmux builds differ in
 // whether they record a dead pane's status at all (ubuntu's 3.4 did not,
 // umbel#91); this record does not depend on one.
 //
@@ -85,6 +95,20 @@ mv -f "$state/events/quota.part" "$state/events/quota"
 // whole process group, so the wrapper just survives them: a no-op trap, which
 // unlike an ignored signal is not inherited by the worker.
 export const EXEC_WRAPPER_SCRIPT: string = `#!/usr/bin/env bash
+buffer=$1
+shift
+if ! worker_env=$(tmux show-buffer -b "$buffer"); then
+  echo "umbel: the worker's environment was not handed over" >&2
+  exit 1
+fi
+tmux delete-buffer -b "$buffer" 2>/dev/null
+while IFS= read -r name; do
+  case $name in
+    TERM | TERM_PROGRAM | TERM_PROGRAM_VERSION | COLORTERM | TMUX | TMUX_PANE) ;;
+    *) unset "$name" 2>/dev/null ;;
+  esac
+done < <(compgen -e)
+eval "$worker_env"
 events="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}/events"
 child=''
 trapped=''
@@ -208,7 +232,7 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   stopScriptPath: string;
   notifyScriptPath: string;
   statusLineScriptPath: string;
-  execScriptPath: string;
+  launchScriptPath: string;
 }> {
   const hooksDir = join(stateDir(env), 'hooks');
   await mkdir(hooksDir, { recursive: true });
@@ -225,11 +249,11 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   await writeFile(statusLineScriptPath, STATUSLINE_SCRIPT, { encoding: 'utf8' });
   await chmod(statusLineScriptPath, 0o755);
 
-  const execScriptPath = join(hooksDir, 'exec.sh');
-  await writeFile(execScriptPath, EXEC_WRAPPER_SCRIPT, { encoding: 'utf8' });
-  await chmod(execScriptPath, 0o755);
+  const launchScriptPath = join(hooksDir, 'launch.sh');
+  await writeFile(launchScriptPath, EXEC_WRAPPER_SCRIPT, { encoding: 'utf8' });
+  await chmod(launchScriptPath, 0o755);
 
-  return { stopScriptPath, notifyScriptPath, statusLineScriptPath, execScriptPath };
+  return { stopScriptPath, notifyScriptPath, statusLineScriptPath, launchScriptPath };
 }
 
 // ---------------------------------------------------------------------------

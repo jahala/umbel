@@ -137,13 +137,16 @@ describe('cli', () => {
     const { mkdir } = await import('node:fs/promises');
     await mkdir(jsonlDir, { recursive: true });
 
-    const r = await runCli(['-p', 'hi', '--cwd', tmpDir], {
-      ...env,
-      UMBEL_STATE: tmpDir,
-      UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
-      FAKE_CLAUDE_JSONL_DIR: jsonlDir,
-      FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
-    });
+    const r = await runCli(
+      ['-p', 'hi', '--cwd', tmpDir, '--env', 'FAKE_CLAUDE_JSONL_DIR', '--env', 'FAKE_CLAUDE_HOOK'],
+      {
+        ...env,
+        UMBEL_STATE: tmpDir,
+        UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
+        FAKE_CLAUDE_JSONL_DIR: jsonlDir,
+        FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+      },
+    );
 
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('Response to: hi');
@@ -168,7 +171,20 @@ describe('cli', () => {
     };
 
     // spawn
-    const spawnResult = await runCli(['spawn', '--name', name, '--cwd', tmpDir], baseEnv);
+    const spawnResult = await runCli(
+      [
+        'spawn',
+        '--name',
+        name,
+        '--cwd',
+        tmpDir,
+        '--env',
+        'FAKE_CLAUDE_JSONL_DIR',
+        '--env',
+        'FAKE_CLAUDE_HOOK',
+      ],
+      baseEnv,
+    );
     expect(spawnResult.code).toBe(0);
     expect(spawnResult.stdout).toContain(name);
 

@@ -20,7 +20,7 @@ import {
 } from '../core/errors.ts';
 import { isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
-import { SessionNameSchema } from '../core/types.ts';
+import { type EnvValue, SessionNameSchema } from '../core/types.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
 import { capture } from '../operations/capture.ts';
 import { defaultDeps } from '../operations/deps.ts';
@@ -158,17 +158,20 @@ function flagBool(flags: Map<string, string | boolean>, ...keys: string[]): bool
   return false;
 }
 
-// Parse repeated `--env KEY=VALUE` flags into an override map. Throws on a
-// malformed entry (no '=' or empty key) so the user sees the error instead of
-// a silently-dropped var.
-export function parseEnvFlags(entries: string[]): Record<string, string> {
-  const out: Record<string, string> = {};
+// Parse repeated --env flags into an override map. `KEY=VALUE` sets a literal;
+// a bare `KEY` passes KEY through from umbel's own environment as a {fromEnv}
+// reference, so a secret never has to sit on the spawn's argv (umbel#93). An
+// empty key throws, and an unset KEY fails where the reference is resolved, so
+// nothing is dropped silently.
+export function parseEnvFlags(entries: string[]): Record<string, EnvValue> {
+  const out: Record<string, EnvValue> = {};
   for (const entry of entries) {
     const eq = entry.indexOf('=');
-    if (eq <= 0) {
-      throw new UmbelUsageError(`Invalid --env '${entry}'. Use --env KEY=VALUE.`);
+    if (eq === 0 || entry === '') {
+      throw new UmbelUsageError(`Invalid --env '${entry}'. Use --env KEY=VALUE or --env KEY.`);
     }
-    out[entry.slice(0, eq)] = entry.slice(eq + 1);
+    if (eq < 0) out[entry] = { fromEnv: entry };
+    else out[entry.slice(0, eq)] = entry.slice(eq + 1);
   }
   return out;
 }

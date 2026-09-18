@@ -27,6 +27,10 @@
 #                         fires with the previous message (text, then a tool
 #                         use) last on disk, and the final message follows as
 #                         one entry per content block, each carrying end_turn
+#   FAKE_CLAUDE_ENV_PROBE optional, a path: at start, write one line per name in
+#                         FAKE_CLAUDE_ENV_PROBE_NAMES, NAME=<sha256 of its value> or NAME=-
+#                         when unset, so a test can see what reached the worker without
+#                         the value itself landing in a file or on an argv
 #   FAKE_CLAUDE_LATE_NO_TOOL optional, with FAKE_CLAUDE_LATE_FINAL_MS: answer without
 #                         a tool, so the hook fires with only the prompt on disk
 #   FAKE_CLAUDE_DIE_SIGNAL optional, signal the FAKE_CLAUDE_DIE_MS death dies by
@@ -63,6 +67,16 @@ else
   ENCODED_CWD="$(echo -n "$(pwd)" | sed 's/[^a-zA-Z0-9]/-/g')"
   JSONL_FILE="${HOME}/.claude/projects/${ENCODED_CWD}/${SESSION_ID}.jsonl"
   mkdir -p "$(dirname "$JSONL_FILE")"
+fi
+
+if [[ -n "${FAKE_CLAUDE_ENV_PROBE:-}" ]]; then
+  for n in ${FAKE_CLAUDE_ENV_PROBE_NAMES:-}; do
+    if [[ -n "${!n+set}" ]]; then
+      printf '%s=%s\n' "$n" "$(printf '%s' "${!n}" | shasum -a 256 | cut -c1-64)"
+    else
+      printf '%s=-\n' "$n"
+    fi
+  done > "$FAKE_CLAUDE_ENV_PROBE"
 fi
 
 # Touch the JSONL file immediately so discoverSessionJsonl can find it

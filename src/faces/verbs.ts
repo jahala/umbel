@@ -42,7 +42,7 @@ export const VerbSchemas = {
     // No human present: each provider suppresses its own prompts. Refused at
     // spawn for a provider that cannot, rather than wedging on a prompt later.
     unattended: z.boolean().optional(),
-    // Per-worker environment overrides, merged over the inherited environment.
+    // Per-worker environment overrides, merged over what the worker inherits.
     // Values may be literals or {fromEnv} references (resolved at spawn time).
     env: z.record(z.string(), EnvValueSchema).optional(),
   }),

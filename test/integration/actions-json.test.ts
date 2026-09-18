@@ -50,7 +50,20 @@ describe('actions --json', () => {
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
     };
 
-    const spawnR = await spawnCli(['spawn', '--name', name, '--cwd', tmpDir], baseEnv);
+    const spawnR = await spawnCli(
+      [
+        'spawn',
+        '--name',
+        name,
+        '--cwd',
+        tmpDir,
+        '--env',
+        'FAKE_CLAUDE_JSONL_DIR',
+        '--env',
+        'FAKE_CLAUDE_HOOK',
+      ],
+      baseEnv,
+    );
     expect(spawnR.code).toBe(0);
 
     try {

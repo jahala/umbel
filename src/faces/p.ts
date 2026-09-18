@@ -6,7 +6,7 @@ import {
 } from '../core/errors.ts';
 import { generateSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
-import { SessionNameSchema } from '../core/types.ts';
+import { type EnvValue, SessionNameSchema } from '../core/types.ts';
 import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { kill } from '../operations/kill.ts';
@@ -27,7 +27,7 @@ export interface PModeOpts {
   provider?: string;
   model?: string;
   allowedTools?: string;
-  workerEnv?: Record<string, string>;
+  workerEnv?: Record<string, EnvValue>;
   outputFormat: 'text' | 'json';
   timeoutMs?: number;
   env?: Record<string, string | undefined>;

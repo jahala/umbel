@@ -16,6 +16,7 @@ import type { ProviderLaunchSpec } from '../core/providers/types.ts';
 import { nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
 import type { EnvValue, Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
+import { envExports, inheritedEnv } from '../core/worker-env.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -225,7 +226,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   }
 
   // Install global stop hook
-  const { stopScriptPath, notifyScriptPath, statusLineScriptPath, execScriptPath } =
+  const { stopScriptPath, notifyScriptPath, statusLineScriptPath, launchScriptPath } =
     await d.hooks.ensureGlobalHooks(env);
 
   // codex needs an isolated CODEX_HOME — a project .codex/hooks.json is ignored
@@ -255,48 +256,46 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // claudeBin overrides the provider's default bin (used by tests to inject
   // fake-claude.sh). When not provided, use the provider's bin.
   const bin = opts.claudeBin ?? launchSpec.bin;
-  // The wrapper records how the worker ends into events/exit; the worker's own
-  // argv passes through it untouched.
-  const cmd: string[] = [execScriptPath, bin, ...launchSpec.args];
+  // The wrapper takes the worker's environment from this buffer, records how the
+  // worker ends into events/exit, and passes the worker's own argv through
+  // untouched.
+  const envBuffer = `umbel-env-${name}`;
+  const cmd: string[] = [launchScriptPath, envBuffer, bin, ...launchSpec.args];
 
-  // Build env for the tmux session. The worker runs with the user's
-  // environment by default — it should behave like running the CLI yourself,
-  // so an exported proxy / API key / config-dir reaches it — MINUS the
-  // shell-init vars below: passing them makes the pane's login shell emit a
-  // startup byte to stdin that races the first send-keys and gets consumed as
-  // an empty prompt. Precedence (low→high): inherited < operational env <
-  // explicit workerEnv override < provider launch env (RESERVED) <
-  // UMBEL_STATE/UMBEL_SESSION_ID — the last two forced so the stop hook can
-  // always locate the session dir.
-  const SHELL_INIT_DENYLIST = new Set(['SHELL', 'PROMPT_COMMAND', 'BASH_ENV', 'ZDOTDIR', 'ENV']);
-  const tmuxEnv: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v === undefined || SHELL_INIT_DENYLIST.has(k)) continue;
-    tmuxEnv[k] = v;
-  }
+  // Build the worker's environment. It inherits only what any CLI needs to run
+  // as its user and the variables its own provider reads (umbel#93): a worker
+  // that received the caller's whole environment received every key in it.
+  // Anything else is passed explicitly. Precedence (low→high): inherited <
+  // operational env < explicit workerEnv override < provider launch env
+  // (RESERVED) < UMBEL_STATE/UMBEL_SESSION_ID. The last two are forced so the
+  // stop hook can always locate the session dir.
+  const composedEnv: Record<string, string> = inheritedEnv(
+    process.env,
+    provider.inheritEnvPrefixes ?? [],
+  );
   // Operational env (UMBEL_STATE, test-injected vars).
   for (const [k, v] of Object.entries(env)) {
-    if (v !== undefined) tmuxEnv[k] = v;
+    if (v !== undefined) composedEnv[k] = v;
   }
   // Explicit per-worker overrides (--env) win over inherited + operational.
   if (resolvedWorkerEnv !== undefined) {
     for (const [k, v] of Object.entries(resolvedWorkerEnv)) {
-      tmuxEnv[k] = v;
+      composedEnv[k] = v;
     }
   }
   // Provider launch env is RESERVED — umbel controls it, so it wins even over an
   // explicit --env: codex's CODEX_HOME must point at umbel's isolated home or the
   // Stop hook never fires. Every provider but codex declares an empty launch env.
   for (const [k, v] of Object.entries(launchSpec.env)) {
-    tmuxEnv[k] = v;
+    composedEnv[k] = v;
   }
-  tmuxEnv.UMBEL_STATE = stateRoot;
-  tmuxEnv.UMBEL_SESSION_ID = name;
+  composedEnv.UMBEL_STATE = stateRoot;
+  composedEnv.UMBEL_SESSION_ID = name;
 
   // Let the provider reconcile mutually-exclusive credentials in the final env
   // (claude drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is
   // set — it would otherwise wedge the worker on the "use this key?" prompt).
-  const workerEnvFinal = provider.reconcileEnv?.(tmuxEnv) ?? tmuxEnv;
+  const workerEnvFinal = provider.reconcileEnv?.(composedEnv) ?? composedEnv;
 
   // Refuse a model the binary does not list before anything is created: the
   // probe runs the launch's binary with the launch's env and cwd, so it sees
@@ -353,6 +352,9 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // .codex/hooks.json or .gemini/settings.json into the user's cwd, then state.
   const unwind = async (): Promise<void> => {
     await d.tmux.killSession(name, env).catch(() => undefined);
+    // Holds the worker's environment until its wrapper reads it; a worker that
+    // never ran leaves it behind in the server.
+    await d.tmux.deleteBuffer(envBuffer, env);
     for (const filePath of providerFilePaths) {
       await unlink(filePath).catch(() => undefined);
     }
@@ -365,7 +367,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
         name,
         cwd: opts.cwd,
         cmd,
-        env: workerEnvFinal,
+        envBuffer: { name: envBuffer, content: envExports(workerEnvFinal) },
       },
       env,
     );
