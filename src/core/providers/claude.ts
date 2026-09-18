@@ -171,6 +171,30 @@ function parseAllEntries(content: string): unknown[] {
   return entries;
 }
 
+// Claude writes one entry per content block and copies the whole message's
+// stop_reason onto every one of them, so a flushed thinking block of the final
+// message already reads end_turn. What proves the turn over is its closing text:
+// the last assistant entry is a text block from a message that did not stop for
+// a tool.
+function turnEndedIn(content: string): boolean {
+  const entries = parseAllEntries(content);
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (!isAssistantEntry(entry)) continue;
+    const blocks = getContentBlocks(entry);
+    // Content that is neither blocks nor a string cannot be judged, and must not
+    // hold a read for the whole settle window.
+    if (blocks.length === 0 && extractText(entry) === null) return true;
+    const last = blocks[blocks.length - 1];
+    const isText =
+      blocks.length === 0 ||
+      (last !== null && typeof last === 'object' && (last as JsonObj).type === 'text');
+    const stop = getStopReason(entry);
+    return isText && stop !== undefined && stop !== 'tool_use';
+  }
+  return false;
+}
+
 function pushUnique(arr: string[], val: string): void {
   if (!arr.includes(val)) arr.push(val);
 }
@@ -342,6 +366,10 @@ const claudeProvider: AgentProvider = {
 
   parseTranscript(content: string): string {
     return extractLastAssistantGroup(content);
+  },
+
+  turnEnded(content: string): boolean {
+    return turnEndedIn(content);
   },
 
   extractActions(content: string): ActionManifest {

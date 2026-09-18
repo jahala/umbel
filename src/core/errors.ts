@@ -36,14 +36,6 @@ export class TmuxError extends Error {
   }
 }
 
-export class JsonlMalformedError extends Error {
-  override name = 'JsonlMalformedError';
-
-  constructor(public path: string) {
-    super(`Malformed JSONL at: ${path}`);
-  }
-}
-
 export class WorkflowCycleError extends Error {
   override name = 'WorkflowCycleError';
 

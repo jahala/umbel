@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
   HookTimeoutError,
-  JsonlMalformedError,
   SessionDeadError,
   SessionNotFoundError,
   TmuxError,
@@ -77,23 +76,6 @@ describe('TmuxError', () => {
     const err = new TmuxError('send-keys', 'no server running');
     expect(err.cmd).toBe('send-keys');
     expect(err.stderr).toBe('no server running');
-  });
-});
-
-describe('JsonlMalformedError', () => {
-  test('is instanceof Error', () => {
-    const err = new JsonlMalformedError('/tmp/session.jsonl');
-    expect(err instanceof Error).toBe(true);
-  });
-
-  test('name is JsonlMalformedError', () => {
-    const err = new JsonlMalformedError('/tmp/session.jsonl');
-    expect(err.name).toBe('JsonlMalformedError');
-  });
-
-  test('path propagates', () => {
-    const err = new JsonlMalformedError('/home/user/.claude/session.jsonl');
-    expect(err.path).toBe('/home/user/.claude/session.jsonl');
   });
 });
 

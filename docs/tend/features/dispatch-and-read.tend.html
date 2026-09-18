@@ -2587,11 +2587,11 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c003",
-      "description": "lastAssistantMessage() returns only the last turn's text from a multi-turn JSONL transcript, ignoring earlier assistant turns.",
+      "description": "A read returns only the last turn's text from a multi-turn transcript, ignoring earlier assistant turns.",
       "validates": "what",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Write a JSONL with two turns; call lastAssistantMessage; assert result equals second answer only. See test/integration/jsonl.test.ts 'returns only the last turn (ignores earlier assistant turns)' line 211.",
+      "verification_recipe": "Build a transcript with two turns; pass it to ClaudeProvider.parseTranscript, the parser behind the read point; assert the result is the second answer only. See test/unit/providers/claude.test.ts 'returns only the last turn (ignores earlier assistant turns)'.",
       "validates_job": "host-agent:2"
     },
     {
@@ -2620,16 +2620,25 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "unit",
       "verification_recipe": "Call truncateAssistantText with text >2000 tokens (no opts); assert contains 'elided' and 'call umbel_read with full=true'. With section='## Findings', assert returns only that section. With full=true, assert identity. See test/unit/truncate.test.ts lines 17-31, 100-107, 34-43.",
       "validates_job": "host-agent:2"
+    },
+    {
+      "id": "c007",
+      "description": "A read taken the moment a stop lands returns the turn's final message. The stop hook can fire before that message is written, so the read point polls, up to TURN_END_SETTLE_MS after the stop, until the provider's turnEnded sees the turn close; with no recent stop it reads once, so a read taken mid-turn is never held.",
+      "validates": "what",
+      "method": "synthetic-test",
+      "integration_level": "integration",
+      "verification_recipe": "Run fake-claude with FAKE_CLAUDE_LATE_FINAL_MS, which fires the hook before writing the final message as real claude does. Watch events/stop without umbel's wait, call resolveTranscriptContent the instant it moves, and assert parseTranscript returns the final message, not the one before it. Confirmed RED first: it returned 'Running the full check.'",
+      "validates_job": "host-agent:0"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/unit/diff.test.ts test/unit/truncate.test.ts test/integration/send.test.ts test/integration/jsonl.test.ts test/integration/resolve-transcript.test.ts test/integration/diff.test.ts",
-    "verify": "69 pass, 0 fail",
-    "last_run": "2026-06-21T00:00:00Z",
+    "cmd": "bun test test/unit/diff.test.ts test/unit/truncate.test.ts test/integration/send.test.ts test/integration/jsonl.test.ts test/integration/resolve-transcript.test.ts test/integration/diff.test.ts test/unit/providers/claude.test.ts test/integration/read-at-stop.test.ts",
+    "verify": "87 pass, 0 fail",
+    "last_run": "2026-09-18T12:15:54Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-06-21T00:00:00Z",
+    "ran_at": "2026-09-18T12:15:54Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2647,8 +2656,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c003",
         "verdict": "pass",
-        "evidence_path": "test/integration/jsonl.test.ts:211-227 ('returns only the last turn (ignores earlier assistant turns)'); src/adapters/jsonl.ts:248-263 (backward walk from last assistant index)",
-        "evidence_sha": "c5881c56961ee4fcea4a7f91f1a6e1a140f4e2a2"
+        "evidence_path": "test/unit/providers/claude.test.ts:221-231 ('returns only the last turn'); src/core/providers/claude.ts extractLastAssistantGroup. Re-pointed 2026-09-18: this check used to audit adapters/jsonl.ts lastAssistantMessage, which no production path called; umbel#86 removed it.",
+        "evidence_sha": "1b780a32692a75e2d486366aad36b6971905fa10"
       },
       {
         "check_id": "c004",
@@ -2667,6 +2676,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/unit/truncate.test.ts:17-31 (head+elision+tail), test/unit/truncate.test.ts:100-107 (section extraction), test/unit/truncate.test.ts:34-43 (full bypass); src/core/truncate.ts:27-52",
         "evidence_sha": "6619475e17d2712d274d3bcaa569c30906d29f7a"
+      },
+      {
+        "check_id": "c007",
+        "verdict": "pass",
+        "evidence_path": "test/integration/read-at-stop.test.ts:116-142 (read at the instant of the stop returns the final message); src/operations/resolve-transcript.ts:18-24 (TURN_END_SETTLE_MS), :62-85 (readTranscriptAtStop). RED against the old read point with the production symptom verbatim.",
+        "evidence_sha": "0d33f4fbbd264f12952fbf13fa13321ae60d690f"
       }
     ],
     "drift": [],

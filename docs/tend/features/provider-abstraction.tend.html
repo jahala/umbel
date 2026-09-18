@@ -2620,14 +2620,25 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       "integration_level": "unit",
       "verification_recipe": "For each provider assert supportsUnattended === true. Call buildLaunch({unattended:true}) and assert the provider's documented flag is present; call it without unattended and assert the flag is absent. For claude, parse the --settings JSON and assert permissions.defaultMode.",
       "validates_job": "host-agent:0"
+    },
+    {
+      "id": "c008",
+      "description": "claude and codex declare turnEnded: whether the transcript already holds the end of the latest turn. claude's closes on a text block from a message that did not stop for a tool, since every per-block entry carries the whole message's stop_reason; codex's closes when its newest turn marker is task_complete or turn_aborted. Each answers true for a shape it cannot read, so no read stalls on it.",
+      "validates": "how",
+      "method": "synthetic-test",
+      "integration_level": "unit",
+      "verification_recipe": "Unit tests in test/unit/turn-ended.test.ts over shapes measured in real transcripts and rollouts: a flushed thinking block carrying end_turn is open; the previous message last on disk is open; unreadable content and a rollout without markers never hold a read. A helper throws when a provider lacks the method, so no case passes by default.",
+      "validates_job": "supervisor-dev:1"
     }
   ],
   "smoke": {
-    "cmd": "bun test test/unit/providers test/integration/codex-provider.test.ts test/integration/opencode-provider.test.ts test/unit/unattended.test.ts",
-    "verify": "227 pass, 0 fail across 12 files"
+    "cmd": "bun test test/unit/providers test/integration/codex-provider.test.ts test/integration/opencode-provider.test.ts test/unit/unattended.test.ts test/unit/turn-ended.test.ts",
+    "verify": "248 pass, 0 fail",
+    "last_run": "2026-09-18T12:12:55Z",
+    "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-08-20T09:22:19Z",
+    "ran_at": "2026-09-18T12:12:55Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2671,6 +2682,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
         "verdict": "pass",
         "evidence_path": "test/unit/unattended.test.ts (9 tests, all four providers); src/core/providers/types.ts:98 (required supportsUnattended) + :105-108 (unattended launch opt); src/adapters/hooks.ts:94-99 (claude defaultMode, explicit permissionMode wins); src/core/providers/codex.ts:269; src/core/providers/gemini.ts:291-296; src/core/providers/opencode.ts:387-389; src/operations/spawn.ts:182-187 (fail-fast at dispatch). Flags verified against installed binaries' --help, and buildLaunch was executed directly to confirm the emitted argv.",
         "evidence_sha": "f34f38c751b9157a13a13b7845fe4d09a5f7ff74"
+      },
+      {
+        "check_id": "c008",
+        "verdict": "pass",
+        "evidence_path": "test/unit/turn-ended.test.ts (13 cases, all RED before the method existed); src/core/providers/claude.ts:174-196 (turnEndedIn), :371 (turnEnded); src/core/providers/codex.ts:62-75 (turnEndedIn), :362 (turnEnded); src/core/providers/types.ts (the optional contract method).",
+        "evidence_sha": "932fc4fd94c5943964177d1e71c614d8f19ddb44"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"

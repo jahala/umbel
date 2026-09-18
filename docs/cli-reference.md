@@ -16,7 +16,7 @@ umbel --version                  Show version (0.0.1)
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Generic error (session dead, tmux failure, JSONL malformed, hook timeout, session not created, provider has no unattended mode) |
+| 1 | Generic error (session dead, tmux failure, hook timeout, session not created, provider has no unattended mode) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
 | 122 | `wait` provider-error — a provider error on the pane, then stillness |
 | 123 | `wait` idle — pane, events directory and transcript tree all still for `--idle-timeout` |
