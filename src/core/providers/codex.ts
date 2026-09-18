@@ -230,7 +230,7 @@ export function extractCodexTurnsFromContent(content: string): Turn[] {
 const codexProvider: AgentProvider = {
   name: 'codex',
   supportsUnattended: true,
-  inheritEnvPrefixes: ['OPENAI_', 'CODEX_'],
+  inheritEnv: ['OPENAI_*'],
 
   stopEventName: 'Stop',
 

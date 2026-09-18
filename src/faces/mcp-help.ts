@@ -156,7 +156,7 @@ Claude (\`provider: claude\`)
 - Hook config delivered inline via \`--settings '<json>'\` (no file write).
 - stopEventName: "Stop". Trust dialog auto-dismissed on first launch in a fresh cwd.
 - Flags: --model <name>, --allowedTools "Read,Write,...".
-- Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by giving the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL (+ ANTHROPIC_SMALL_FAST_MODEL for background calls) — via inherited env (a claude worker inherits ANTHROPIC_* and CLAUDE_*), --env / env:, or {fromEnv} references (resolved from the umbel server's env, so a secret never enters the caller's transcript). Use AUTH_TOKEN not API_KEY: umbel drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set (else it shadows the endpoint and wedges the worker on the "use this key?" prompt). Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription. status reports the effective baseUrl.
+- Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by giving the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL (+ ANTHROPIC_SMALL_FAST_MODEL for background calls) — via inherited env (a claude worker inherits ANTHROPIC_* and CLAUDE_CONFIG_DIR), --env / env:, or {fromEnv} references (resolved from the umbel server's env, so a secret never enters the caller's transcript). Use AUTH_TOKEN not API_KEY: umbel drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set (else it shadows the endpoint and wedges the worker on the "use this key?" prompt). Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription. status reports the effective baseUrl.
 
 Codex (\`provider: codex\`)
 - Hook config delivered via <cwd>/.codex/hooks.json (written at spawn, removed at kill).
@@ -175,7 +175,7 @@ OpenCode (\`provider: opencode\`)
 - No JSONL transcript (SQLite only). Output read via \`opencode export <sessionID>\`.
 - stopEventName: "session.status" idle (plugin-based).
 - Model flag: -m provider/model, checked against \`opencode models\` at spawn; an unlisted model refuses the spawn (exit 2) before a worker exists. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
-- An opencode worker inherits only OPENCODE_* from umbel's env; pass any other key by reference ({fromEnv}, or --env NAME on the CLI). umbel does not manage keys.
+- An opencode worker inherits only OPENCODE_CONFIG* from umbel's env; pass any other key by reference ({fromEnv}, or --env NAME on the CLI). umbel does not manage keys.
 
 ## When to mix providers
 

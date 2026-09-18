@@ -2512,7 +2512,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "impact": "A worker is one spawn away from any cwd, survives supervisor detach, and is always findable (status) and stoppable (kill) — the prerequisite for every dispatch and wait operation.",
   "fit": "The base verb set every face exposes; dispatch and wait assume a lifecycle-managed session exists.",
   "where": "src/operations/spawn.ts, kill.ts, status.ts; src/adapters/tmux.ts, exec.ts; src/core/env.ts, startup-dialogs.ts, id.ts.",
-  "how": "tmux new-session per worker; meta.json records provider/cwd/model; env is an allowlist plus the provider's own prefixes, handed over through a tmux buffer the launch wrapper reads and deletes, never on a command line (umbel#93); capture-pane polling dismisses trust dialogs gated on real binaries; generateSessionName yields anon-XXXXXX.",
+  "how": "tmux new-session per worker; meta.json records provider/cwd/model; env is an allowlist plus the configuration variables the provider names, handed over through a tmux buffer the launch wrapper reads and deletes, never on a command line (umbel#93); capture-pane polling dismisses trust dialogs gated on real binaries; generateSessionName yields anon-XXXXXX.",
   "progress": {
     "implementation": 100,
     "verification": 100
@@ -2587,7 +2587,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c003",
-      "description": "A worker inherits only an allowlist of operational variables (paths, locale, XDG_*, proxies, CA bundles, SSH_AUTH_SOCK) and its provider's own prefixes (claude ANTHROPIC_/CLAUDE_, codex OPENAI_/CODEX_, gemini GEMINI_/GOOGLE_, opencode OPENCODE_); every other variable, the shell-init ones included, stays behind. Explicit workerEnv overrides, literal or {fromEnv}, layer on top.",
+      "description": "A worker inherits only an allowlist of operational variables (paths, locale, XDG_*, proxies, CA bundles, SSH_AUTH_SOCK) and the configuration variables its provider names one by one (claude ANTHROPIC_* and CLAUDE_CONFIG_DIR, codex OPENAI_*, gemini GEMINI_API_KEY and GOOGLE_*); every other variable stays behind, the shell-init ones and the markers a host session of the same CLI sets for its children included. Explicit workerEnv overrides, literal or {fromEnv}, layer on top.",
       "validates": "how",
       "method": "synthetic-test",
       "integration_level": "integration",
@@ -2669,8 +2669,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   ],
   "smoke": {
     "cmd": "bun test test/integration/spawn.test.ts test/integration/kill.test.ts test/integration/status.test.ts test/integration/spawn-env.test.ts test/unit/id.test.ts test/unit/startup-dialogs.test.ts test/unit/permission-mode.test.ts test/unit/env-refs.test.ts test/integration/tmux-isolation.test.ts test/integration/dismiss-dialogs.test.ts test/unit/quota.test.ts test/unit/worker-env.test.ts test/integration/worker-env.test.ts",
-    "verify": "129 pass",
-    "last_run": "2026-09-18T13:23:55Z",
+    "verify": "133 pass",
+    "last_run": "2026-09-18T13:43:43Z",
     "last_result": "pass"
   },
   "audit": {
@@ -2692,7 +2692,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c003",
         "verdict": "pass",
-        "evidence_path": "test/integration/spawn-env.test.ts:107-155 (withholds an arbitrary exported var and the shell-init vars, keeps PATH/HOME, forwards an explicit override; confirmed RED against the inherit-everything code); test/unit/worker-env.test.ts:36-87 (allowlist, provider prefixes, one provider not receiving another's keys); src/core/worker-env.ts:43-57 (inheritedEnv); src/operations/spawn.ts:265-298 (composition and precedence)",
+        "evidence_path": "test/integration/spawn-env.test.ts:107-155 (withholds an arbitrary exported var and the shell-init vars, keeps PATH/HOME, forwards an explicit override; confirmed RED against the inherit-everything code); test/unit/worker-env.test.ts:38-126 (allowlist, provider config names, one provider not receiving another's keys, each provider withholding the host session markers its own binary names); src/core/worker-env.ts:43-57 (inheritedEnv); src/operations/spawn.ts:265-298 (composition and precedence)",
         "evidence_sha": "7b8d586bc765271df584614607e28568d7f8442b"
       },
       {

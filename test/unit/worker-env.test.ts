@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { ClaudeProvider } from '../../src/core/providers/claude.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
+import { GeminiProvider } from '../../src/core/providers/gemini.ts';
+import { OpenCodeProvider } from '../../src/core/providers/opencode.ts';
 import { envExports, inheritedEnv } from '../../src/core/worker-env.ts';
 
 // ---------------------------------------------------------------------------
@@ -34,7 +36,7 @@ const caller = {
 };
 
 describe('inheritedEnv', () => {
-  const forClaude = inheritedEnv(caller, ClaudeProvider.inheritEnvPrefixes ?? []);
+  const forClaude = inheritedEnv(caller, ClaudeProvider.inheritEnv ?? []);
 
   test('keeps what any worker needs to run', () => {
     for (const k of [
@@ -66,7 +68,7 @@ describe('inheritedEnv', () => {
   });
 
   test("a provider receives its own keys and not another's", () => {
-    const forCodex = inheritedEnv(caller, CodexProvider.inheritEnvPrefixes ?? []);
+    const forCodex = inheritedEnv(caller, CodexProvider.inheritEnv ?? []);
     expect(forCodex.OPENAI_API_KEY).toBe(caller.OPENAI_API_KEY);
     expect(forCodex.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
   });
@@ -79,6 +81,43 @@ describe('inheritedEnv', () => {
   test("leaves the terminal's description to the pane tmux creates", () => {
     // Inside tmux, TERM must describe tmux, not the caller's terminal.
     expect(forClaude.TERM).toBeUndefined();
+  });
+
+  // An agent that drives umbel from inside a provider's CLI carries that
+  // session's markers, and a vendor prefix holds them beside the configuration.
+  // Inherited, CLAUDE_CODE_CHILD_SESSION turned transcript saving off in every
+  // claude worker, so none of its answers could be read. Each marker below is
+  // one the installed CLI names.
+  test.each([
+    [
+      'claude',
+      ClaudeProvider,
+      [
+        'CLAUDECODE',
+        'CLAUDE_CODE_CHILD_SESSION',
+        'CLAUDE_CODE_SESSION_ID',
+        'CLAUDE_CODE_MESSAGING_TOKEN',
+      ],
+      ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_BASE_URL'],
+    ],
+    ['codex', CodexProvider, ['CODEX_MANAGED_BY_NPM'], ['OPENAI_API_KEY']],
+    [
+      'gemini',
+      GeminiProvider,
+      ['GEMINI_CLI', 'GEMINI_CLI_AGENT_ID'],
+      ['GEMINI_API_KEY', 'GOOGLE_CLOUD_PROJECT'],
+    ],
+    [
+      'opencode',
+      OpenCodeProvider,
+      ['OPENCODE_PID', 'OPENCODE_SERVER_PASSWORD'],
+      ['OPENCODE_CONFIG'],
+    ],
+  ] as const)("a %s worker gets the user's configuration and not the host session's markers", (_, provider, markers, config) => {
+    const host = Object.fromEntries([...markers, ...config].map((k) => [k, `canary-${k}`]));
+    const env = inheritedEnv(host, provider.inheritEnv ?? []);
+    for (const k of markers) expect(env[k]).toBeUndefined();
+    for (const k of config) expect(env[k]).toBe(`canary-${k}`);
   });
 
   test('skips unset values', () => {

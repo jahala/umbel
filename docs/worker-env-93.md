@@ -40,9 +40,17 @@ The environment travels through a tmux buffer, and only what a worker needs trav
    umbel starts holds no caller variables to hand to panes or show in the process table. The
    wrapper's clearing covers servers started before this change.
 3. **What travels.** A base allowlist of operational, non-secret variables (paths, locale,
-   `XDG_*`, proxies, CA bundles, `SSH_AUTH_SOCK`), plus the name prefixes each provider declares it
-   reads (claude `ANTHROPIC_` and `CLAUDE_`, codex `OPENAI_` and `CODEX_`, gemini `GEMINI_` and
-   `GOOGLE_`, opencode `OPENCODE_`), plus everything passed explicitly. Explicit wins, as before.
+   `XDG_*`, proxies, CA bundles, `SSH_AUTH_SOCK`), plus the configuration variables each provider
+   names (claude `ANTHROPIC_*` and `CLAUDE_CONFIG_DIR`, codex `OPENAI_*`, gemini `GEMINI_API_KEY`
+   and `GOOGLE_*`, the full list in cli-reference), plus everything passed explicitly. Explicit
+   wins, as before.
+
+   Configuration is named variable by variable, never as a whole vendor prefix. The first cut
+   inherited `CLAUDE_*`, and that prefix also holds the markers a host Claude Code session sets
+   for its children. A worker launched from inside Claude Code inherited
+   `CLAUDE_CODE_CHILD_SESSION`, took itself for a child session and turned its transcript off, so
+   `read` found nothing. Every provider's binary names markers of this kind (`GEMINI_CLI`,
+   `OPENCODE_PID`), so all four name their configuration instead.
 4. **CLI.** `--env NAME` without `=` passes `NAME` through from umbel's own environment, so a caller
    never has to put a secret on any argv. `--env NAME=VALUE` still works for non-secrets.
 
@@ -58,7 +66,7 @@ is one: it should export each per-worker secret and pass `--env NAME`, never `--
 ## Why this might be wrong
 
 - A worker needs a variable outside the allowlist and fails confusingly. Mitigation: the allowlist
-  covers what the old narrow list got wrong, provider prefixes cover provider config, and
+  covers what the old narrow list got wrong, provider config names cover the usual setups, and
   `--env NAME` is a one-token fix. Documented in cli-reference.
 - Clearing the environment in the wrapper drops something tmux sets that a TUI needs. `TERM` is kept;
   a real-binary spawn is part of the proof.

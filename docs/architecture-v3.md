@@ -12,7 +12,7 @@
 | Claude Code only | Provider abstraction with `ClaudeProvider`, `CodexProvider`, `GeminiProvider` | Codex and Gemini have near-identical hook lifecycles to Claude; the four points of provider-specific behavior can be cleanly abstracted (see §4) |
 | Spawn-time JSONL discovery (`discoverSessionJsonl`) | Lazy resolution via `events/transcript-path` written by Stop hook from the payload | Real claude doesn't write the transcript until first message — discovery at spawn-time is impossible. The hook payload contains `transcript_path` for free. |
 | Argv parser: short flags consume next non-dash arg | Short flags are ALWAYS boolean | `umbel -p "prompt"` was eating the prompt. Caught by smoke testing; saved by root-cause investigation. |
-| spawn passes full process.env to tmux | Inherit only an allowlist: what any CLI needs to run as its user, plus the provider's own prefixes (`ANTHROPIC_*` for claude, and so on). Anything else is passed explicitly with `--env`/`env:`, a secret by name. The environment reaches the worker through a tmux buffer the launch wrapper reads and deletes. | A worker that inherited the caller's whole environment received every key in it, and `new-session -e K=V` put each value on tmux's argv for the server's whole life (umbel#93, `docs/worker-env-93.md`). The shell-init vars that race the first send-keys are outside the allowlist. |
+| spawn passes full process.env to tmux | Inherit only an allowlist: what any CLI needs to run as its user, plus the configuration variables the provider names (`ANTHROPIC_*` and `CLAUDE_CONFIG_DIR` for claude, and so on). Anything else is passed explicitly with `--env`/`env:`, a secret by name. The environment reaches the worker through a tmux buffer the launch wrapper reads and deletes. | A worker that inherited the caller's whole environment received every key in it, and `new-session -e K=V` put each value on tmux's argv for the server's whole life (umbel#93, `docs/worker-env-93.md`). The shell-init vars that race the first send-keys are outside the allowlist. |
 | `lastAssistantMessage` walks backward stopping at first non-assistant | Finds last assistant index, then walks back from there | Real claude appends `system`/`last-prompt`/`ai-title`/`permission-mode` metadata AFTER the assistant response. |
 | `encodeCwd` literal slash replacement | `realpathSync` before encoding | macOS `/var/folders` resolves to `/private/var/folders`; claude encodes the resolved path. |
 | No trust-dialog handling | `dismissTrustDialog` polls capture-pane and sends Enter when the prompt appears | Real claude shows a workspace-trust dialog on first launch in every fresh cwd. Gated on `isRealClaudeBin` so non-claude binaries don't pay the polling cost. |
@@ -209,8 +209,11 @@ steps:
 A spawned worker inherits only part of the umbel process's environment: an
 allowlist of what any CLI needs to run as its user (paths, locale, `XDG_*`,
 proxies, CA bundles, `SSH_AUTH_SOCK`) and the prefixes its own provider reads
-(`inheritEnvPrefixes`: claude `ANTHROPIC_`/`CLAUDE_`, codex `OPENAI_`/`CODEX_`,
-gemini `GEMINI_`/`GOOGLE_`, opencode `OPENCODE_`). Everything else stays behind,
+(`inheritEnv`, listed in `docs/cli-reference.md`). A provider names its
+configuration one variable at a time, because the rest of a vendor prefix holds
+the markers a host session of the same CLI sets for its children, and an
+inherited `CLAUDE_CODE_CHILD_SESSION` turns claude's transcript off. Everything
+else stays behind,
 including the shell-init variables that race the first send-keys. Add
 per-worker vars with `--env KEY=VALUE` or `--env KEY` (by name, for a secret),
 the MCP `umbel_spawn` `env` object, or a worker `env:` map in YAML, where a value

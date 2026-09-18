@@ -101,10 +101,12 @@ A worker inherits only part of the environment umbel runs in: what any CLI needs
 | Worker | Inherits |
 |---|---|
 | every provider | `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LANGUAGE`, `TZ`, `TMPDIR`, `SSH_AUTH_SOCK`, `LC_*`, `XDG_*`; the proxy variables `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and `ALL_PROXY` in either case; the CA bundle variables `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` |
-| claude | `ANTHROPIC_*`, `CLAUDE_*` |
-| codex | `OPENAI_*`, `CODEX_*` |
-| gemini | `GEMINI_*`, `GOOGLE_*` |
-| opencode | `OPENCODE_*` |
+| claude | `ANTHROPIC_*`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY` |
+| codex | `OPENAI_*` (umbel sets `CODEX_HOME` itself) |
+| gemini | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GOOGLE_*` |
+| opencode | `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT` |
+
+A provider's configuration is named variable by variable. The rest of a vendor's prefix holds the markers a session of that CLI sets for the processes it starts, and a worker launched from inside one must not inherit them.
 
 Pass anything else with `--env` (CLI), `env:` (workflow) or `env` (MCP). Pass a secret by name: `--env OPENROUTER_API_KEY` hands over umbel's own `$OPENROUTER_API_KEY`. Writing the value into the flag (`--env OPENROUTER_API_KEY="$OPENROUTER_API_KEY"`) puts it on umbel's command line, which any local user can read while the command runs. Over MCP and in a workflow the reference is `{"fromEnv": "OPENROUTER_API_KEY"}`.
 
@@ -657,4 +659,4 @@ Never write the key itself into an `--env` value; see [Worker environment](#work
 
 **Note on OpenCode config:** umbel installs its stop plugin into `$XDG_CONFIG_HOME/opencode/opencode.jsonc` (default `~/.config/opencode/`). The file is read as JSONC, so comments and trailing commas are fine. umbel edits it in place, inserting only its own `plugin` entry and preserving every other byte, comments included. A file that already carries the entry is not written. An unparsable file refuses the spawn (exit 1) with its path, line and column, and is left untouched.
 
-**Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass the key by name, as in `--env OPENROUTER_API_KEY`; an opencode worker inherits only `OPENCODE_*` on its own. umbel does not manage opencode API keys.
+**Note on OpenCode billing:** OpenCode has no subscription. Models are local (`ollama/…`, free), free-tier (`opencode/big-pickle`, keyless but limited), or API-billed (`anthropic/…`, `openrouter/…` — your key, your quota). For API-billed opencode models, pass the key by name, as in `--env OPENROUTER_API_KEY`; an opencode worker inherits only its `OPENCODE_CONFIG*` variables on its own. umbel does not manage opencode API keys.
