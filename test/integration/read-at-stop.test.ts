@@ -45,6 +45,7 @@ afterEach(async () => {
 async function lateWorker(
   suffix: string,
   lateMs = LATE_MS,
+  fixtureEnv: Record<string, string> = {},
 ): Promise<{ name: string; env: Record<string, string> }> {
   tmpDir = await mkdtemp(join(tmpdir(), 'umbel-read-at-stop-'));
   projectsDir = join(tmpDir, 'projects');
@@ -59,6 +60,7 @@ async function lateWorker(
       FAKE_CLAUDE_JSONL_DIR: join(projectsDir, '-tmp'),
       FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
       FAKE_CLAUDE_LATE_FINAL_MS: String(lateMs),
+      ...fixtureEnv,
     },
     deps: {
       jsonl: {
@@ -83,6 +85,14 @@ async function mtimeOf(path: string): Promise<number> {
     return 0;
   }
 }
+
+const readDeps = (): NonNullable<Parameters<typeof resolveTranscriptContent>[0]['deps']> => ({
+  jsonl: {
+    ...jsonlAdapter,
+    discoverSessionJsonl: (o) =>
+      jsonlAdapter.discoverSessionJsonl({ ...o, projectsRoot: projectsDir }),
+  },
+});
 
 describe('read at stop (umbel#86)', () => {
   test('wait reports stop only once the final message is on disk', async () => {
@@ -130,14 +140,69 @@ describe('read at stop (umbel#86)', () => {
       sinceMs: 0,
       provider: ClaudeProvider,
       env,
-      deps: {
-        jsonl: {
-          ...jsonlAdapter,
-          discoverSessionJsonl: (o) =>
-            jsonlAdapter.discoverSessionJsonl({ ...o, projectsRoot: projectsDir }),
-        },
-      },
+      deps: readDeps(),
     });
     expect(ClaudeProvider.parseTranscript(content)).toBe(FINAL);
   }, 30_000);
+
+  // A turn answered without a tool has no assistant entry at all when its stop
+  // lands, so the newest closing text on disk belongs to the turn before. Seen
+  // on a real worker: read returned the previous turn's answer.
+  describe('a second turn answered without a tool', () => {
+    const SECOND = 'and again';
+
+    async function secondTurn(
+      suffix: string,
+    ): Promise<{ name: string; env: Record<string, string>; sinceMtime: number }> {
+      const worker = await lateWorker(suffix, LATE_MS, { FAKE_CLAUDE_LATE_NO_TOOL: '1' });
+      const first = await send({ name: worker.name, prompt: PROMPT, env: worker.env });
+      const settled = await waitFor({
+        name: worker.name,
+        sinceMtime: first.sinceMtime,
+        env: worker.env,
+        defaultTimeoutMs: 15_000,
+      });
+      expect(settled.reason).toBe('stop');
+      const { sinceMtime } = await send({ name: worker.name, prompt: SECOND, env: worker.env });
+      return { ...worker, sinceMtime };
+    }
+
+    test('wait reports its stop only once its own final message is on disk', async () => {
+      const { name, env, sinceMtime } = await secondTurn('w2');
+      const result = await waitFor({ name, sinceMtime, env, defaultTimeoutMs: 15_000 });
+      expect(result.reason).toBe('stop');
+
+      const path = (await readFile(eventsFile(name, 'transcript-path'), 'utf8')).trim();
+      expect(ClaudeProvider.parseTranscript(await readFile(path, 'utf8'))).toBe(
+        `Response to: ${SECOND}`,
+      );
+    }, 45_000);
+
+    test('read at the instant of its stop returns its own message', async () => {
+      const worker = await lateWorker('r2', LATE_MS, { FAKE_CLAUDE_LATE_NO_TOOL: '1' });
+      const first = await send({ name: worker.name, prompt: PROMPT, env: worker.env });
+      await waitFor({
+        name: worker.name,
+        sinceMtime: first.sinceMtime,
+        env: worker.env,
+        defaultTimeoutMs: 15_000,
+      });
+
+      const stopFile = eventsFile(worker.name, 'stop');
+      const before = await mtimeOf(stopFile);
+      await send({ name: worker.name, prompt: SECOND, env: worker.env });
+      const deadline = Date.now() + 15_000;
+      while ((await mtimeOf(stopFile)) <= before && Date.now() < deadline) await Bun.sleep(20);
+
+      const content = await resolveTranscriptContent({
+        name: worker.name,
+        cwd: '/tmp',
+        sinceMs: 0,
+        provider: ClaudeProvider,
+        env: worker.env,
+        deps: readDeps(),
+      });
+      expect(ClaudeProvider.parseTranscript(content)).toBe(`Response to: ${SECOND}`);
+    }, 45_000);
+  });
 });

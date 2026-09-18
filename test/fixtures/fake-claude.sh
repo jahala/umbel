@@ -27,6 +27,8 @@
 #                         fires with the previous message (text, then a tool
 #                         use) last on disk, and the final message follows as
 #                         one entry per content block, each carrying end_turn
+#   FAKE_CLAUDE_LATE_NO_TOOL optional, with FAKE_CLAUDE_LATE_FINAL_MS: answer without
+#                         a tool, so the hook fires with only the prompt on disk
 #   FAKE_CLAUDE_DIE_SIGNAL optional, signal the FAKE_CLAUDE_DIE_MS death dies by
 #                         instead of exiting — stands in for a worker killed by
 #                         someone else (tmux records the same wait status)
@@ -51,6 +53,7 @@ DIE_SIGNAL="${FAKE_CLAUDE_DIE_SIGNAL:-}"
 DIE_ON="${FAKE_CLAUDE_DIE_ON:-}"
 EXIT_CODE="${FAKE_CLAUDE_EXIT_CODE:-1}"
 LATE_FINAL_MS="${FAKE_CLAUDE_LATE_FINAL_MS:-0}"
+LATE_NO_TOOL="${FAKE_CLAUDE_LATE_NO_TOOL:-}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
@@ -134,6 +137,16 @@ write_turn() {
   # Sleep if requested
   if [[ "$DELAY" -gt 0 ]]; then
     sleep "$(echo "scale=3; $DELAY / 1000" | bc)"
+  fi
+
+  if [[ "$LATE_FINAL_MS" -gt 0 && -n "$LATE_NO_TOOL" ]]; then
+    fire_hook
+    sleep "$(echo "scale=3; $LATE_FINAL_MS / 1000" | bc)"
+    printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"thinking","thinking":"done"}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
+      "$$" "$now" >> "$JSONL_FILE"
+    printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
+      "$$" "$(echo -n "Response to: $prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" "$now" >> "$JSONL_FILE"
+    return
   fi
 
   if [[ "$LATE_FINAL_MS" -gt 0 ]]; then

@@ -58,24 +58,26 @@ function extractText(entry: unknown): string | null {
   return null;
 }
 
-function isAssistantEntry(entry: unknown): boolean {
+function isRoleEntry(entry: unknown, role: 'assistant' | 'user'): boolean {
   if (entry === null || typeof entry !== 'object') return false;
   const obj = entry as JsonObj;
 
-  // Shape A: message.role === 'assistant'
+  // Shape A: message.role
   const msg = obj.message;
   if (msg !== null && typeof msg === 'object') {
     const m = msg as JsonObj;
-    if (m.role === 'assistant') return true;
+    if (m.role === role) return true;
   }
 
-  // Shape B: role === 'assistant'
-  if (obj.role === 'assistant') return true;
+  // Shape B: role
+  if (obj.role === role) return true;
 
-  // Shape C: type === 'assistant'
-  if (obj.type === 'assistant') return true;
+  // Shape C: type, where a prompt may be recorded as 'human'
+  return obj.type === role || (role === 'user' && obj.type === 'human');
+}
 
-  return false;
+function isAssistantEntry(entry: unknown): boolean {
+  return isRoleEntry(entry, 'assistant');
 }
 
 // Extract the last assistant group from Claude JSONL content.
@@ -175,11 +177,15 @@ function parseAllEntries(content: string): unknown[] {
 // stop_reason onto every one of them, so a flushed thinking block of the final
 // message already reads end_turn. What proves the turn over is its closing text:
 // the last assistant entry is a text block from a message that did not stop for
-// a tool.
+// a tool, with no prompt or tool result after it. Between a turn's closing text
+// and the next prompt claude writes only bookkeeping entries, so a user entry
+// found first means a reply is still owed, even when the newest closing text on
+// disk is the previous turn's.
 function turnEndedIn(content: string): boolean {
   const entries = parseAllEntries(content);
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
+    if (isRoleEntry(entry, 'user')) return false;
     if (!isAssistantEntry(entry)) continue;
     const blocks = getContentBlocks(entry);
     // Content that is neither blocks nor a string cannot be judged, and must not

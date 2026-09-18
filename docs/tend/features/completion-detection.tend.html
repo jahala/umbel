@@ -2641,12 +2641,12 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   ],
   "smoke": {
     "cmd": "bun test test/unit/wait.test.ts test/unit/wait-diagnostics.test.ts test/unit/notification.test.ts test/integration/wait.test.ts test/integration/hooks.test.ts test/integration/fs-watch.test.ts test/integration/read-at-stop.test.ts",
-    "verify": "81 pass",
-    "last_run": "2026-09-18T12:15:54Z",
+    "verify": "83 pass",
+    "last_run": "2026-09-18T12:35:16Z",
     "last_result": "pass"
   },
   "audit": {
-    "ran_at": "2026-09-18T12:15:54Z",
+    "ran_at": "2026-09-18T12:35:16Z",
     "result": "pass",
     "verdicts": [
       {
@@ -2694,8 +2694,8 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
       {
         "check_id": "c008",
         "verdict": "pass",
-        "evidence_path": "test/integration/read-at-stop.test.ts:88-99 (after wait returns stop, a plain read already holds the final message), :101-114 (a final message that misses the window yields stop plus a warning, held no longer than the window; confirmed to fail when the warning branch is broken); src/operations/wait.ts:305-335 (handbackGap, stopHeld), :512-517 (stop held on it). RED against the old wait with the production symptom verbatim.",
-        "evidence_sha": "0d33f4fbbd264f12952fbf13fa13321ae60d690f"
+        "evidence_path": "test/integration/read-at-stop.test.ts:98-109 (after wait returns stop, a plain read already holds the final message), :111-124 (a final message that misses the window yields stop plus a warning, held no longer than the window; confirmed to fail when the warning branch is broken), :170-179 (the same for a second turn answered without a tool); src/operations/wait.ts:305-335 (handbackGap, stopHeld), :512-517 (stop held on it). RED first with the production symptom. On the installed binary, snapshots taken the instant events/stop moved showed the closing text missing in 6 of 8 real turns; a build of this fix returned the right handback in 8 of 8, including a turn answered without a tool, where the previous read logic returned the previous turn's answer.",
+        "evidence_sha": "c98bc0a7b1aea81a0fcb58c3a067dfcd61f211f5"
       }
     ],
     "verified_at_commit": "53f345b96da55f2927b55476418aeae8d0dfcdaa"
