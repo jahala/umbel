@@ -1,0 +1,5 @@
+Authentication required. Please visit the URL to log in:
+  https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=<client>&code_challenge=<challenge>&code_challenge_method=S256&prompt=consent&redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback&response_type=code&scope=<scopes>&state=<state>
+
+Waiting for authentication (timeout 60s)...
+Or, paste the authorization code here and press Enter:

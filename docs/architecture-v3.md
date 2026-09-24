@@ -109,6 +109,8 @@ export interface AgentProvider {
 
 The Stop hook script stays generic — it captures `transcript_path` from stdin via `jq` regardless of which provider fired it.
 
+A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEndPrefix }` instead (AgyProvider, §5). The stream wrapper then plays the hook's part, running the same `stop.sh` at each turn's end line, so `wait` and `read` need no second path. The full contract lives in `src/core/providers/types.ts`; the excerpt above is the original core.
+
 ## 5. Per-provider summary
 
 ### ClaudeProvider (`src/core/providers/claude.ts`)
@@ -137,6 +139,20 @@ The Stop hook script stays generic — it captures `transcript_path` from stdin 
 - Hook delivery (no shell-hook equivalent): umbel installs a bundled JS plugin ONCE as infrastructure (like `stop.sh`) — writes `~/.umbel/hooks/opencode-stop.ts` and **idempotently merges** its path into the user's GLOBAL opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`, default `~/.config/opencode/`), preserving existing keys. VERIFIED: opencode honors `XDG_CONFIG_HOME` and MERGES global+project config, so the user's project model-config still loads. The plugin no-ops unless `UMBEL_SESSION_ID` is set → inert in normal use. On `session.status {type:"idle"}` it touches `events/stop` + writes the sessionID to `events/session-id`. NOT per-cwd / NOT per-session → no worktree mutation, no kill-restore, crash-safe, reversible. Tests isolate via `XDG_CONFIG_HOME` so the real `~/.config` is never touched.
 - **No JSONL transcript** (SQLite-only). Read path: run `opencode export <sessionID>`; `parseTranscript`/`extractActions`/`extractTurns` parse that JSON (`info` + `messages[]` + `parts[]`). The one architectural extension vs codex/gemini: the provider declares the command via a PURE `exportTranscript(sid)` method; the operations layer execs it (side effect at the edge).
 - `stopEventName: 'session.status'` (informational; wait keys off `events/stop` mtime). `startupDialogs: []`; `readyMatch: /Ask anything\.\.\.|Build · /`. Spike-verified end-to-end: plugin loads from cwd config, `session.status idle` reaches the plugin, `opencode/big-pickle` completes a turn keyless in a tmux PTY.
+
+### AgyProvider (`src/core/providers/agy.ts`), verified against the Antigravity CLI 1.2.10 (2026-09-24)
+
+agy is the one provider umbel drives over a line protocol instead of a TUI (umbel#113). Its interactive screen has no hooks, and its print mode speaks NDJSON both ways and keeps a conversation open across turns. So the worker still lives in a tmux pane, but the pane runs agy in print mode inside a stream wrapper.
+
+- Launch: `agy --input-format stream-json --output-format stream-json --add-dir <realpath of cwd> -p=`, plus `--dangerously-skip-permissions` when unattended and `--model <id>`. Without `--add-dir` agy runs its tools in its own scratch directory (`~/.gemini/antigravity-cli/scratch`), not in the worker's cwd. `-p` takes an argument, and an empty one (`-p=`) leaves the prompts to stdin.
+- Input: one line per turn, `{"event":"user","message":{"role":"user","content":"<prompt>"}}`. The provider's `stream.encodePrompt` builds it, and `send` types it into the pane as usual. The wrapper sets the pane's tty non-canonical and without echo. A canonical tty on macOS caps a line at 1024 bytes, and the paste arrives whole without it (5055 bytes tested).
+- Output: agy's stdout is the transcript. The wrapper (`hooks/stream.sh`, `STREAM_WRAPPER_SCRIPT`) appends each line to `sessions/<name>/transcript.jsonl` and echoes it to the pane for watching. On each line that starts with the provider's `stream.turnEndPrefix` (`{"event":"result"`), it runs `stop.sh` with that path as `transcript_path`. The stop fires after the turn's result is on disk, so a read at the stop is final and the race of umbel#86 cannot happen. Every other part of the lifecycle (`wait`, `read`, `events/transcript-path`, the exit record) is unchanged.
+- Events: `init` at startup (the ready signal), `step_update` per step (`user_input`, `agent_response` with `text_delta`, `tool` with `tool_name` and `tool_info.parameters`, state `ACTIVE`, `DONE` or `ERROR`), and one `result` per turn (`status`, `response`, `usage`, `denied_actions`).
+- Permissions: print mode never prompts. A tool that needs a permission it lacks is denied, and the turn ends with `denied_actions` in its result. So a worker never blocks on a permission, and `actions` lists each denial as an error. agy's reply to such a turn is often empty, so `read` and `-p` return nothing: spawn an agy worker `--unattended`, or check `actions` for denials.
+- Sign-in: `Authentication required. Please visit the URL to log in:` on stderr, then agy waits for a pasted code. It is `signInMatch`; spawn refuses the worker with exit 126.
+- Models: `agy models` prints `<id>\t<label>`; spawn checks `--model` against the ids.
+- Environment: agy's own variables include host-session markers (`ANTIGRAVITY_CONVERSATION_ID`, `ANTIGRAVITY_CSRF_TOKEN`), so it inherits none. `GEMINI_API_KEY` is passed with `--env` by name when wanted.
+- Billing: print mode is agy's only headless mode. Whether it bills like the interactive app is not verified.
 
 ### AiderProvider (deferred — backlog)
 - Hookless. Uses `anchorStrategy`.

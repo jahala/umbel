@@ -151,6 +151,33 @@ exit "$status"
 `;
 
 // ---------------------------------------------------------------------------
+// STREAM_WRAPPER_SCRIPT — runs a worker that speaks a line protocol (umbel#113)
+// ---------------------------------------------------------------------------
+
+// usage: stream.sh <transcript> <turn-end-prefix> <stop-hook> <bin> [args...]
+// The pane's tty goes non-canonical and silent first: a canonical tty on macOS
+// holds a line to 1024 bytes, and send types each prompt as one line. Each
+// line the worker prints is appended to the transcript, then shown on the
+// pane; a line opening with the turn-end prefix runs the stop hook with the
+// transcript's path, so the stop always follows the turn's last line on disk.
+// pipefail keeps the worker's own exit status for launch.sh to record.
+export const STREAM_WRAPPER_SCRIPT: string = `#!/usr/bin/env bash
+set -o pipefail
+transcript=$1
+marker=$2
+stop=$3
+shift 3
+stty -icanon -echo 2>/dev/null
+"$@" | while IFS= read -r line || [ -n "$line" ]; do
+  printf '%s\n' "$line" >> "$transcript"
+  printf '%s\n' "$line"
+  case $line in
+    "$marker"*) jq -cn --arg p "$transcript" '{transcript_path: $p}' | "$stop" ;;
+  esac
+done
+`;
+
+// ---------------------------------------------------------------------------
 // buildSettingsJson — inline JSON for claude's --settings flag
 // ---------------------------------------------------------------------------
 
@@ -233,6 +260,7 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   notifyScriptPath: string;
   statusLineScriptPath: string;
   launchScriptPath: string;
+  streamScriptPath: string;
 }> {
   const hooksDir = join(stateDir(env), 'hooks');
   await mkdir(hooksDir, { recursive: true });
@@ -253,7 +281,17 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   await writeFile(launchScriptPath, EXEC_WRAPPER_SCRIPT, { encoding: 'utf8' });
   await chmod(launchScriptPath, 0o755);
 
-  return { stopScriptPath, notifyScriptPath, statusLineScriptPath, launchScriptPath };
+  const streamScriptPath = join(hooksDir, 'stream.sh');
+  await writeFile(streamScriptPath, STREAM_WRAPPER_SCRIPT, { encoding: 'utf8' });
+  await chmod(streamScriptPath, 0o755);
+
+  return {
+    stopScriptPath,
+    notifyScriptPath,
+    statusLineScriptPath,
+    launchScriptPath,
+    streamScriptPath,
+  };
 }
 
 // ---------------------------------------------------------------------------

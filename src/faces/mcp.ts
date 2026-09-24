@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { SessionDeadError } from '../core/errors.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { truncateAssistantText } from '../core/truncate.ts';
+import type { ProviderName } from '../core/types.ts';
 import { actions } from '../operations/actions.ts';
 import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
@@ -93,7 +94,7 @@ export interface McpToolHandlers {
   umbel_spawn: (args: {
     name?: string | undefined;
     cwd: string;
-    provider?: 'claude' | 'codex' | 'gemini' | 'opencode' | undefined;
+    provider?: ProviderName | undefined;
     model?: string | undefined;
     allowedTools?: string | undefined;
     permissionMode?: string | undefined;

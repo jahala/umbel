@@ -62,7 +62,7 @@ export async function send(opts: SendOpts): Promise<SendResult> {
 
   await d.tmux.sendText(
     opts.name,
-    opts.prompt,
+    provider.stream?.encodePrompt(opts.prompt) ?? opts.prompt,
     provider.submitDelayMs !== undefined ? { submitDelayMs: provider.submitDelayMs } : undefined,
     env,
   );

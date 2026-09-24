@@ -5,7 +5,7 @@ import { resolveEnvRefs } from '../core/env.ts';
 import {
   AllowedToolsUnsupportedError,
   ModelListUnavailableError,
-  OpencodeModelUnknownError,
+  ModelUnknownError,
   ProviderNotSignedInError,
   SessionNotCreatedError,
   UmbelUsageError,
@@ -249,8 +249,13 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   });
 
   // Install global stop hook
-  const { stopScriptPath, notifyScriptPath, statusLineScriptPath, launchScriptPath } =
-    await d.hooks.ensureGlobalHooks(env);
+  const {
+    stopScriptPath,
+    notifyScriptPath,
+    statusLineScriptPath,
+    launchScriptPath,
+    streamScriptPath,
+  } = await d.hooks.ensureGlobalHooks(env);
 
   // codex needs an isolated CODEX_HOME — a project .codex/hooks.json is ignored
   // inside linked git worktrees, so the Stop hook is delivered via a global
@@ -284,7 +289,20 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // worker ends into events/exit, and passes the worker's own argv through
   // untouched.
   const envBuffer = `umbel-env-${name}`;
-  const cmd: string[] = [launchScriptPath, envBuffer, bin, ...launchSpec.args];
+  // A worker that speaks a line protocol runs inside the stream wrapper, which
+  // records its stdout as the transcript and fires the stop hook at each turn's
+  // end line.
+  const worker: string[] =
+    provider.stream !== undefined
+      ? [
+          streamScriptPath,
+          join(d.fs.sessionDir(name, env), 'transcript.jsonl'),
+          provider.stream.turnEndPrefix,
+          stopScriptPath,
+          bin,
+        ]
+      : [bin];
+  const cmd: string[] = [launchScriptPath, envBuffer, ...worker, ...launchSpec.args];
 
   // Build the worker's environment. It inherits only what any CLI needs to run
   // as its user and the variables its own provider reads (umbel#93): a worker
@@ -333,9 +351,11 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     }
     const listed = out
       .split('\n')
-      .map((l) => l.trim())
+      .map((l) => l.trim().split(/\s+/)[0] ?? '')
       .filter((l) => l.length > 0);
-    if (!listed.includes(opts.model)) throw new OpencodeModelUnknownError(opts.model, listed);
+    if (!listed.includes(opts.model)) {
+      throw new ModelUnknownError(providerName, opts.model, listed);
+    }
   }
 
   // Install provider-specific global plugin (e.g. opencode-stop.ts), if declared.
@@ -403,11 +423,17 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // to its timeout, so its fake keeps the warm-up.
   const fakeWithoutReadySignal = opts.claudeBin !== undefined && provider.readyMatch === undefined;
   let signIn: string | undefined;
-  if (provider.startupDialogs !== undefined && !fakeWithoutReadySignal) {
+  // The watch runs for any provider with something to watch for. Gating it on
+  // startupDialogs alone skipped the sign-in check of a CLI that has no dialogs.
+  const watchesStartup =
+    provider.startupDialogs !== undefined ||
+    provider.readyMatch !== undefined ||
+    provider.signInMatch !== undefined;
+  if (watchesStartup && !fakeWithoutReadySignal) {
     signIn = await dismissStartupDialogs(
       d,
       name,
-      provider.startupDialogs,
+      provider.startupDialogs ?? [],
       provider.readyMatch,
       provider.readySettleMs,
       env,

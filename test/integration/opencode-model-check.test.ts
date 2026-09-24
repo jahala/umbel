@@ -86,7 +86,7 @@ afterEach(async () => {
 });
 
 describe('spawn --provider opencode --model', () => {
-  test('a model opencode does not list rejects with OpencodeModelUnknownError and creates nothing', async () => {
+  test('a model opencode does not list rejects with ModelUnknownError and creates nothing', async () => {
     const { env, cfgPath, cwd } = await setup();
     const name = sessionName('u');
 
@@ -103,7 +103,7 @@ describe('spawn --provider opencode --model', () => {
 
     expect(err).toBeInstanceOf(Error);
     const refused = err as Error & { model?: unknown; listed?: unknown };
-    expect(refused.name).toBe('OpencodeModelUnknownError');
+    expect(refused.name).toBe('ModelUnknownError');
     expect(refused.model).toBe('ollama/qwen3-coder');
     expect(refused.listed).toEqual(LISTED);
     expect(refused.message).toContain('ollama/qwen3-coder');

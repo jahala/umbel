@@ -51,8 +51,8 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 |------|---------|-------------|
 | `--name NAME` | auto-generated `anon-XXXXXX` | Session name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`. Can also be the first positional argument. |
 | `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist; spawn exits 2 when it does not. |
-| `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
-| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. For `opencode`, umbel checks the model against `opencode models` first, and an unlisted model refuses the spawn (exit 2) before a worker exists. |
+| `--provider claude\|codex\|gemini\|opencode\|agy` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
+| `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. For `opencode` and `agy`, umbel checks the model against `opencode models` or `agy models` first, and an unlisted model refuses the spawn (exit 2) before a worker exists. |
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
 | `--permission-mode MODE` | unset | Claude permission mode (`default`/`acceptEdits`/`bypassPermissions`/`plan`). **Claude only** (usage error otherwise), except `bypassPermissions` which codex also accepts. For the plain "nobody is watching" case prefer `--unattended`, which is provider-neutral; use this flag when you need a *specific* claude posture such as `acceptEdits` or `plan`. An explicit mode wins over `--unattended`. |
 | `--unattended` | off | No human is present: suppress every prompt the provider would raise. Maps per-provider — claude `permissions.defaultMode=bypassPermissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini `--approval-mode yolo --skip-trust`, opencode `--auto`. A provider with no unattended mode is **refused at spawn** (exit 1) rather than accepted and left to wedge on a prompt later. Safety for unattended work is the surrounding architecture — disposable worktree, publish through a gate, quarantine — never the prompt. |
@@ -88,6 +88,9 @@ umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model oll
 
 # OpenCode provider: cloud API model (key passed by name; not subscription-billed)
 umbel spawn --name helper --provider opencode --cwd ./worktrees/help --model openrouter/deepseek/deepseek-v4-flash --env OPENROUTER_API_KEY
+
+# An agy (Antigravity CLI) auditor, driven over its stream-json print mode
+umbel spawn --name auditor --provider agy --cwd ./worktrees/audit --model gemini-3.1-pro-high --unattended
 
 # Pass env vars to the worker (repeatable): a value, or a name umbel reads from its own environment
 umbel spawn --name fixer --provider codex --env HTTPS_PROXY=http://proxy:8080 --env GH_TOKEN
@@ -581,7 +584,7 @@ If `PROMPT` is omitted and stdin is not a TTY, the prompt is read from stdin.
 | `--name NAME` | auto | Name the session. Session survives after the turn (not auto-killed). |
 | `--resume NAME` | — | Attach to an existing named session. Sends the prompt and waits; does not kill on exit. |
 | `--cwd PATH` | `$PWD` | Working directory. |
-| `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
+| `--provider claude\|codex\|gemini\|opencode\|agy` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time. For `opencode`, a model `opencode models` does not list is refused (exit 2) before a worker exists. |
 | `--allowed-tools TOOLS` | unset | Forwarded to the provider's equivalent of `--allowedTools`. |
 | `--env KEY=VALUE`, `--env KEY` | — | Give the worker a variable (repeatable), as for [`spawn`](#worker-environment). |

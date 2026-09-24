@@ -15,10 +15,8 @@ export type SessionName = z.infer<typeof SessionNameSchema>;
 // Provider name
 // ---------------------------------------------------------------------------
 
-// All four planned providers are listed here so type-checking protects
-// against typos. Only 'claude' is wired in the registry today; 'codex',
-// 'gemini', and 'opencode' are structural placeholders for subsequent milestones.
-export const ProviderNameSchema = z.enum(['claude', 'codex', 'gemini', 'opencode']);
+// Every provider in the registry, so argv, MCP and YAML reject a typo alike.
+export const ProviderNameSchema = z.enum(['claude', 'codex', 'gemini', 'opencode', 'agy']);
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
 
 // ---------------------------------------------------------------------------
