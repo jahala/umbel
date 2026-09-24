@@ -53,8 +53,10 @@ Adapters are injected into operations. Operations are called by faces. Providers
 │     ├─ stop                      # touch'd by stop.sh on each end-of-turn
 │     ├─ transcript-path           # captured from hook payload (jq)
 │     └─ log                       # appended nanosecond timestamps
+│  └─ transcript.jsonl             # agy only: the worker's stdout, recorded by stream.sh
 ├─ hooks/stop.sh                   # global, sessions reference it
 ├─ hooks/launch.sh                 # pane wrapper: takes the env buffer, records the exit
+├─ hooks/stream.sh                 # line-protocol wrapper (agy): transcript + stop per turn
 └─ workflows/<run-id>/             # workflow run state
 ```
 
@@ -111,6 +113,12 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 - umbel's startup dialogs trust the global hooks on first use (codex's "Hooks need review" → "Trust all and continue").
 - Directory trust is given at launch, `-c 'projects={"<realpath of cwd>"={trust_level="trusted"}}'`, so a new worktree never shows the trust dialog and nothing is written to config.toml (umbel#112). Trust is keyed on the exact resolved path (`/private/tmp/x`, not `/tmp/x`); the dotted form `projects."<path>".trust_level` is ignored by 0.154.0. The trust dialog's second option is "No, quit", which exits 0, so a stray Down there reads as a startup death. That is why the startup loop matches dialogs on the visible screen only: an answered dialog stays in scrollback, and matching it there re-sent the update dialog's Down onto the trust dialog.
 - `--permission-mode bypassPermissions` maps to codex's `--dangerously-bypass-approvals-and-sandbox` — the unattended equivalent of claude's `bypassPermissions`, for conductor-driven workers (e.g. a cross-provider audit) that must run commands with no human present; safety is external (disposable worktree + audit). Any other mode value is rejected for codex.
+
+**Agy** (`agy`, the Antigravity CLI, umbel#113)
+- The one provider driven over a line protocol, not a TUI: print mode with `--input-format stream-json --output-format stream-json -p=`, inside `hooks/stream.sh` (`STREAM_WRAPPER_SCRIPT`). The provider declares `stream` (`encodePrompt`, `turnEndPrefix`). send types the encoded prompt as one line; the wrapper makes the pane's tty non-canonical first, because a canonical tty on macOS cuts a line at 1024 bytes. agy's stdout is the transcript (`sessions/<name>/transcript.jsonl`), and each `{"event":"result"` line runs `stop.sh` after the line is on disk, so a read at the stop is always final.
+- `--add-dir <realpath of cwd>` is required: without it agy runs its tools in `~/.gemini/antigravity-cli/scratch`, not the worker's cwd.
+- Print mode never prompts for a permission. A tool it may not use is denied and listed in the result's `denied_actions`; actions reports each as an error. agy's reply to such a turn is often empty, so an attended agy worker's `read` can be blank. Unattended maps to `--dangerously-skip-permissions`.
+- Inherits no env: agy's variables include host-session markers. Sign-in is `Authentication required. Please visit the URL to log in:` followed by a paste-the-code prompt; never type into it.
 
 **Gemini** (`gemini`)
 - Hook config delivered via `<cwd>/.gemini/settings.json`.

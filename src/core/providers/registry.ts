@@ -1,4 +1,5 @@
 import { ProviderUnknownError } from '../errors.ts';
+import { AgyProvider } from './agy.ts';
 import { ClaudeProvider } from './claude.ts';
 import { CodexProvider } from './codex.ts';
 import { GeminiProvider } from './gemini.ts';
@@ -14,6 +15,7 @@ export const PROVIDERS: Record<string, AgentProvider> = {
   codex: CodexProvider,
   gemini: GeminiProvider,
   opencode: OpenCodeProvider,
+  agy: AgyProvider,
 };
 
 export function getProvider(name: string): AgentProvider {

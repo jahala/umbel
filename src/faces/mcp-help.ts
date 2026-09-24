@@ -82,7 +82,7 @@ For multi-step, multi-worker pipelines. Schema is validated by WorkflowSpecSchem
   workers:
     <name>:
       cwd: string                   # required; must exist before \`umbel run\`
-      provider: claude|codex|gemini|opencode # default: claude
+      provider: claude|codex|gemini|opencode|agy # default: claude
       model: string                 # optional; provider validates at spawn
       allowedTools: string          # optional; comma-separated
 
@@ -143,7 +143,7 @@ Run: \`umbel run pipeline.yaml\`.`;
 
 const PROVIDERS = `# umbel providers
 
-Pluggable interface — same orchestration over four vendor CLIs.
+Pluggable interface — same orchestration over five vendor CLIs.
 
 ## Subscription billing vs bring-your-own-model
 
@@ -159,14 +159,14 @@ Claude (\`provider: claude\`)
 - Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by giving the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL (+ ANTHROPIC_SMALL_FAST_MODEL for background calls) — via inherited env (a claude worker inherits ANTHROPIC_* and CLAUDE_CONFIG_DIR), --env / env:, or {fromEnv} references (resolved from the umbel server's env, so a secret never enters the caller's transcript). Use AUTH_TOKEN not API_KEY: umbel drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set (else it shadows the endpoint and wedges the worker on the "use this key?" prompt). Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription. status reports the effective baseUrl.
 
 Codex (\`provider: codex\`)
-- Hook config delivered via <cwd>/.codex/hooks.json (written at spawn, removed at kill).
+- Hook config delivered via hooks.json in an umbel-managed CODEX_HOME ($UMBEL_STATE/codex-home); nothing is written into the worker's cwd.
 - stopEventName: "Stop". transcript_path may be null per Codex docs; umbel falls back to dir-snapshot.
-- Hazard: umbel OVERWRITES any pre-existing <cwd>/.codex/hooks.json. If the user has their own Codex hooks config there, it will be replaced on spawn and not restored. v4 plan is CODEX_HOME-style out-of-cwd config.
+- The worker's cwd is trusted at launch, so a new worktree opens without codex's trust dialog.
 
 Gemini (\`provider: gemini\`)
 - Hook config delivered via <cwd>/.gemini/settings.json.
 - stopEventName: "AfterAgent" (not "Stop"). matcher: "*". Timeout in ms (Codex uses seconds).
-- Same overwrite hazard as Codex.
+- Hazard: umbel OVERWRITES any pre-existing <cwd>/.gemini/settings.json.
 
 OpenCode (\`provider: opencode\`)
 - Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config ($XDG_CONFIG_HOME/opencode/opencode.jsonc, default ~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation. Inert unless UMBEL_SESSION_ID is set.
@@ -177,6 +177,12 @@ OpenCode (\`provider: opencode\`)
 - Model flag: -m provider/model, checked against \`opencode models\` at spawn; an unlisted model refuses the spawn (exit 2) before a worker exists. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
 - An opencode worker inherits only OPENCODE_CONFIG* from umbel's env; pass any other key by reference ({fromEnv}, or --env NAME on the CLI). umbel does not manage keys.
 
+Agy (\`provider: agy\`, the Antigravity CLI)
+- Driven over its stream-json print mode, not a TUI: each prompt is one JSON line, agy's stdout is the transcript, and each turn's \`result\` line ends the turn. A read at the stop is final.
+- Runs its tools in the worker's cwd (\`--add-dir\`). Unattended maps to \`--dangerously-skip-permissions\`. Without it agy never prompts: a tool it may not use is denied, and actions lists the denial as an error.
+- Model flag: --model <id>, checked against \`agy models\` at spawn (e.g. gemini-3.8-flash-high, gemini-3.1-pro-high).
+- Inherits none of umbel's env; pass a key by reference (--env GEMINI_API_KEY).
+
 ## When to mix providers
 
 - Claude for orchestration/architecture, Codex for code completion in a tight loop, Gemini for analysis or summarization.
@@ -185,12 +191,13 @@ OpenCode (\`provider: opencode\`)
 
 ## Model names
 
-Free-form strings. Each provider validates at spawn time. umbel does not enforce names, except for opencode, where it checks the name against \`opencode models\`.
+Free-form strings. Each provider validates at spawn time. umbel does not enforce names, except for opencode and agy, where it checks the name against the CLI's own \`models\` list.
 
   claude: "sonnet", "opus", "haiku"
   codex:  "o4-mini", "gpt-4.1", ...
   gemini: "gemini-2.5-pro", "gemini-2.5-flash", ...
-  opencode: "opencode/big-pickle", "ollama/qwen2.5-coder", "anthropic/claude-sonnet-4-5", "openrouter/deepseek/deepseek-v4-flash"`;
+  opencode: "opencode/big-pickle", "ollama/qwen2.5-coder", "anthropic/claude-sonnet-4-5", "openrouter/deepseek/deepseek-v4-flash"
+  agy:    "gemini-3.8-flash-high", "gemini-3.1-pro-high", ...`;
 
 const TOPIC_CONTENT: Record<HelpTopic, string> = {
   lifecycle: LIFECYCLE,
@@ -202,7 +209,7 @@ const INDEX = `umbel_help topics:
 
   lifecycle  — spawn/send/wait/read/kill verb contracts and typical orchestration
   workflow   — YAML schema for multi-step pipelines (umbel run)
-  providers  — per-vendor specifics for claude/codex/gemini/opencode
+  providers  — per-vendor specifics for claude/codex/gemini/opencode/agy
 
 Call umbel_help with { topic: "<name>" } for a topic. Omit topic for this index.`;
 

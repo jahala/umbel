@@ -5,8 +5,8 @@ import {
   EnvRefUnresolvedError,
   HookTimeoutError,
   ModelListUnavailableError,
+  ModelUnknownError,
   OpencodeConfigUnparsableError,
-  OpencodeModelUnknownError,
   ProviderNotSignedInError,
   ProviderUnknownError,
   SendNotSubmittedError,
@@ -41,7 +41,7 @@ import { runWorkflow } from './workflow.ts';
 const VERSION = '0.0.1';
 
 const HELP = `umbel — remote-control an interactive agent CLI over tmux
-           (claude, codex, gemini, opencode)
+           (claude, codex, gemini, opencode, agy)
 
 Usage:
   umbel <verb> [flags...]    Supervisor verbs
@@ -237,7 +237,7 @@ function errorExitCode(err: unknown): number {
     err instanceof ProviderUnknownError ||
     err instanceof EnvRefUnresolvedError ||
     err instanceof AllowedToolsUnsupportedError ||
-    err instanceof OpencodeModelUnknownError
+    err instanceof ModelUnknownError
   ) {
     return 2;
   }

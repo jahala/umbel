@@ -180,24 +180,25 @@ export class OpencodeConfigUnparsableError extends Error {
   }
 }
 
-// opencode falls back to another model when -m names one it does not know, so
-// an unlisted model is refused before a worker exists (umbel#53).
+// A provider that lists its models is checked before a worker exists: opencode
+// falls back to another model when -m names one it does not know (umbel#53).
 const LISTED_MODELS_SHOWN = 10;
 
-export class OpencodeModelUnknownError extends Error {
-  override name = 'OpencodeModelUnknownError';
+export class ModelUnknownError extends Error {
+  override name = 'ModelUnknownError';
 
   constructor(
+    public provider: string,
     public model: string,
     public listed: readonly string[],
   ) {
     const shown = listed.slice(0, LISTED_MODELS_SHOWN).join(', ');
     const more =
       listed.length > LISTED_MODELS_SHOWN
-        ? ` and ${listed.length - LISTED_MODELS_SHOWN} more (run \`opencode models\`)`
+        ? ` and ${listed.length - LISTED_MODELS_SHOWN} more (run \`${provider} models\`)`
         : '';
     super(
-      `Unknown model: ${model}. opencode lists ${listed.length === 0 ? 'no models' : `${shown}${more}`}.`,
+      `Unknown model: ${model}. ${provider} lists ${listed.length === 0 ? 'no models' : `${shown}${more}`}.`,
     );
   }
 }

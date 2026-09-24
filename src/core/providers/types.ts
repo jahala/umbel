@@ -241,6 +241,16 @@ export interface AgentProvider {
     readonly content: string;
   };
 
+  // Optional: the worker speaks a line protocol on its pane instead of drawing
+  // a TUI (agy's print mode, umbel#113). spawn runs it inside the stream
+  // wrapper, which records its stdout as the transcript and fires the stop hook
+  // on each line starting with turnEndPrefix; send types encodePrompt(prompt)
+  // as one line. PURE.
+  readonly stream?: {
+    encodePrompt(prompt: string): string;
+    readonly turnEndPrefix: string;
+  };
+
   // Optional: argv that prints the model ids the binary accepts, one per line.
   // Declared by providers that silently fall back to another model when the
   // requested one is unknown, so spawn can refuse an unlisted --model before
