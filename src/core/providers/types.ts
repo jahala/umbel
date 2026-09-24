@@ -100,6 +100,8 @@ export interface AgentProvider {
   buildLaunch(opts: {
     sessionId: string; // umbel session name (= tmux session suffix)
     cwd: string;
+    // cwd with symlinks resolved, the path a CLI keys its directory trust on.
+    realCwd?: string;
     hookScriptPath: string; // absolute path to our stop.sh
     notifyScriptPath?: string; // absolute path to our notify.sh (needs-input hook)
     // absolute path to our statusline.sh — captures the provider's status

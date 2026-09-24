@@ -49,6 +49,16 @@ describe('CodexProvider.buildLaunch', () => {
     expect(spec.args).toContain('o4-mini');
   });
 
+  // umbel#112: a directory codex has never seen opens on its trust dialog. The
+  // dotted form `projects."<path>".trust_level` was ignored by 0.154.0; the
+  // inline table, keyed on the resolved path, is honoured, dots in it included.
+  test('with realCwd, trusts that exact directory through an inline-table override', () => {
+    const args = launch({ realCwd: '/private/tmp/pleach.a1B2c3/wt' }).args;
+    const at = args.indexOf('-c');
+    expect(at).toBeGreaterThan(-1);
+    expect(args[at + 1]).toBe('projects={"/private/tmp/pleach.a1B2c3/wt"={trust_level="trusted"}}');
+  });
+
   // permissionMode: codex's unattended equivalent of claude's bypassPermissions.
   // An auditor runs commands in a disposable worktree with no human present, so
   // codex must skip its approval prompts (+ sandbox) or it blocks on the prompt.

@@ -12,7 +12,11 @@
 #                          and swallow N further Enters (empty stdin lines) before the turn starts
 #   FAKE_CODEX_STDIN_LOG   optional, append every stdin line read here (one line per read)
 #   FAKE_CODEX_STARTUP     optional, 0154 = render codex 0.154.0's recorded startup with
-#                          its timings, trust dialog included, before reading prompts
+#                          its timings, trust dialog included, before reading prompts;
+#                          0154-fresh = its startup in a directory it has never seen, with
+#                          an update pending: the update dialog, then the trust dialog
+#                          unless argv trusts the directory, then the update banner
+#   FAKE_CODEX_REFUSE_TRUST optional, 1 = ignore a trust override on argv
 
 set -euo pipefail
 
@@ -95,6 +99,71 @@ log_stdin() {
 # shift the trust dialog the startup erases in place.
 if [[ -n "$SWALLOW_ENTERS" || -n "$STARTUP" ]]; then
   stty -echo 2>/dev/null || true
+fi
+
+# codex 0.154.0 in a directory it has never seen, with an update pending (probed
+# 2026-09-24, jahala/umbel#112). The update dialog comes first; its default is
+# "Update now", so only Down then Enter ("Skip") gets past it. The screen is then
+# repainted, which leaves the dialog in tmux scrollback. The trust dialog follows
+# unless the directory is trusted by a `-c projects={...}` override naming its
+# real path; its second option is "No, quit", so a Down there ends codex with
+# status 0. The ready screen carries the update notice as a banner.
+if [[ "$STARTUP" == "0154-fresh" ]]; then
+  trust_override="projects={\"$(pwd -P)\"={trust_level=\"trusted\"}}"
+  trusted=0
+  prev=''
+  for arg in "$@"; do
+    [[ "$prev" == "-c" && "$arg" == "$trust_override" ]] && trusted=1
+    prev="$arg"
+  done
+  [[ "${FAKE_CODEX_REFUSE_TRUST:-}" == "1" ]] && trusted=0
+
+  cat <<'EOF'
+╭───────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)            │
+│                                       │
+│ model:     loading   /model to change │
+╰───────────────────────────────────────╯
+› Ask Codex to do anything
+  ✨ Update available! 0.154.0 -> 0.156.1
+  Release notes: https://github.com/openai/codex/releases/latest
+› 1. Update now (runs `npm install -g @openai/codex`)
+  2. Skip
+  3. Skip until next version
+  Press enter to continue
+EOF
+  IFS= read -r answer || true
+  log_stdin "${answer:-}"
+  [[ "${answer:-}" == $'\033[B' ]] || exit 1
+  printf '\033[H\033[2J'
+
+  if [[ "$trusted" != "1" ]]; then
+    cat <<EOF
+> You are in $(pwd -P)
+  Do you trust the contents of this directory? Working with untrusted contents
+  comes with higher risk of prompt injection. Trusting the directory allows
+  project-local config, hooks, and exec policies to load.
+› 1. Yes, continue
+  2. No, quit
+  Press enter to continue
+EOF
+    IFS= read -r answer || true
+    log_stdin "${answer:-}"
+    [[ "${answer:-}" == *$'\033[B'* ]] && exit 0
+    printf '\033[H\033[2J'
+  fi
+
+  cat <<'EOF'
+╭─────────────────────────────────────────────────╮
+│ ✨ Update available! 0.154.0 -> 0.156.1         │
+│ Run npm install -g @openai/codex to update.     │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)            │
+│                                       │
+│ model:     gpt-6-astra                │
+╰───────────────────────────────────────╯
+EOF
 fi
 
 # The startup codex 0.154.0 rendered under umbel (test/fixtures/codex-0.154-startup.txt):
