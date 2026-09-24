@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, symlink, unlink, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, realpath, symlink, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { resolveEnvRefs } from '../core/env.ts';
@@ -65,7 +65,11 @@ export async function dismissStartupDialogs(
   while (Date.now() < deadline) {
     let pane = '';
     try {
-      pane = await d.tmux.capturePane(name, 40, env);
+      // The screen alone. A dialog answered a moment ago stays in scrollback,
+      // and matched there it gets answered again on whatever comes next: the
+      // update dialog's Down landed on codex's trust dialog as "No, quit"
+      // (umbel#112).
+      pane = await d.tmux.capturePane(name, 0, env);
     } catch {
       return undefined;
     }
@@ -237,6 +241,13 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     throw new UnattendedUnsupportedError(providerName);
   }
 
+  // A worker in a directory that is not there would start somewhere else
+  // without saying so. The resolved path is the one a CLI keys its directory
+  // trust on (codex: /private/tmp/x, never /tmp/x).
+  const realCwd = await realpath(opts.cwd).catch(() => {
+    throw new UmbelUsageError(`--cwd ${opts.cwd} does not exist`);
+  });
+
   // Install global stop hook
   const { stopScriptPath, notifyScriptPath, statusLineScriptPath, launchScriptPath } =
     await d.hooks.ensureGlobalHooks(env);
@@ -254,6 +265,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const launchSpec = provider.buildLaunch({
     sessionId: name,
     cwd: opts.cwd,
+    realCwd,
     hookScriptPath: stopScriptPath,
     notifyScriptPath,
     statusLineScriptPath,

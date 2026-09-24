@@ -246,17 +246,20 @@ const codexProvider: AgentProvider = {
   //   1. "Update available!" — options Update now / Skip / Skip until next.
   //      We MUST avoid the default "Update now" (it runs `npm install -g`);
   //      Down then Enter selects "Skip". Only appears when an update is
-  //      pending, hence variable ordering.
+  //      pending, hence variable ordering. Matched on its last option: the
+  //      ready screen repeats "Update available!" as a banner, and a Down
+  //      there is typed into the worker's input.
   //   2. "Do you trust the contents of this directory?" — default "Yes,
   //      continue"; a single Enter dismisses it. Also gates hook loading —
-  //      until the dir is trusted, hooks won't load at all.
+  //      until the dir is trusted, hooks won't load at all. buildLaunch
+  //      trusts the cwd on the command line, so this shows only if a codex
+  //      ignores that.
   //   3. "Hooks need review" — we need option 2 "Trust all and continue",
   //      reached with Down then Enter, so our Stop hook runs.
-  // codex persists the trust + hook decisions to ~/.codex/config.toml, so
-  // later launches in the same dir skip 2 and 3 — the loop then no-ops and
-  // readyMatch fires.
+  // codex persists the hook decision to the config.toml in CODEX_HOME, so
+  // later launches skip 3 — the loop then no-ops and readyMatch fires.
   startupDialogs: [
-    { match: /update available/i, keys: ['Down', 'Enter'] },
+    { match: /skip until next version/i, keys: ['Down', 'Enter'] },
     { match: /trust the contents of this directory/i, keys: ['Enter'] },
     { match: /hooks need review/i, keys: ['Down', 'Enter'] },
   ],
@@ -333,6 +336,14 @@ const codexProvider: AgentProvider = {
     }
     if (opts.model !== undefined) {
       args.push('--model', opts.model);
+    }
+    // codex asks whether to trust any directory it has not seen, and every
+    // pleach worktree is one (umbel#112). Trust is keyed on the exact resolved
+    // path; a trusted parent does not cover it. As a `-c` override nothing is
+    // written to config.toml. The inline table is required: the dotted form
+    // `projects."<path>".trust_level` was ignored by 0.154.0.
+    if (opts.realCwd !== undefined) {
+      args.push('-c', `projects={${JSON.stringify(opts.realCwd)}={trust_level="trusted"}}`);
     }
 
     const codexHome = join(opts.stateDir ?? join(homedir(), '.umbel'), 'codex-home');

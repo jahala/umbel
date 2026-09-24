@@ -50,7 +50,7 @@ umbel spawn [--name NAME] [--cwd PATH] [--provider PROVIDER] [--model MODEL] [--
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name NAME` | auto-generated `anon-XXXXXX` | Session name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`. Can also be the first positional argument. |
-| `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist. |
+| `--cwd PATH` | `$PWD` | Working directory for the provider process. Must exist; spawn exits 2 when it does not. |
 | `--provider claude\|codex\|gemini\|opencode` | `claude` | Which CLI to launch. Unknown values → exit 2 with a message listing valid providers. |
 | `--model MODEL` | provider default | Free-form model string passed to the provider. Each provider validates its own model names at launch time; umbel does not restrict the values. For `opencode`, umbel checks the model against `opencode models` first, and an unlisted model refuses the spawn (exit 2) before a worker exists. |
 | `--allowed-tools TOOLS` | unset | Comma-separated tool list forwarded to the provider's equivalent of `--allowedTools`. **Claude only** — passing this for `codex`, `gemini`, or `opencode` is a usage error (exit 2); those providers have no equivalent flag. |
@@ -64,7 +64,7 @@ Exit 0 means the tmux session exists — `spawn` verifies it before returning, s
 
 A CLI with no credentials opens on its sign-in screen and waits there for a person. `spawn` refuses such a worker with exit 126, the code of the wait reason `input`, since a person is needed and a retry meets the same screen. It names the screen's line and cleans up. Run the CLI once in a terminal on that machine to sign in, then spawn again. The screens are taken from the installed binaries: claude's first-run setup and login menu, codex's sign-in menu, and gemini's authentication menu. opencode has none.
 
-Before returning, `spawn` waits for the worker to be ready and dismisses the provider's startup dialogs (workspace trust, hook review, update notice) as they appear. Ready means the provider's idle prompt line is on the pane with no dialog pending. For providers that declare a settle window (codex: 1.5 s), the pane must also stay unchanged for that window, because codex keeps redrawing its banner and can raise the trust dialog seconds after the prompt line first appears. A dialog that arrives during the settle is still dismissed.
+Before returning, `spawn` waits for the worker to be ready and dismisses the provider's startup dialogs (workspace trust, hook review, update notice) as they appear. Ready means the provider's idle prompt line is on the pane with no dialog pending. For providers that declare a settle window (codex: 1.5 s), the pane must also stay unchanged for that window, because codex keeps redrawing its banner and can raise the trust dialog seconds after the prompt line first appears. A dialog that arrives during the settle is still dismissed. Dialogs are matched on the visible screen, never on scrollback, so a dialog already answered is not answered again. codex is also started with its working directory trusted, so a directory it has never seen (a new worktree) opens without the trust dialog.
 
 `--provider` is only valid on `spawn` and `-p`. For `send`, `wait`, `read`, `kill`, `status`, `ls`, `attach`, `capture`, and `logs`, the provider is looked up automatically from `meta.json` — no `--provider` flag is accepted.
 
