@@ -107,14 +107,14 @@ export interface AgentProvider {
 }
 ```
 
-The Stop hook script stays generic — it captures `transcript_path` from stdin via `jq` regardless of which provider fired it.
+The Stop hook script stays generic — it captures `transcript_path` from stdin via `jq` regardless of which provider fired it. It also applies the identity guard below: an event whose `session_id` is not the one bound at startup is not the worker's, so it changes nothing (umbel#118).
 
 A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEndPrefix }` instead (AgyProvider, §5). The stream wrapper then plays the hook's part, running the same `stop.sh` at each turn's end line, so `wait` and `read` need no second path. The full contract lives in `src/core/providers/types.ts`; the excerpt above is the original core.
 
 ## 5. Per-provider summary
 
 ### ClaudeProvider (`src/core/providers/claude.ts`)
-- `buildLaunch` → `bin: 'claude', args: ['--settings', JSON, '--session-id', uuid, '--model', model]`
+- `buildLaunch` → `bin: 'claude', args: ['--settings', JSON, '--model', model]`. No `--session-id`: the CLI picks the transcript filename and the Stop payload reports `transcript_path`. The settings JSON registers `Stop`, `SessionStart` (`bind.sh`) and optionally `Notification`.
 - `files: []` — Claude supports inline `--settings`, no scratch files needed
 - `stopEventName: 'Stop'`
 - `parseTranscript`: walks backward from end of JSONL, finds last assistant index, joins consecutive assistant entries (handles thinking + text blocks; per real-claude trace findings)
@@ -122,7 +122,7 @@ A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEn
 - Custom endpoints: pointing `ANTHROPIC_BASE_URL`/`AUTH_TOKEN`/`MODEL` (via the env passthrough) at any Anthropic-compatible API (DeepSeek, OpenRouter, local) runs that model under Claude Code's harness — the **second** model-agnostic lane alongside OpenCode, API-billed not subscription. Not a new provider: same binary, hooks, transcript.
 
 ### CodexProvider (`src/core/providers/codex.ts`)
-- `buildLaunch` → declares a global `$CODEX_HOME/hooks.json` (referencing our stop.sh) in an umbel-managed home (`$UMBEL_STATE/codex-home`); a project `<cwd>/.codex/hooks.json` is ignored inside linked git worktrees (see `docs/codex-worktree-hooks.md`)
+- `buildLaunch` → declares a global `$CODEX_HOME/hooks.json` (referencing our stop.sh and bind.sh) in an umbel-managed home (`$UMBEL_STATE/codex-home`); a project `<cwd>/.codex/hooks.json` is ignored inside linked git worktrees (see `docs/codex-worktree-hooks.md`). `SessionStart` is the binding event; verified on 0.154.0 that its payload carries the same `session_id` as `Stop`. The TUI fires it when the first turn starts, not at launch, which still precedes any tool call.
 - `files: [{ path: '<codexHome>/hooks.json', content, shared: true }, { symlinkTo auth.json }, { copyFrom config.toml }]` — `shared` infra, set up idempotently, NOT recorded in `providerFiles` or cleaned on kill
 - `stopEventName: 'Stop'`
 - `parseTranscript`: Codex JSONL envelope (`event_msg` items, last `agent_message` is the response)
@@ -136,7 +136,7 @@ A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEn
 
 ### OpenCodeProvider (`src/core/providers/opencode.ts`) — verified against opencode v1.15.12 (2026-05-29)
 - `buildLaunch` → `bin: 'opencode', args: ['-m', model], env: { OPENCODE_DISABLE_AUTOUPDATE: '1' }`. The autoupdate check runs after launch and opens a modal that holds the keyboard, so the first prompt lands on it and no turn starts (umbel#116). The model is ANY `provider/model` — free+keyless (`opencode/big-pickle`, `opencode/deepseek-v4-flash-free`), paid (`anthropic/…`, `openrouter/deepseek/…`), or local (`ollama/…`). Paid-model API keys reach the worker via the **inherited env** (the PR1 env passthrough) or `--env KEY=VAL`; custom providers (openrouter/ollama) also need a one-time provider block in the user's own opencode config. The free model is for umbel's $0 smoke only — real use sets `--model`. MUST run in the tmux PTY — headless non-TTY `opencode run` hangs after bootstrap.
-- Hook delivery (no shell-hook equivalent): umbel installs a bundled JS plugin ONCE as infrastructure (like `stop.sh`) — writes `~/.umbel/hooks/opencode-stop.ts` and **idempotently merges** its path into the user's GLOBAL opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`, default `~/.config/opencode/`), preserving existing keys. VERIFIED: opencode honors `XDG_CONFIG_HOME` and MERGES global+project config, so the user's project model-config still loads. The plugin no-ops unless `UMBEL_SESSION_ID` is set → inert in normal use. On `session.status {type:"busy"}` it touches `events/turn-start` (the prompt started a turn); on `session.status {type:"idle"}` it touches `events/stop` + writes the sessionID to `events/session-id`. NOT per-cwd / NOT per-session → no worktree mutation, no kill-restore, crash-safe, reversible. Tests isolate via `XDG_CONFIG_HOME` so the real `~/.config` is never touched.
+- Hook delivery (no shell-hook equivalent): umbel installs a bundled JS plugin ONCE as infrastructure (like `stop.sh`) — writes `~/.umbel/hooks/opencode-stop.ts` and **idempotently merges** its path into the user's GLOBAL opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`, default `~/.config/opencode/`), preserving existing keys. VERIFIED: opencode honors `XDG_CONFIG_HOME` and MERGES global+project config, so the user's project model-config still loads. The plugin no-ops unless `UMBEL_SESSION_ID` is set → inert in normal use. Its first event binds `properties.sessionID` to `events/worker-session`; every later write (turn-start, session-id, stop, notification) happens only for that id, so an opencode the worker started, which inherited `UMBEL_*`, cannot fire the worker's stop (umbel#118). On `session.status {type:"busy"}` it touches `events/turn-start` (the prompt started a turn); on `session.status {type:"idle"}` it touches `events/stop` + writes the sessionID to `events/session-id`. NOT per-cwd / NOT per-session → no worktree mutation, no kill-restore, crash-safe, reversible. Tests isolate via `XDG_CONFIG_HOME` so the real `~/.config` is never touched.
 - **No JSONL transcript** (SQLite-only). Read path: run `opencode export <sessionID>`; `parseTranscript`/`extractActions`/`extractTurns` parse that JSON (`info` + `messages[]` + `parts[]`). The one architectural extension vs codex/gemini: the provider declares the command via a PURE `exportTranscript(sid)` method; the operations layer execs it (side effect at the edge).
 - `stopEventName: 'session.status'` (informational; wait keys off `events/stop` mtime). `turnStartEvent: 'turn-start'`: send snapshots its mtime before typing and exits 1 if no turn starts within 10 s, so a prompt dropped by a modal is never reported as sent. `startupDialogs: []`; `readyMatch: /Ask anything\.\.\.|Build · /`. Spike-verified end-to-end: plugin loads from cwd config, `session.status idle` reaches the plugin, `opencode/big-pickle` completes a turn keyless in a tmux PTY.
 
@@ -160,7 +160,7 @@ agy is the one provider umbel drives over a line protocol instead of a TUI (umbe
 
 ## 6. Stop hook (provider-agnostic)
 
-Three lines + jq extraction. **Unchanged from v2.1.** Works for Claude, Codex, Gemini because all three include `transcript_path` in their lifecycle payloads:
+Generic across Claude, Codex and Gemini because all three include `transcript_path` and `session_id` in their lifecycle payloads. The identity guard first: a nested CLI inherits `UMBEL_STATE` and `UMBEL_SESSION_ID`, so only the session bound at startup may act (umbel#118).
 
 ```bash
 #!/usr/bin/env bash
@@ -168,12 +168,19 @@ set -euo pipefail
 state="${UMBEL_STATE:?}/sessions/${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
 payload=$(cat || true)
+event_session=$(printf '%s' "$payload" | jq -r '.session_id // empty')
+bound_session=$(cat "$state/events/worker-session" 2>/dev/null || true)
+if [ -n "$bound_session" ] && [ -n "$event_session" ] && [ "$event_session" != "$bound_session" ]; then
+  exit 0
+fi
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
 fi
 touch "$state/events/stop"
 date +%s%N >> "$state/events/log"
 ```
+
+`bind.sh` (`BIND_HOOK_SCRIPT`, also global) runs from each provider's start event (`SessionStart` for claude and codex, the first plugin event for opencode). It writes `session_id` to `events/worker-session` only when the file does not exist, so the binding is the session umbel launched, never a later one. Claude fires it at launch; codex's TUI fires it when the first turn starts; opencode's plugin binds its first event. `notify.sh` applies the same guard. With nothing bound, or an event whose id cannot be read, hooks behave as they did before the binding existed, so a missing `jq` never silences a worker. Gemini has no start-event binding yet (it cannot be run on this account), so its hooks stay ungated: a known gap.
 
 ## 7. Session lifecycle
 
@@ -258,6 +265,7 @@ billing, so don't export keys you don't want used.
 │  └─ events/
 │     ├─ stop                      # touch'd by stop.sh
 │     ├─ transcript-path           # NEW in v2.1: written from hook payload
+│     ├─ worker-session            # NEW (umbel#118): the session id bound at startup
 │     └─ log
 ├─ hooks/stop.sh
 └─ workflows/<run-id>/

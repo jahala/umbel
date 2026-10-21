@@ -52,9 +52,11 @@ Adapters are injected into operations. Operations are called by faces. Providers
 │  └─ events/
 │     ├─ stop                      # touch'd by stop.sh on each end-of-turn
 │     ├─ transcript-path           # captured from hook payload (jq)
+│     ├─ worker-session            # the session id bound at startup (bind.sh)
 │     └─ log                       # appended nanosecond timestamps
 │  └─ transcript.jsonl             # agy only: the worker's stdout, recorded by stream.sh
 ├─ hooks/stop.sh                   # global, sessions reference it
+├─ hooks/bind.sh                   # global: records the worker's session id once
 ├─ hooks/launch.sh                 # pane wrapper: takes the env buffer, records the exit
 ├─ hooks/stream.sh                 # line-protocol wrapper (agy): transcript + stop per turn
 └─ workflows/<run-id>/             # workflow run state
@@ -66,7 +68,7 @@ A session named `foo` lives in tmux as `umbel-foo`. Anonymous sessions get `anon
 
 ## The Stop hook (keystone)
 
-Installed once globally at `~/.umbel/hooks/stop.sh`. Generic — works for Claude's `Stop`, Codex's `Stop`, and Gemini's `AfterAgent` events because all three include `transcript_path` in the payload on stdin:
+Installed once globally at `~/.umbel/hooks/stop.sh`. Generic — works for Claude's `Stop`, Codex's `Stop`, and Gemini's `AfterAgent` events because all three include `transcript_path` in the payload on stdin. It acts only for the worker's own session:
 
 ```bash
 #!/usr/bin/env bash
@@ -74,6 +76,11 @@ set -euo pipefail
 state="${UMBEL_STATE:?}/sessions/${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
 payload=$(cat || true)
+event_session=$(printf '%s' "$payload" | jq -r '.session_id // empty')
+bound_session=$(cat "$state/events/worker-session" 2>/dev/null || true)
+if [ -n "$bound_session" ] && [ -n "$event_session" ] && [ "$event_session" != "$bound_session" ]; then
+  exit 0
+fi
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
 fi
@@ -82,6 +89,8 @@ date +%s%N >> "$state/events/log"
 ```
 
 Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtime advance → done.** Handles "Stop fired before we started watching" and concurrent waiters correctly. The canonical source is `STOP_HOOK_SCRIPT` in `src/adapters/hooks.ts`; do not duplicate elsewhere.
+
+A hook event counts only when it comes from the session umbel launched (umbel#118). A worker's environment carries `UMBEL_STATE` and `UMBEL_SESSION_ID`, so a CLI it starts inherits them: the global opencode plugin fired and the shared codex hooks were reachable, so a nested CLI's end of turn touched the worker's `events/stop` mid-turn and `wait` settled with no `transcript-path`. Identity is the provider's own session id in the payload (`session_id`; `sessionID` in the opencode plugin). Each provider's start event binds it once into `events/worker-session` through `bind.sh` (`BIND_HOOK_SCRIPT`): claude `SessionStart` at launch, codex `SessionStart` when the first turn starts (the TUI does not fire it at launch; it still precedes every tool call, verified on 0.154.0), and the first event the opencode plugin sees. `stop.sh`, `notify.sh`, and every plugin write act only when the bound id is absent or matches it. An event whose id cannot be read still fires, so a machine without `jq` never silences a worker. First writer wins: replacing the binding later would hand the worker's identity to whatever ran last. Gemini has no binding yet, because it cannot be run on this account; its hooks stay ungated, which is a known gap. Agy needs none, since its stop comes from its own stdout.
 
 The stop precedes the handback. Claude fires its Stop hook before it writes the turn's final message: measured on the installed binary, the closing text was missing when the hook fired in 12 of 13 turns and landed 200-400ms later. A read taken at the stop gets the message before the last one, or nothing (umbel#86). So a stop is not "the transcript is final". Each provider says when its transcript closes a turn (`turnEnded`: claude's last assistant entry is a text block from a message that did not stop for a tool, with no prompt or tool result after it; codex's newest turn marker is `task_complete` or `turn_aborted`). `readTranscriptAtStop` in `src/operations/resolve-transcript.ts`, the single read point behind `read`, `actions`, `diff`, `-p` and workflow, polls on it for up to `TURN_END_SETTLE_MS` after the stop, and `waitFor` holds `reason: 'stop'` on the same check, saying in `message` when the window closed first. Three traps. claude copies the whole message's `stop_reason` onto every per-block entry, so "the last entry has a stop_reason" proves nothing. A turn answered without a tool has no assistant entry at all when its stop lands, so the newest closing text on disk is the previous turn's; only a user entry after it shows the turn is open. And `turnEnded` must answer true for a shape it cannot read, or every read stalls for the full window.
 
@@ -103,7 +112,7 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 
 **Claude** (`claude`)
 - `--settings '<inline-json>'` carries the hook config (no `settings.local.json` collision).
-- `--session-id <uuid>` controls the JSONL filename (we set our own).
+- umbel does not pass `--session-id`: the CLI picks the JSONL filename and the Stop payload carries `transcript_path`. `SessionStart` registers `bind.sh`.
 - `--allowedTools "Read,Write,..."` scopes permissions without prompts.
 - `stopEventName: 'Stop'`. Trust dialog is auto-dismissed for real-`claude` binaries only.
 - Do NOT use `--bare` (skips hooks). Do NOT use `--tmux` / `--worktree` (umbel manages tmux itself).
@@ -112,6 +121,7 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 **Codex** (`codex`)
 - Hooks delivered via a global `$CODEX_HOME/hooks.json` in an umbel-managed home (`$UMBEL_STATE/codex-home`), NOT `<cwd>/.codex/hooks.json` — codex silently ignores project hooks inside linked git worktrees (root cause + proof: `docs/codex-worktree-hooks.md`). The worker's `CODEX_HOME` is set to that home (reserved launch env — wins over `--env`); `auth.json` is symlinked from the user's real CODEX_HOME (no secret copy) and `config.toml` copied once (carries model/endpoint/MCP, isolated from the user's global trust). Shared across workers, set up idempotently, never written into the user's cwd or cleaned on kill.
 - `stopEventName: 'Stop'`. Transcript may be `null` per Codex docs; umbel falls back to dir-snapshot.
+- `SessionStart` registers `bind.sh` in the same hooks.json (verified on 0.154.0: its payload carries the same `session_id` as `Stop`, and its TUI fires it as the first turn starts), so a codex the worker starts cannot fire the worker's stop.
 - umbel's startup dialogs trust the global hooks on first use (codex's "Hooks need review" → "Trust all and continue").
 - Directory trust is given at launch, `-c 'projects={"<realpath of cwd>"={trust_level="trusted"}}'`, so a new worktree never shows the trust dialog and nothing is written to config.toml (umbel#112). Trust is keyed on the exact resolved path (`/private/tmp/x`, not `/tmp/x`); the dotted form `projects."<path>".trust_level` is ignored by 0.154.0. The trust dialog's second option is "No, quit", which exits 0, so a stray Down there reads as a startup death. That is why the startup loop matches dialogs on the visible screen only: an answered dialog stays in scrollback, and matching it there re-sent the update dialog's Down onto the trust dialog.
 - `--permission-mode bypassPermissions` maps to codex's `--dangerously-bypass-approvals-and-sandbox` — the unattended equivalent of claude's `bypassPermissions`, for conductor-driven workers (e.g. a cross-provider audit) that must run commands with no human present; safety is external (disposable worktree + audit). Any other mode value is rejected for codex.
@@ -127,7 +137,7 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 - `stopEventName: 'AfterAgent'` (not `Stop`). `matcher: "*"`, timeout in ms (Codex uses seconds).
 
 **OpenCode** (`opencode`)
-- Hook delivery: a global JS plugin (`PLUGIN_SOURCE`) installed once into the user's opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`), inert without `UMBEL_STATE`/`UMBEL_SESSION_ID`. On `session.status` busy it touches `events/turn-start`; on idle it writes `events/session-id` and touches `events/stop`; on `permission.updated` it appends `events/notification`. The transcript is read via `opencode export <sessionID>`; there is no JSONL.
+- Hook delivery: a global JS plugin (`PLUGIN_SOURCE`) installed once into the user's opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`), inert without `UMBEL_STATE`/`UMBEL_SESSION_ID`. Its first event binds that `sessionID` to `events/worker-session`; later events act only for the bound id, so an opencode the worker started cannot fire the worker's stop (umbel#118). On `session.status` busy it touches `events/turn-start`; on idle it writes `events/session-id` and touches `events/stop`; on `permission.updated` it appends `events/notification`. The transcript is read via `opencode export <sessionID>`; there is no JSONL.
 - Launched with `OPENCODE_DISABLE_AUTOUPDATE=1`. The autoupdate check opens a modal seconds after launch that holds the keyboard; the first prompt typed at it reached no input box and no turn started, while `send` reported success (umbel#116). `turnStartEvent: 'turn-start'` makes `send` wait up to 10 s for the busy signal and exit 1 when no turn begins, so a lost prompt is never reported as sent.
 - `readyMatch: /Ask anything\.\.\.|Build · /`; an unlisted `--model` refuses the spawn (checked against `opencode models`).
 

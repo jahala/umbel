@@ -6,8 +6,29 @@ import { mergeOpencodePluginConfig } from '../core/providers/opencode.ts';
 import { stateDir } from './fs-state.ts';
 
 // ---------------------------------------------------------------------------
-// STOP_HOOK_SCRIPT — the three-line script installed globally
+// STOP_HOOK_SCRIPT — the script installed globally
 // ---------------------------------------------------------------------------
+
+// A hook event belongs to the worker only when it carries the id bound at
+// startup (umbel#118). A CLI the worker starts inherits UMBEL_STATE and
+// UMBEL_SESSION_ID, so its own end of turn would otherwise fire the worker's
+// stop. The id is the provider's session id; each provider's start event binds
+// it once through bind.sh. Unbound (an older provider, or an event that holds no
+// id) keeps the old behaviour, so a missing jq never silences a worker.
+const WORKER_IDENTITY_GUARD: string = `mkdir -p "$state/events"
+payload=$(cat || true)
+event_session=''
+if command -v jq >/dev/null 2>&1; then
+  event_session=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null || true)
+fi
+bound_session=''
+if [ -f "$state/events/worker-session" ]; then
+  bound_session=$(cat "$state/events/worker-session" 2>/dev/null || true)
+fi
+if [ -n "$bound_session" ] && [ -n "$event_session" ] && [ "$event_session" != "$bound_session" ]; then
+  exit 0
+fi
+`;
 
 // Stop hook script. Receives the lifecycle JSON payload on stdin (per Claude
 // Code, Codex, and Gemini conventions — all three include transcript_path).
@@ -17,9 +38,7 @@ import { stateDir } from './fs-state.ts';
 export const STOP_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
 state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
-mkdir -p "$state/events"
-payload=$(cat || true)
-if command -v jq >/dev/null 2>&1; then
+${WORKER_IDENTITY_GUARD}if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
 fi
 touch "$state/events/stop"
@@ -38,14 +57,39 @@ date +%s%N >> "$state/events/log"
 export const NOTIFY_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
 state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
-mkdir -p "$state/events"
-payload=$(cat || true)
-if command -v jq >/dev/null 2>&1; then
+${WORKER_IDENTITY_GUARD}if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -c '{ts: (now*1000|floor), hook_event_name: (.hook_event_name // null), notification_type: (.notification_type // null), message: (.message // null), tool_name: (.tool_name // null)}' >> "$state/events/notification" 2>/dev/null || true
 else
   printf '{"ts":%s}\\n' "$(( $(date +%s) * 1000 ))" >> "$state/events/notification"
 fi
 date +%s%N >> "$state/events/log"
+`;
+
+// ---------------------------------------------------------------------------
+// BIND_HOOK_SCRIPT — records the session id the provider launched once
+// ---------------------------------------------------------------------------
+
+// Every provider's start event carries the id of the session it started
+// (claude and codex SessionStart, the opencode plugin's first event). Writing it
+// to events/worker-session is what lets stop.sh and notify.sh tell the worker's
+// own hook from one a nested CLI fired. First writer wins: the binding exists
+// before any prompt, and replacing it later would hand the worker's identity to
+// whatever ran last.
+export const BIND_HOOK_SCRIPT: string = `#!/usr/bin/env bash
+set -euo pipefail
+state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
+mkdir -p "$state/events"
+if [ -f "$state/events/worker-session" ]; then
+  exit 0
+fi
+payload=$(cat || true)
+if command -v jq >/dev/null 2>&1; then
+  session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null || true)
+  if [ -n "$session_id" ]; then
+    printf '%s' "$session_id" > "$state/events/.worker-session.tmp.$$"
+    mv -f "$state/events/.worker-session.tmp.$$" "$state/events/worker-session"
+  fi
+fi
 `;
 
 // ---------------------------------------------------------------------------
@@ -184,6 +228,7 @@ done
 export function buildSettingsJson(opts: {
   hookScriptPath: string;
   notifyScriptPath?: string;
+  bindScriptPath?: string;
   allowedTools?: string;
   permissionMode?: string;
   unattended?: boolean;
@@ -202,6 +247,18 @@ export function buildSettingsJson(opts: {
       },
     ],
   };
+
+  // SessionStart binds the worker's own session id before the first turn, so a
+  // CLI the worker starts later cannot pass its own stop off as the worker's
+  // (umbel#118).
+  if (opts.bindScriptPath !== undefined) {
+    hooksBlock.SessionStart = [
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: opts.bindScriptPath }],
+      },
+    ];
+  }
 
   // Notification hook: fired when Claude is BLOCKED waiting on the user — a tool
   // permission prompt or an idle input wait. Lets a waiter return 'input'
@@ -258,6 +315,7 @@ export function buildSettingsJson(opts: {
 export async function ensureGlobalHooks(env: Record<string, string | undefined> = {}): Promise<{
   stopScriptPath: string;
   notifyScriptPath: string;
+  bindScriptPath: string;
   statusLineScriptPath: string;
   launchScriptPath: string;
   streamScriptPath: string;
@@ -268,6 +326,10 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   const stopScriptPath = join(hooksDir, 'stop.sh');
   await writeFile(stopScriptPath, STOP_HOOK_SCRIPT, { encoding: 'utf8' });
   await chmod(stopScriptPath, 0o755);
+
+  const bindScriptPath = join(hooksDir, 'bind.sh');
+  await writeFile(bindScriptPath, BIND_HOOK_SCRIPT, { encoding: 'utf8' });
+  await chmod(bindScriptPath, 0o755);
 
   const notifyScriptPath = join(hooksDir, 'notify.sh');
   await writeFile(notifyScriptPath, NOTIFY_HOOK_SCRIPT, { encoding: 'utf8' });
@@ -288,6 +350,7 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   return {
     stopScriptPath,
     notifyScriptPath,
+    bindScriptPath,
     statusLineScriptPath,
     launchScriptPath,
     streamScriptPath,

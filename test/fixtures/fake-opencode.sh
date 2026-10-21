@@ -47,21 +47,36 @@ events_dir() {
   printf '%s' "${UMBEL_STATE}/sessions/${UMBEL_SESSION_ID}/events"
 }
 
-fire_turn_start() {
+# Mirrors the plugin's forOwnSession (umbel#118): the first event this process
+# sends binds its session id, and a later event acts only for that same id.
+own_session() {
+  local id="$1"
   if [[ -z "${UMBEL_STATE:-}" || -z "${UMBEL_SESSION_ID:-}" ]]; then
-    return
+    return 1
   fi
   mkdir -p "$(events_dir)"
+  local bound=''
+  if [[ -f "$(events_dir)/worker-session" ]]; then
+    bound=$(cat "$(events_dir)/worker-session")
+  fi
+  if [[ -z "$bound" ]]; then
+    if [[ -n "$id" ]]; then
+      printf '%s' "$id" > "$(events_dir)/worker-session"
+    fi
+    return 0
+  fi
+  [[ -z "$id" || "$id" == "$bound" ]]
+}
+
+fire_turn_start() {
+  own_session "${FAKE_SESSION_ID}" || return
   # Simulate the plugin on session.status busy: the submitted prompt started a turn.
   touch "$(events_dir)/turn-start"
   date +%s%N >> "$(events_dir)/log"
 }
 
 fire_stop() {
-  if [[ -z "${UMBEL_STATE:-}" || -z "${UMBEL_SESSION_ID:-}" ]]; then
-    return
-  fi
-  mkdir -p "$(events_dir)"
+  own_session "${FAKE_SESSION_ID}" || return
   # Simulate the plugin: write the opencode session ID and touch the stop file.
   printf '%s' "${FAKE_SESSION_ID}" > "$(events_dir)/session-id"
   touch "$(events_dir)/stop"
