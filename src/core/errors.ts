@@ -233,3 +233,21 @@ export class SendNotSubmittedError extends Error {
     );
   }
 }
+
+// The worker reported no turn after the prompt was typed, so something other
+// than its input box took the paste and the Enter (jahala/umbel#116). send must
+// not report success for a prompt that never landed. The pane is carried so the
+// caller sees what the worker shows; the session is left alive.
+export class SendTurnNotStartedError extends Error {
+  override name = 'SendTurnNotStartedError';
+
+  constructor(
+    public sessionName: string,
+    public paneSnapshot: string,
+    public waitedMs: number,
+  ) {
+    super(
+      `Prompt not started on ${sessionName}: no turn began within ${Math.round(waitedMs / 1000)}s of typing it.`,
+    );
+  }
+}

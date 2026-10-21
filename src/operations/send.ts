@@ -1,6 +1,10 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SendNotSubmittedError, SessionDeadError } from '../core/errors.ts';
+import {
+  SendNotSubmittedError,
+  SendTurnNotStartedError,
+  SessionDeadError,
+} from '../core/errors.ts';
 import { pendingInputLine } from '../core/pending-input.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Deps } from './deps.ts';
@@ -51,14 +55,14 @@ export async function send(opts: SendOpts): Promise<SendResult> {
   }
 
   // Snapshot mtime of events/stop before send (0 if absent)
-  const stopPath = join(d.fs.eventsDir(opts.name, env), 'stop');
-  let sinceMtime = 0;
-  try {
-    const s = await stat(stopPath);
-    sinceMtime = s.mtimeMs;
-  } catch {
-    // File absent — sinceMtime stays 0
-  }
+  const eventsDir = d.fs.eventsDir(opts.name, env);
+  const sinceMtime = await mtimeOrZero(join(eventsDir, 'stop'));
+
+  // Snapshot the turn-start signal before typing, so only this prompt's turn
+  // can advance it.
+  const turnStartPath =
+    provider.turnStartEvent !== undefined ? join(eventsDir, provider.turnStartEvent) : undefined;
+  const sinceTurnStart = turnStartPath !== undefined ? await mtimeOrZero(turnStartPath) : 0;
 
   await d.tmux.sendText(
     opts.name,
@@ -71,7 +75,50 @@ export async function send(opts: SendOpts): Promise<SendResult> {
     await confirmSubmitted(d, opts.name, provider.pendingInputMatch, env);
   }
 
+  if (turnStartPath !== undefined) {
+    await confirmTurnStarted(d, opts.name, turnStartPath, sinceTurnStart, env);
+  }
+
   return { sinceMtime };
+}
+
+async function mtimeOrZero(path: string): Promise<number> {
+  try {
+    return (await stat(path)).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// confirmTurnStarted — a TUI can take the paste and its Enter without a turn
+// beginning: opencode's autoupdate modal held the keyboard until it was
+// answered, so the first prompt went nowhere while send reported success
+// (umbel#116). The provider's hook touches its turnStartEvent when a submitted
+// prompt starts a turn. No advance in the window means the prompt was lost.
+// ---------------------------------------------------------------------------
+
+const TURN_START_POLL_MS = 200;
+// opencode reports busy as soon as the prompt is submitted. A prompt that
+// started nothing in this window never reached the input box.
+const TURN_START_TIMEOUT_MS = 10_000;
+
+async function confirmTurnStarted(
+  d: Pick<Deps, 'tmux'>,
+  name: string,
+  path: string,
+  sinceMtime: number,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  const deadline = Date.now() + TURN_START_TIMEOUT_MS;
+  for (;;) {
+    if ((await mtimeOrZero(path)) > sinceMtime) return;
+    if (Date.now() >= deadline) {
+      const pane = await d.tmux.capturePane(name, 40, env);
+      throw new SendTurnNotStartedError(name, pane, TURN_START_TIMEOUT_MS);
+    }
+    await Bun.sleep(TURN_START_POLL_MS);
+  }
 }
 
 // ---------------------------------------------------------------------------

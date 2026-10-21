@@ -13,12 +13,25 @@ import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './
 //
 // Runs inside opencode's JS runtime. Cannot import umbel. All logic is inline.
 // No-ops unless UMBEL_STATE and UMBEL_SESSION_ID are set (inert in normal use).
+// On session.status {type:"busy"}: touches events/turn-start (a submitted
+// prompt started a turn, so send can confirm the input landed).
 // On session.status {type:"idle"}: writes events/session-id and touches events/stop.
 // On permission.updated: touches events/notification (worker blocked on approval).
 // ---------------------------------------------------------------------------
 
 export const PLUGIN_SOURCE = `import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
+async function fireTurnStart() {
+  const state = process.env.UMBEL_STATE;
+  const umbelSession = process.env.UMBEL_SESSION_ID;
+  if (!state || !umbelSession) return;
+  const eventsDir = join(state, "sessions", umbelSession, "events");
+  await mkdir(eventsDir, { recursive: true });
+  await writeFile(join(eventsDir, "turn-start"), "", "utf8");
+  const { appendFile } = await import("node:fs/promises");
+  await appendFile(join(eventsDir, "log"), String(Date.now() * 1_000_000) + "\\n", "utf8");
+}
 
 async function fireStop(sessionID) {
   const state = process.env.UMBEL_STATE;
@@ -55,6 +68,14 @@ async function fireNotification(tool, message) {
 
 export const Plugin = async () => ({
   event: async ({ event }) => {
+    if (
+      event?.type === "session.status" &&
+      event?.properties?.status?.type === "busy" &&
+      !!process.env.UMBEL_STATE &&
+      !!process.env.UMBEL_SESSION_ID
+    ) {
+      await fireTurnStart();
+    }
     if (
       event?.type === "session.status" &&
       event?.properties?.status?.type === "idle" &&
@@ -333,6 +354,26 @@ export function opencodePluginShouldFire(
   return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
 }
 
+// opencode reports status busy when a submitted prompt starts a turn. The
+// plugin touches events/turn-start then, so send can prove the input landed
+// (umbel#116). Pure + total: never throws; env-gated like the stop predicate.
+export function opencodePluginShouldFireTurnStart(
+  event: unknown,
+  env: Record<string, string | undefined>,
+): boolean {
+  if (event === null || typeof event !== 'object') return false;
+  const e = event as JsonObj;
+  if (e.type !== 'session.status') return false;
+  const props = e.properties;
+  if (props === null || typeof props !== 'object') return false;
+  const p = props as JsonObj;
+  const status = p.status;
+  if (status === null || typeof status !== 'object') return false;
+  const s = status as JsonObj;
+  if (s.type !== 'busy') return false;
+  return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
+}
+
 // A permission event means opencode is BLOCKED asking the user to approve a tool
 // call. The v1 plugin `event` stream delivers these as `permission.updated`
 // (verified against @opencode-ai/sdk 1.15.12 — `permission.asked` is v2-only).
@@ -431,6 +472,10 @@ const opencodeProvider: AgentProvider = {
 
   stopEventName: 'session.status',
 
+  // The plugin touches this on session.status busy, so send can confirm that a
+  // submitted prompt started a turn instead of trusting that it landed.
+  turnStartEvent: 'turn-start',
+
   // opencode's TUI shows no startup dialogs in a fresh cwd.
   startupDialogs: [],
 
@@ -447,7 +492,10 @@ const opencodeProvider: AgentProvider = {
     return {
       bin: 'opencode',
       args,
-      env: {},
+      // The autoupdate check runs asynchronously after launch and opens a
+      // modal that holds the keyboard until it is answered. The first prompt
+      // then lands on the modal and no turn starts (umbel#116).
+      env: { OPENCODE_DISABLE_AUTOUPDATE: '1' },
       // opencode uses a global plugin (installed by installGlobalPlugin), not
       // per-cwd config files. Nothing to write into the session cwd.
       files: [],
