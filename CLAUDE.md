@@ -115,6 +115,7 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 - umbel does not pass `--session-id`: the CLI picks the JSONL filename and the Stop payload carries `transcript_path`. `SessionStart` registers `bind.sh`.
 - `--allowedTools "Read,Write,..."` scopes permissions without prompts.
 - `stopEventName: 'Stop'`. Trust dialog is auto-dismissed for real-`claude` binaries only.
+- `turnStartEvent: 'turn-start'`: a `UserPromptSubmit` hook (`turn-start.sh`, registered in `buildSettingsJson`) touches it when a submitted prompt begins a turn, so `send` proves the prompt landed. `submitDelayMs: 750` keeps claude from swallowing the submitting Enter during startup (umbel#121).
 - Do NOT use `--bare` (skips hooks). Do NOT use `--tmux` / `--worktree` (umbel manages tmux itself).
 - Custom endpoints (DeepSeek, OpenRouter, local) are reached by the worker's `env` (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_MODEL`), not a new provider — same binary, same hooks. Don't add per-endpoint providers; it's an env concern. Recipe in `docs/cli-reference.md`.
 

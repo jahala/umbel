@@ -254,6 +254,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     notifyScriptPath,
     bindScriptPath,
     statusLineScriptPath,
+    turnStartScriptPath,
     launchScriptPath,
     streamScriptPath,
   } = await d.hooks.ensureGlobalHooks(env);
@@ -276,6 +277,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     notifyScriptPath,
     bindScriptPath,
     statusLineScriptPath,
+    turnStartScriptPath,
     stateDir: stateRoot,
     userCodexHome,
     ...(opts.model !== undefined ? { model: opts.model } : {}),

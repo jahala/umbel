@@ -345,6 +345,18 @@ const claudeProvider: AgentProvider = {
 
   stopEventName: 'Stop',
 
+  // Claude's input loop can take a pasted prompt and its Enter as one gulp
+  // while startup work is still settling: no turn starts and the prompt sits
+  // in the input box. Measured against 2.1.306 at 700 characters, sending the
+  // moment spawn returned: 3 of 10 sends lost the Enter, none of 10 with this
+  // pause.
+  submitDelayMs: 750,
+
+  // UserPromptSubmit fires when a submitted prompt starts a turn, so send can
+  // prove the prompt landed (umbel#121). Registered in buildSettingsJson. It
+  // fires at once even for a prompt queued onto a turn already running.
+  turnStartEvent: 'turn-start',
+
   // Claude Code prints "API Error: <status> ..." when a request fails
   // (jahala/umbel#67); it retries on its own, so only a still pane settles.
   errorMatch: [/API Error/],
@@ -380,6 +392,9 @@ const claudeProvider: AgentProvider = {
       ...(opts.unattended !== undefined ? { unattended: opts.unattended } : {}),
       ...(opts.statusLineScriptPath !== undefined
         ? { statusLineScriptPath: opts.statusLineScriptPath }
+        : {}),
+      ...(opts.turnStartScriptPath !== undefined
+        ? { turnStartScriptPath: opts.turnStartScriptPath }
         : {}),
     });
 

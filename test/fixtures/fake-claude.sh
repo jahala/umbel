@@ -53,6 +53,9 @@
 #   FAKE_CLAUDE_NESTED_TRANSCRIPT optional, the transcript path in that payload
 #   FAKE_CLAUDE_POST_NESTED_MS optional, ms the outer turn keeps running after
 #                         the nested hook fired
+#   FAKE_CLAUDE_IGNORE_FIRST_ENTER optional count of submitted prompts that start
+#                         no turn, as when claude loses the submitting Enter after
+#                         a paste and the text sits in its input box (umbel#121)
 
 set -euo pipefail
 
@@ -89,6 +92,22 @@ NESTED_HOOK="${FAKE_CLAUDE_NESTED_HOOK:-}"
 NESTED_SESSION_ID="${FAKE_CLAUDE_NESTED_SESSION_ID:-nested-session}"
 NESTED_TRANSCRIPT="${FAKE_CLAUDE_NESTED_TRANSCRIPT:-}"
 POST_NESTED_MS="${FAKE_CLAUDE_POST_NESTED_MS:-0}"
+IGNORE_FIRST_ENTER="${FAKE_CLAUDE_IGNORE_FIRST_ENTER:-0}"
+
+# umbel passes the hook config inline in --settings. This fake stands in for
+# claude itself, so it honours the registered UserPromptSubmit hook exactly as
+# the binary would: that hook is how send proves a submitted prompt started a
+# turn.
+SETTINGS_JSON=''
+prev=''
+for arg in "$@"; do
+  if [[ "$prev" == "--settings" ]]; then SETTINGS_JSON="$arg"; fi
+  prev="$arg"
+done
+TURN_START_HOOK=''
+if [[ -n "$SETTINGS_JSON" ]]; then
+  TURN_START_HOOK=$(printf '%s' "$SETTINGS_JSON" | jq -r '.hooks.UserPromptSubmit[0].hooks[0].command // empty' 2>/dev/null || true)
+fi
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
   mkdir -p "${FAKE_CLAUDE_JSONL_DIR}"
@@ -130,6 +149,15 @@ fire_hook() {
     payload=$(printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"Stop"}' \
       "${SESSION_ID}" "${JSONL_FILE}" "${cwd_now}")
     printf '%s' "${payload}" | bash "${FAKE_CLAUDE_HOOK}"
+  fi
+}
+
+fire_turn_start() {
+  if [[ -n "${TURN_START_HOOK:-}" ]]; then
+    local cwd_now
+    cwd_now="$(pwd)"
+    printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"UserPromptSubmit"}' \
+      "${SESSION_ID}" "${JSONL_FILE}" "${cwd_now}" | bash "${TURN_START_HOOK}"
   fi
 }
 
@@ -259,5 +287,12 @@ echo "? for shortcuts (fake-claude ready)"
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF
 while IFS= read -r line || [[ -n "${line:-}" ]]; do
   [[ "${line:-}" == "/exit" ]] && exit 0
+  # The TUI took the text but lost the Enter: no turn starts, and the prompt
+  # stays in the input box. Modelled by dropping the submitted line.
+  if [[ "$IGNORE_FIRST_ENTER" -gt 0 ]]; then
+    IGNORE_FIRST_ENTER=$((IGNORE_FIRST_ENTER - 1))
+    continue
+  fi
+  fire_turn_start
   write_turn "${line:-}"
 done
