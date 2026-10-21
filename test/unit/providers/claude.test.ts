@@ -324,3 +324,100 @@ describe('ClaudeProvider.subagentTranscriptDir', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// requestInFlight: is the worker waiting on the model, or merely silent?
+//
+// Shapes are trimmed from a real Claude Code 2.1.306 transcript: an
+// api-request entry goes out with the request, the answer follows as assistant
+// entries, and metadata lines with no timestamp may sit in between.
+// api-request-blob entries hold a copy of a message's content, not a new
+// answer, and must not close the request.
+// ---------------------------------------------------------------------------
+
+const REQUEST_AT = '2026-10-21T19:27:24.799Z';
+const ANSWER_AT = '2026-10-21T19:27:29.591Z';
+
+const promptLine = JSON.stringify({
+  type: 'user',
+  message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+  timestamp: '2026-10-21T19:27:20.000Z',
+});
+
+const toolResultLine = JSON.stringify({
+  type: 'user',
+  message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+  timestamp: '2026-10-21T19:27:24.787Z',
+});
+
+const requestLine = JSON.stringify({
+  type: 'api-request',
+  timestamp: REQUEST_AT,
+  querySource: 'repl_main_thread',
+  params: { model: 'deepseek-flash' },
+});
+
+const answerLine = JSON.stringify({
+  type: 'assistant',
+  timestamp: ANSWER_AT,
+  uuid: 'a-1',
+  message: {
+    id: 'm-1',
+    role: 'assistant',
+    content: [{ type: 'thinking', thinking: 'done' }],
+    stop_reason: 'end_turn',
+  },
+});
+
+const blobLine = JSON.stringify({
+  type: 'api-request-blob',
+  hash: 'e78f9914',
+  message: {
+    role: 'assistant',
+    content: [{ type: 'thinking', thinking: 'done' }],
+    stop_reason: 'end_turn',
+  },
+});
+
+const metadataLine = JSON.stringify({ type: 'last-prompt', lastPrompt: 'go' });
+
+describe('ClaudeProvider.requestInFlight', () => {
+  const inFlight = (lines: string[]): string | undefined => {
+    if (ClaudeProvider.requestInFlight === undefined) {
+      throw new Error('claude has no requestInFlight');
+    }
+    return ClaudeProvider.requestInFlight(lines.join('\n'));
+  };
+
+  test("a request whose answer has not landed is in flight, dated by the request's entry", () => {
+    expect(inFlight([promptLine, requestLine, metadataLine])).toBe(REQUEST_AT);
+  });
+
+  test('the answer landing clears it', () => {
+    expect(inFlight([promptLine, requestLine, metadataLine, answerLine])).toBeUndefined();
+  });
+
+  test("a previous turn's answer does not clear a newer request", () => {
+    expect(inFlight([answerLine, toolResultLine, requestLine])).toBe(REQUEST_AT);
+  });
+
+  test('a tool result written after the request keeps it in flight', () => {
+    expect(inFlight([answerLine, requestLine, toolResultLine, metadataLine])).toBe(REQUEST_AT);
+  });
+
+  test("a request blob's assistant copy is not an answer", () => {
+    expect(inFlight([requestLine, blobLine])).toBe(REQUEST_AT);
+  });
+
+  test('a transcript with no request is not in flight', () => {
+    expect(inFlight([promptLine, answerLine])).toBeUndefined();
+  });
+
+  test('malformed lines are skipped, not fatal', () => {
+    expect(inFlight(['not json', requestLine, '{"type":'])).toBe(REQUEST_AT);
+  });
+
+  test('an empty transcript is not in flight', () => {
+    expect(inFlight([])).toBeUndefined();
+  });
+});

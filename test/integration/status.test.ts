@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ensureGlobalHooks } from '../../src/adapters/hooks.ts';
 import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
 import { killSession } from '../../src/adapters/tmux.ts';
@@ -332,6 +332,79 @@ describe('status — needsInput', () => {
 
     const entries = await status({ name, env });
     expect(entries[0]?.needsInput).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// status — awaitingProviderSince (a model request out and unanswered)
+// ---------------------------------------------------------------------------
+
+describe('status — awaitingProviderSince', () => {
+  const REQUEST_AT = '2026-10-21T19:27:24.799Z';
+
+  // Same isolation as spawn: transcript discovery looks in the test's projects
+  // root, never the real ~/.claude.
+  const deps = (): NonNullable<Parameters<typeof status>[0]['deps']> => ({
+    jsonl: {
+      ...jsonlAdapter,
+      discoverSessionJsonl: (opts) =>
+        jsonlAdapter.discoverSessionJsonl({ ...opts, projectsRoot: projectsDir }),
+    },
+  });
+
+  // The transcript status discovers for a claude worker in /tmp. Written where
+  // discovery looks (the cwd is resolved before encoding), not where the fake
+  // binary writes its own copy.
+  async function writeTranscript(name: string, lines: string[]): Promise<string> {
+    const path = join(projectsDir, jsonlAdapter.encodeCwd('/tmp'), `${name}.jsonl`);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${lines.join('\n')}\n`);
+    return path;
+  }
+
+  test('is the unanswered request time, and gone once the answer lands', async () => {
+    const env = await setup();
+    const name = sessionName('inflight');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    const path = await writeTranscript(name, [
+      JSON.stringify({ type: 'user', message: { role: 'user', content: 'go' } }),
+      JSON.stringify({
+        type: 'api-request',
+        timestamp: REQUEST_AT,
+        querySource: 'repl_main_thread',
+      }),
+      JSON.stringify({ type: 'last-prompt', lastPrompt: 'go' }),
+    ]);
+
+    const [waiting] = await status({ name, env, deps: deps() });
+    expect(waiting?.awaitingProviderSince).toBe(REQUEST_AT);
+
+    await appendFile(
+      path,
+      `${JSON.stringify({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'done' }],
+          stop_reason: 'end_turn',
+        },
+      })}\n`,
+    );
+
+    const [answered] = await status({ name, env, deps: deps() });
+    expect(answered?.awaitingProviderSince).toBeUndefined();
+  });
+
+  test('is absent for a worker with no transcript yet', async () => {
+    const env = await setup();
+    const name = sessionName('nojsonl');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    const [entry] = await status({ name, env, deps: deps() });
+    expect(entry?.awaitingProviderSince).toBeUndefined();
   });
 });
 

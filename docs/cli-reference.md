@@ -19,7 +19,7 @@ umbel --version                  Show version (0.0.1)
 | 1 | Generic error (session dead, tmux failure, hook timeout, session not created, provider has no unattended mode) |
 | 2 | Usage error (bad flags, missing required argument, unknown verb, unsupported option for provider) |
 | 122 | `wait` provider-error — a provider error on the pane, then stillness |
-| 123 | `wait` idle — pane, events directory and transcript tree all still for `--idle-timeout` |
+| 123 | `wait` idle — pane, events directory and transcript tree all still for `--idle-timeout`, with no model request in flight |
 | 124 | `wait` timeout — hard deadline hit |
 | 125 | `wait` abandoned — the target worker died before completing its turn |
 | 126 | `wait` input — worker is blocked waiting for input (permission prompt / elicitation). Also `spawn` refused because the CLI needs a person to sign in: the same class, blocked. |
@@ -191,7 +191,7 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
 | `--pattern REGEX` | — | Required when `--until=pattern`. Regex matched against tmux pane output. |
 | `--timeout DURATION` | 30 minutes | Maximum wait time. Format: `5m`, `30s`, `1h`, `500ms`. Exit code 124 on expiry. |
-| `--idle-timeout DURATION` | off | Idle net: settle `idle` when nothing the worker touches has moved for this long. Stillness is measured across the pane, the events directory and the transcript tree (for claude, the subagent transcripts too), so a silent pane over a working subagent is not idle. The same poll reports `provider-error` (exit 122) when the pane's last lines match the provider's error pattern and then stay still for a short grace. Off by default (a worker may run a long silent tool call). |
+| `--idle-timeout DURATION` | off | Idle net: settle `idle` when nothing the worker touches has moved for this long. Stillness is measured across the pane, the events directory and the transcript tree (for claude, the subagent transcripts too), so a silent pane over a working subagent is not idle. A model request the worker is still waiting on also holds the net: claude writes an `api-request` entry as it sends and the answer as following `assistant` entries, so a slow model with a large context is not read as idle. The hard `--timeout` still bounds a request that never answers. The same poll reports `provider-error` (exit 122) when the pane's last lines match the provider's error pattern and then stay still for a short grace. Off by default (a worker may run a long silent tool call). |
 
 **Wait condition kinds**
 
@@ -214,7 +214,7 @@ The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `
 | stop | 0 | Turn completed — `umbel read` the result. |
 | input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. A worker on its CLI's sign-in screen, for instance after its credentials expired, is also `input`, with `inputReason: "sign-in"`: only a person signing in on that machine clears it. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
 | provider-error | 122 | The pane shows a provider error (codex `unexpected status 404`, claude `API Error`) and then stays still. The matched line is the `message`; the pane prints to stderr. Fail or recast the attempt; waiting longer will not help. |
-| idle | 123 | Pane, events directory and transcript tree all still for `--idle-timeout`. The `message` names each source and how long it has been still, e.g. `idle 1.6s: pane still 1.6s · events still 1.9s · transcript still 1.8s · subagents none`; a source umbel could not locate reads `unresolved`. Pane prints to stderr. |
+| idle | 123 | Pane, events directory and transcript tree all still for `--idle-timeout`, and no model request in flight. The `message` names each source and how long it has been still, e.g. `idle 1.6s: pane still 1.6s · events still 1.9s · transcript still 1.8s · subagents none`; a source umbel could not locate reads `unresolved`. Pane prints to stderr. |
 | dead | 125 | Worker exited before finishing its turn. `exitCode` is the status it exited with, read from `events/exit` (umbel's launch wrapper), with tmux's pane status as the fallback; `paneSnapshot` is its last screen, captured from the dead pane. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |
 
@@ -259,6 +259,8 @@ umbel status [name] [--json]
 | `--json` | Emit the entries as one JSON array instead of the table — for shell/CI watchers that can't call MCP. With no `<name>` it lists every session. |
 
 Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields. `needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
+
+`awaitingProviderSince` (claude) is the timestamp of a model request the worker has sent and not yet answered. A slow model leaves the pane, the event log and the transcript still, so this field tells a worker waiting on the provider from one that is wedged. It clears when the answer lands. Absent when nothing is in flight, for a dead worker, and for providers whose transcript cannot say.
 
 A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInputReason: permission` instead of hanging silently. Avoid it by allowlisting your project's MCP (read-only) tools at spawn — and note that **`Write` does not imply `Edit`** (appending to a file uses `Edit`).
 

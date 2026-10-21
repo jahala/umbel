@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
+import { PROVIDERS } from '../core/providers/registry.ts';
 import { parseQuota, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
 import { readDeathCause } from './death-record.ts';
@@ -24,6 +25,11 @@ export interface StatusEntry extends Session {
   // Best-effort pending tool, when the notification carries one. Absent for
   // Claude's main permission prompt (it omits the tool from the hook payload).
   pendingTool?: string;
+  // When the worker has a model request out and unanswered: the request's
+  // timestamp. A slow model leaves the pane, the events dir and the transcript
+  // still, so this is what tells it from a wedged worker (umbel#117). Absent
+  // when nothing is in flight, or when the provider's transcript cannot say.
+  awaitingProviderSince?: string;
   // Subscription rate-limit usage, when the provider reports any. Absent is the
   // normal case and means no limit pressure was reported — a caller can re-cast
   // a node to another provider before dispatch instead of losing its work to a
@@ -104,6 +110,11 @@ async function enrich(
   const quota = parseQuota(await readFileSafe(join(eventsDir, 'quota')));
   if (quota !== null) entry.quota = quota;
 
+  if (entry.alive) {
+    const awaiting = await awaitingProviderSince(session, d, env);
+    if (awaiting !== undefined) entry.awaitingProviderSince = awaiting;
+  }
+
   return entry;
 }
 
@@ -113,6 +124,49 @@ async function readFileSafe(path: string): Promise<string> {
   } catch {
     return '';
   }
+}
+
+// The transcript status reads is resolved the cheap way: the path meta already
+// holds, then the one the stop hook captured, then a single discovery scan. No
+// waiting: a status call must answer now, and a session with no transcript yet
+// simply has no request in flight.
+async function transcriptPath(
+  session: Session,
+  d: Deps,
+  env: Record<string, string | undefined>,
+): Promise<string | undefined> {
+  if (session.jsonlPath !== null && session.jsonlPath !== '') return session.jsonlPath;
+  const hooked = (
+    await readFileSafe(join(d.fs.eventsDir(session.name, env), 'transcript-path'))
+  ).trim();
+  if (hooked !== '') return hooked;
+  try {
+    return await d.jsonl.discoverSessionJsonl({
+      sessionName: session.name,
+      cwd: session.cwd,
+      sinceMs: session.createdAt,
+      timeoutMs: 0,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+// A model request in flight is a worker with nothing to write until the answer
+// arrives, however long that takes (umbel#117). One field, absent when nothing
+// is in flight: a caller can tell a slow provider from a wedged worker without
+// a wait of its own.
+async function awaitingProviderSince(
+  session: Session,
+  d: Deps,
+  env: Record<string, string | undefined>,
+): Promise<string | undefined> {
+  const provider = PROVIDERS[session.provider];
+  if (provider?.requestInFlight === undefined) return undefined;
+  const path = await transcriptPath(session, d, env);
+  if (path === undefined) return undefined;
+  const content = await readFileSafe(path);
+  return provider.requestInFlight(content);
 }
 
 // ---------------------------------------------------------------------------

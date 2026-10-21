@@ -201,6 +201,29 @@ function turnEndedIn(content: string): boolean {
   return false;
 }
 
+// Claude writes an api-request entry as it sends a request, and the answer as
+// following assistant entries. So the newest entry that is either one decides:
+// the request still last means nothing has answered it (umbel#117). Entries
+// between them (tool results, metadata with no timestamp) say nothing either
+// way. Only type 'assistant' is an answer: an api-request-blob holds a copy of
+// a message's content and is not a new one. Verified against Claude Code
+// 2.1.306. Subagent transcripts carry no api-request entries, so a subagent's
+// own request is invisible here; the idle net's subagent writes are its only
+// sign of life.
+function requestInFlightIn(content: string): string | undefined {
+  const entries = parseAllEntries(content);
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry === null || typeof entry !== 'object') continue;
+    const obj = entry as JsonObj;
+    if (obj.type === 'assistant') return undefined;
+    if (obj.type === 'api-request') {
+      return typeof obj.timestamp === 'string' ? obj.timestamp : undefined;
+    }
+  }
+  return undefined;
+}
+
 function pushUnique(arr: string[], val: string): void {
   if (!arr.includes(val)) arr.push(val);
 }
@@ -388,6 +411,10 @@ const claudeProvider: AgentProvider = {
 
   turnEnded(content: string): boolean {
     return turnEndedIn(content);
+  },
+
+  requestInFlight(content: string): string | undefined {
+    return requestInFlightIn(content);
   },
 
   extractActions(content: string): ActionManifest {

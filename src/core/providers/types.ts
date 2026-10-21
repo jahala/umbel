@@ -156,6 +156,16 @@ export interface AgentProvider {
   // Omit when the provider's format carries no such marker.
   turnEnded?(content: string): boolean;
 
+  // Optional: the timestamp of a model request this provider has sent and not
+  // yet answered, or undefined when none is in flight. PURE and total. While a
+  // request is in flight the pane, the events dir and the transcript all stay
+  // still, so a worker waiting on a slow model looks exactly like a wedged one.
+  // `wait`'s idle net holds instead of settling `idle` while this answers, and
+  // status reports it as `awaitingProviderSince` (umbel#117). An unrecognised
+  // shape answers undefined, and the hard timeout still bounds a request that
+  // never answers. Omit for providers whose format carries no such marker.
+  requestInFlight?(content: string): string | undefined;
+
   // Optional: extract a normalized digest of tool calls, files touched, and
   // errors from the transcript. Returned shape is ActionManifest. Pure —
   // never throws on malformed input; returns an empty/partial manifest.
