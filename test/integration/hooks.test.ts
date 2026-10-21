@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  BIND_HOOK_SCRIPT,
   buildSettingsJson,
   ensureGlobalHooks,
   NOTIFY_HOOK_SCRIPT,
@@ -237,5 +238,154 @@ describe('ensureGlobalHooks — notify.sh', () => {
     expect(lines.length).toBe(2); // appended, not clobbered
     expect(JSON.parse(lines[0] ?? '{}').notification_type).toBe('permission_prompt');
     expect(JSON.parse(lines[1] ?? '{}').notification_type).toBe('idle_prompt');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Worker identity (jahala/umbel#118)
+// ---------------------------------------------------------------------------
+
+async function fire(
+  scriptPath: string,
+  sessionId: string,
+  payload: object,
+  args: string[] = [],
+): Promise<number | null> {
+  const proc = Bun.spawn(['bash', scriptPath, ...args], {
+    env: { UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: sessionId },
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  proc.stdin.write(JSON.stringify(payload));
+  await proc.stdin.end();
+  return await proc.exited;
+}
+
+const sessionEvents = (sessionId: string): string => join(tmpDir, 'sessions', sessionId, 'events');
+
+const stopPayload = (sessionId: string, transcript: string): object => ({
+  session_id: sessionId,
+  transcript_path: transcript,
+  hook_event_name: 'Stop',
+});
+
+describe('BIND_HOOK_SCRIPT and identity', () => {
+  test('is a string starting with shebang and names the binding file', () => {
+    expect(BIND_HOOK_SCRIPT.startsWith('#!/usr/bin/env bash')).toBe(true);
+    expect(BIND_HOOK_SCRIPT).toContain('events/worker-session');
+  });
+
+  test('buildSettingsJson registers SessionStart with the bind script', () => {
+    const bind = '/home/user/.umbel/hooks/bind.sh';
+    const json = buildSettingsJson({ hookScriptPath: '/stop.sh', bindScriptPath: bind });
+    const obj = JSON.parse(json) as {
+      hooks?: { SessionStart?: Array<{ hooks?: Array<{ command?: string }> }> };
+    };
+    expect(Array.isArray(obj.hooks?.SessionStart)).toBe(true);
+    const commands = (obj.hooks?.SessionStart ?? []).flatMap((g) =>
+      (g.hooks ?? []).map((h) => h.command),
+    );
+    // Only the worker's own claude runs umbel's settings, so its SessionStart
+    // may rebind: /clear starts a new session id in the same worker.
+    expect(commands).toContain(`${bind} rebind`);
+  });
+
+  test('buildSettingsJson without a bind script has no SessionStart block', () => {
+    const obj = JSON.parse(buildSettingsJson({ hookScriptPath: '/stop.sh' })) as {
+      hooks?: { SessionStart?: unknown };
+    };
+    expect(obj.hooks?.SessionStart).toBeUndefined();
+  });
+
+  test('ensureGlobalHooks creates an executable bind.sh', async () => {
+    const env = await setup();
+    const { bindScriptPath } = await ensureGlobalHooks(env);
+    expect(bindScriptPath).toContain('hooks/bind.sh');
+    const s = await stat(bindScriptPath);
+    expect(s.isFile()).toBe(true);
+    expect(s.mode & 0o111).toBeGreaterThan(0);
+  });
+
+  test('bind.sh records the worker id once and never replaces it', async () => {
+    const env = await setup();
+    const { bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-own';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+
+    const start = { session_id: 'ses_own', hook_event_name: 'SessionStart' };
+    expect(await fire(bindScriptPath, sessionId, start)).toBe(0);
+    expect(await Bun.file(join(sessionEvents(sessionId), 'worker-session')).text()).toBe('ses_own');
+
+    const later = { session_id: 'ses_nested', hook_event_name: 'SessionStart' };
+    expect(await fire(bindScriptPath, sessionId, later)).toBe(0);
+    expect(await Bun.file(join(sessionEvents(sessionId), 'worker-session')).text()).toBe('ses_own');
+  });
+
+  test('bind.sh rebind replaces the id, for a CLI whose start event only the worker fires', async () => {
+    const env = await setup();
+    const { bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-cleared';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_before_clear' }, ['rebind']);
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_after_clear' }, ['rebind']);
+    expect(await Bun.file(join(sessionEvents(sessionId), 'worker-session')).text()).toBe(
+      'ses_after_clear',
+    );
+  });
+
+  test('stop.sh ignores a stop from another session once bound', async () => {
+    const env = await setup();
+    const { stopScriptPath, bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-bound';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_own' });
+
+    expect(await fire(stopScriptPath, sessionId, stopPayload('ses_nested', '/nested.jsonl'))).toBe(
+      0,
+    );
+
+    const events = sessionEvents(sessionId);
+    expect(await Bun.file(join(events, 'stop')).exists()).toBe(false);
+    expect(await Bun.file(join(events, 'transcript-path')).exists()).toBe(false);
+    expect(await Bun.file(join(events, 'log')).exists()).toBe(false);
+  });
+
+  test('stop.sh fires for the bound session', async () => {
+    const env = await setup();
+    const { stopScriptPath, bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-match';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_own' });
+
+    expect(await fire(stopScriptPath, sessionId, stopPayload('ses_own', '/own.jsonl'))).toBe(0);
+
+    const events = sessionEvents(sessionId);
+    expect(await Bun.file(join(events, 'stop')).exists()).toBe(true);
+    expect((await Bun.file(join(events, 'transcript-path')).text()).trim()).toBe('/own.jsonl');
+  });
+
+  test('notify.sh ignores another session notification once bound', async () => {
+    const env = await setup();
+    const { notifyScriptPath, bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-notify';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_own' });
+
+    await fire(notifyScriptPath, sessionId, {
+      session_id: 'ses_nested',
+      notification_type: 'permission_prompt',
+      message: 'nested asks for permission',
+    });
+    expect(await Bun.file(join(sessionEvents(sessionId), 'notification')).exists()).toBe(false);
+
+    await fire(notifyScriptPath, sessionId, {
+      session_id: 'ses_own',
+      notification_type: 'permission_prompt',
+      message: 'worker asks for permission',
+    });
+    const notif = await Bun.file(join(sessionEvents(sessionId), 'notification')).text();
+    expect(notif).toContain('worker asks for permission');
   });
 });

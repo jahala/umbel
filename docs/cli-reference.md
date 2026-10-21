@@ -199,7 +199,7 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 **Wait condition kinds**
 
-- `stop` — waits for the Stop hook to touch `~/.umbel/sessions/<name>/events/stop` with a newer mtime than the pre-send snapshot. This is the only deterministic end-of-turn signal.
+- `stop` — waits for the Stop hook to touch `~/.umbel/sessions/<name>/events/stop` with a newer mtime than the pre-send snapshot. This is the only deterministic end-of-turn signal. Only the session umbel launched counts: once the provider's start event has bound its session id in `events/worker-session`, a stop payload carrying another id is ignored, so a CLI the worker runs (it inherits `UMBEL_STATE` and `UMBEL_SESSION_ID`) cannot end the wait (umbel#118).
 - `file` — waits for the given path to exist on disk.
 - `pattern` — waits for a line in the tmux pane matching the regex.
 

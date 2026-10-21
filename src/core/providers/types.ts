@@ -104,6 +104,9 @@ export interface AgentProvider {
     realCwd?: string;
     hookScriptPath: string; // absolute path to our stop.sh
     notifyScriptPath?: string; // absolute path to our notify.sh (needs-input hook)
+    // absolute path to our bind.sh — the provider's start event records its
+    // own session id there once, so a nested CLI's hook cannot fire ours.
+    bindScriptPath?: string;
     // absolute path to our statusline.sh — captures the provider's status
     // payload (subscription rate limits) as state instead of pane text.
     statusLineScriptPath?: string;

@@ -252,6 +252,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const {
     stopScriptPath,
     notifyScriptPath,
+    bindScriptPath,
     statusLineScriptPath,
     launchScriptPath,
     streamScriptPath,
@@ -273,6 +274,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     realCwd,
     hookScriptPath: stopScriptPath,
     notifyScriptPath,
+    bindScriptPath,
     statusLineScriptPath,
     stateDir: stateRoot,
     userCodexHome,

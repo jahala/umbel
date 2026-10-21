@@ -13,83 +13,93 @@ import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './
 //
 // Runs inside opencode's JS runtime. Cannot import umbel. All logic is inline.
 // No-ops unless UMBEL_STATE and UMBEL_SESSION_ID are set (inert in normal use).
+// The first event's sessionID is bound to events/worker-session, once; only
+// that session's events act afterwards, so an opencode the worker started (it
+// inherits UMBEL_*) cannot fire the worker's stop (umbel#118).
 // On session.status {type:"busy"}: touches events/turn-start (a submitted
 // prompt started a turn, so send can confirm the input landed).
 // On session.status {type:"idle"}: writes events/session-id and touches events/stop.
 // On permission.updated: touches events/notification (worker blocked on approval).
 // ---------------------------------------------------------------------------
 
-export const PLUGIN_SOURCE = `import { mkdir, writeFile } from "node:fs/promises";
+export const PLUGIN_SOURCE = `import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-async function fireTurnStart() {
+function eventsDir() {
   const state = process.env.UMBEL_STATE;
   const umbelSession = process.env.UMBEL_SESSION_ID;
-  if (!state || !umbelSession) return;
-  const eventsDir = join(state, "sessions", umbelSession, "events");
-  await mkdir(eventsDir, { recursive: true });
-  await writeFile(join(eventsDir, "turn-start"), "", "utf8");
-  const { appendFile } = await import("node:fs/promises");
-  await appendFile(join(eventsDir, "log"), String(Date.now() * 1_000_000) + "\\n", "utf8");
+  if (!state || !umbelSession) return null;
+  return join(state, "sessions", umbelSession, "events");
 }
 
-async function fireStop(sessionID) {
-  const state = process.env.UMBEL_STATE;
-  const umbelSession = process.env.UMBEL_SESSION_ID;
-  if (!state || !umbelSession) return;
-  const eventsDir = join(state, "sessions", umbelSession, "events");
-  await mkdir(eventsDir, { recursive: true });
-  await writeFile(join(eventsDir, "session-id"), String(sessionID), "utf8");
-  await writeFile(join(eventsDir, "stop"), "", "utf8");
-  const ts = String(Date.now() * 1_000_000);
-  const logPath = join(eventsDir, "log");
-  const { appendFile } = await import("node:fs/promises");
-  await appendFile(logPath, ts + "\\n", "utf8");
+// Bind the first session the plugin sees, then accept only that id. Nothing
+// else runs before the worker's first prompt, so the first event is the
+// worker's own. An unbound event (no id yet) keeps the old behaviour.
+async function forOwnSession(sessionID) {
+  const dir = eventsDir();
+  if (!dir) return null;
+  await mkdir(dir, { recursive: true });
+  const bindPath = join(dir, "worker-session");
+  let bound = "";
+  try {
+    bound = (await readFile(bindPath, "utf8")).trim();
+  } catch {
+    bound = "";
+  }
+  if (!bound) {
+    if (!sessionID) return dir;
+    const tmp = bindPath + ".tmp." + process.pid;
+    await writeFile(tmp, String(sessionID), "utf8");
+    await rename(tmp, bindPath);
+    return dir;
+  }
+  if (!sessionID || String(sessionID) !== bound) return null;
+  return dir;
 }
 
-async function fireNotification(tool, message) {
-  const state = process.env.UMBEL_STATE;
-  const umbelSession = process.env.UMBEL_SESSION_ID;
-  if (!state || !umbelSession) return;
-  const eventsDir = join(state, "sessions", umbelSession, "events");
-  await mkdir(eventsDir, { recursive: true });
-  const { appendFile } = await import("node:fs/promises");
-  const line = JSON.stringify({
-    ts: Date.now(),
-    hook_event_name: "permission.updated",
-    notification_type: "permission",
-    message: message ?? null,
-    tool_name: tool ?? null,
-  });
-  await appendFile(join(eventsDir, "notification"), line + "\\n", "utf8");
-  const ts = String(Date.now() * 1_000_000);
-  await appendFile(join(eventsDir, "log"), ts + "\\n", "utf8");
+async function logLine(dir) {
+  await appendFile(join(dir, "log"), String(Date.now() * 1_000_000) + "\\n", "utf8");
+}
+
+async function fireTurnStart(dir) {
+  await writeFile(join(dir, "turn-start"), "", "utf8");
+  await logLine(dir);
+}
+
+async function fireStop(dir, sessionID) {
+  await writeFile(join(dir, "session-id"), String(sessionID ?? ""), "utf8");
+  await writeFile(join(dir, "stop"), "", "utf8");
+  await logLine(dir);
+}
+
+async function fireNotification(dir, tool, message) {
+  await appendFile(
+    join(dir, "notification"),
+    JSON.stringify({
+      ts: Date.now(),
+      hook_event_name: "permission.updated",
+      notification_type: "permission",
+      message: message ?? null,
+      tool_name: tool ?? null,
+    }) + "\\n",
+    "utf8",
+  );
+  await logLine(dir);
 }
 
 export const Plugin = async () => ({
   event: async ({ event }) => {
-    if (
-      event?.type === "session.status" &&
-      event?.properties?.status?.type === "busy" &&
-      !!process.env.UMBEL_STATE &&
-      !!process.env.UMBEL_SESSION_ID
-    ) {
-      await fireTurnStart();
+    const sessionID = event?.properties?.sessionID;
+    const dir = await forOwnSession(sessionID);
+    if (!dir) return;
+    if (event?.type === "session.status" && event?.properties?.status?.type === "busy") {
+      await fireTurnStart(dir);
     }
-    if (
-      event?.type === "session.status" &&
-      event?.properties?.status?.type === "idle" &&
-      !!process.env.UMBEL_STATE &&
-      !!process.env.UMBEL_SESSION_ID
-    ) {
-      await fireStop(event?.properties?.sessionID ?? "");
+    if (event?.type === "session.status" && event?.properties?.status?.type === "idle") {
+      await fireStop(dir, sessionID);
     }
-    if (
-      event?.type === "permission.updated" &&
-      !!process.env.UMBEL_STATE &&
-      !!process.env.UMBEL_SESSION_ID
-    ) {
-      await fireNotification(event?.properties?.type, event?.properties?.title);
+    if (event?.type === "permission.updated") {
+      await fireNotification(dir, event?.properties?.type, event?.properties?.title);
     }
   },
 });
@@ -332,14 +342,33 @@ export function extractOpencodeActionsFromContent(content: string): ActionManife
 }
 
 // ---------------------------------------------------------------------------
-// opencodePluginShouldFire — pure gating predicate mirrored in the plugin.
-// True iff event is session.status idle AND both umbel env vars are set.
-// Never throws.
+// opencodePluginShouldFire — pure gating predicates mirrored in the plugin.
+// An event acts only for the session bound at startup (umbel#118, the plugin's
+// forOwnSession). With nothing bound, today's behaviour stands. Never throws.
 // ---------------------------------------------------------------------------
 
+function pluginEventSessionId(event: JsonObj): string | undefined {
+  const props = event.properties;
+  if (props === null || typeof props !== 'object') return undefined;
+  const id = (props as JsonObj).sessionID;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+}
+
+function pluginOwnsSession(
+  event: JsonObj,
+  env: Record<string, string | undefined>,
+  boundSessionId: string | undefined,
+): boolean {
+  if (!env?.UMBEL_STATE || !env?.UMBEL_SESSION_ID) return false;
+  if (boundSessionId === undefined || boundSessionId === '') return true;
+  return pluginEventSessionId(event) === boundSessionId;
+}
+
+// session.status idle means the turn ended (Stop).
 export function opencodePluginShouldFire(
   event: unknown,
   env: Record<string, string | undefined>,
+  boundSessionId?: string,
 ): boolean {
   if (event === null || typeof event !== 'object') return false;
   const e = event as JsonObj;
@@ -351,15 +380,16 @@ export function opencodePluginShouldFire(
   if (status === null || typeof status !== 'object') return false;
   const s = status as JsonObj;
   if (s.type !== 'idle') return false;
-  return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
+  return pluginOwnsSession(e, env, boundSessionId);
 }
 
 // opencode reports status busy when a submitted prompt starts a turn. The
 // plugin touches events/turn-start then, so send can prove the input landed
-// (umbel#116). Pure + total: never throws; env-gated like the stop predicate.
+// (umbel#116). Pure + total: never throws; gated like the stop predicate.
 export function opencodePluginShouldFireTurnStart(
   event: unknown,
   env: Record<string, string | undefined>,
+  boundSessionId?: string,
 ): boolean {
   if (event === null || typeof event !== 'object') return false;
   const e = event as JsonObj;
@@ -371,21 +401,22 @@ export function opencodePluginShouldFireTurnStart(
   if (status === null || typeof status !== 'object') return false;
   const s = status as JsonObj;
   if (s.type !== 'busy') return false;
-  return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
+  return pluginOwnsSession(e, env, boundSessionId);
 }
 
 // A permission event means opencode is BLOCKED asking the user to approve a tool
 // call. The v1 plugin `event` stream delivers these as `permission.updated`
 // (verified against @opencode-ai/sdk 1.15.12 — `permission.asked` is v2-only).
-// Pure + total: never throws; env-gated like opencodePluginShouldFire.
+// Pure + total: never throws; gated like opencodePluginShouldFire.
 export function opencodePluginShouldFireNotification(
   event: unknown,
   env: Record<string, string | undefined>,
+  boundSessionId?: string,
 ): boolean {
   if (event === null || typeof event !== 'object') return false;
   const e = event as JsonObj;
   if (e.type !== 'permission.updated') return false;
-  return !!env?.UMBEL_STATE && !!env?.UMBEL_SESSION_ID;
+  return pluginOwnsSession(e, env, boundSessionId);
 }
 
 // ---------------------------------------------------------------------------

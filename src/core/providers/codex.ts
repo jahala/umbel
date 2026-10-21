@@ -308,6 +308,24 @@ const codexProvider: AgentProvider = {
         },
       ],
     };
+    // SessionStart binds the worker's own codex session id (umbel#118). A codex
+    // the worker starts inherits CODEX_HOME, so its Stop would otherwise settle
+    // the worker's wait. The TUI fires SessionStart as the first turn starts,
+    // before any tool call; verified on 0.154.0 that its payload carries the
+    // same session_id as Stop.
+    if (opts.bindScriptPath !== undefined) {
+      hooks.SessionStart = [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: opts.bindScriptPath,
+              timeout: 30,
+            },
+          ],
+        },
+      ];
+    }
     // PermissionRequest fires when Codex needs approval for a tool call — the
     // worker is BLOCKED. Lets a waiter return 'input' instead of hanging.
     // Verified against codex 0.133.0 (HookEventNameWire enum); timeout in seconds.

@@ -373,6 +373,7 @@ const claudeProvider: AgentProvider = {
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsJson = buildSettingsJson({
       hookScriptPath: opts.hookScriptPath,
+      ...(opts.bindScriptPath !== undefined ? { bindScriptPath: opts.bindScriptPath } : {}),
       ...(opts.notifyScriptPath !== undefined ? { notifyScriptPath: opts.notifyScriptPath } : {}),
       ...(opts.allowedTools !== undefined ? { allowedTools: opts.allowedTools } : {}),
       ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),

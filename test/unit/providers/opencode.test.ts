@@ -1,4 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   OpenCodeProvider,
   opencodePluginShouldFire,
@@ -357,5 +362,87 @@ describe('PLUGIN_SOURCE notification handler', () => {
   test('appends a structured JSON line (hook_event_name), not a clobbered string', () => {
     expect(PLUGIN_SOURCE).toContain('appendFile');
     expect(PLUGIN_SOURCE).toContain('hook_event_name');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Identity (jahala/umbel#118)
+// ---------------------------------------------------------------------------
+
+const ocEnv = { UMBEL_STATE: '/tmp/state', UMBEL_SESSION_ID: 'worker' };
+const status = (sessionID: string, type: 'busy' | 'idle') => ({
+  type: 'session.status',
+  properties: { sessionID, status: { type } },
+});
+const permission = (sessionID: string) => ({
+  type: 'permission.updated',
+  properties: { sessionID, type: 'bash', title: 'Bash' },
+});
+
+describe('opencode plugin identity', () => {
+  const env = ocEnv;
+  test('a bound worker fires only its own session events', () => {
+    expect(opencodePluginShouldFireTurnStart(status('ses_own', 'busy'), env, 'ses_own')).toBe(true);
+    expect(opencodePluginShouldFire(status('ses_own', 'idle'), env, 'ses_own')).toBe(true);
+    expect(opencodePluginShouldFireNotification(permission('ses_own'), env, 'ses_own')).toBe(true);
+
+    expect(opencodePluginShouldFireTurnStart(status('ses_nested', 'busy'), env, 'ses_own')).toBe(
+      false,
+    );
+    expect(opencodePluginShouldFire(status('ses_nested', 'idle'), env, 'ses_own')).toBe(false);
+    expect(opencodePluginShouldFireNotification(permission('ses_nested'), env, 'ses_own')).toBe(
+      false,
+    );
+  });
+
+  test('with nothing bound yet, today behaviour stands', () => {
+    expect(opencodePluginShouldFire(status('ses_any', 'idle'), env, undefined)).toBe(true);
+  });
+
+  test('an event that carries no session id cannot be the bound session', () => {
+    const anonymous = { type: 'session.status', properties: { status: { type: 'idle' } } };
+    expect(opencodePluginShouldFire(anonymous, env, 'ses_own')).toBe(false);
+  });
+});
+
+describe('PLUGIN_SOURCE identity binding', () => {
+  test('binds the first session and then ignores every other session', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'umbel-oc-plugin-'));
+    const prevState = process.env.UMBEL_STATE;
+    const prevSession = process.env.UMBEL_SESSION_ID;
+    try {
+      process.env.UMBEL_STATE = dir;
+      process.env.UMBEL_SESSION_ID = 'worker';
+      const file = join(dir, 'opencode-plugin.ts');
+      await writeFile(file, PLUGIN_SOURCE, 'utf8');
+      const mod = (await import(`${pathToFileURL(file).href}?v=${Date.now()}`)) as {
+        Plugin: () => Promise<{ event: (input: { event: unknown }) => Promise<void> }>;
+      };
+      const plugin = await mod.Plugin();
+      const events = join(dir, 'sessions', 'worker', 'events');
+
+      await plugin.event({ event: status('ses_own', 'busy') });
+      expect(await readFile(join(events, 'worker-session'), 'utf8')).toBe('ses_own');
+      expect(existsSync(join(events, 'turn-start'))).toBe(true);
+
+      await plugin.event({ event: status('ses_nested', 'idle') });
+      expect(existsSync(join(events, 'stop'))).toBe(false);
+      expect(existsSync(join(events, 'session-id'))).toBe(false);
+
+      await plugin.event({ event: status('ses_own', 'idle') });
+      expect(existsSync(join(events, 'stop'))).toBe(true);
+      expect(await readFile(join(events, 'session-id'), 'utf8')).toBe('ses_own');
+
+      await plugin.event({ event: permission('ses_nested') });
+      expect(existsSync(join(events, 'notification'))).toBe(false);
+      await plugin.event({ event: permission('ses_own') });
+      expect(existsSync(join(events, 'notification'))).toBe(true);
+    } finally {
+      if (prevState === undefined) delete process.env.UMBEL_STATE;
+      else process.env.UMBEL_STATE = prevState;
+      if (prevSession === undefined) delete process.env.UMBEL_SESSION_ID;
+      else process.env.UMBEL_SESSION_ID = prevSession;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

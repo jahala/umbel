@@ -44,6 +44,15 @@
 #   FAKE_CLAUDE_BACKGROUND_CMD optional, a shell command the worker starts once,
 #                         through `<shell> -c`, and leaves running across the turn
 #                         as a background Bash tool call does (e.g. `sleep 30`)
+#   FAKE_CLAUDE_BIND_HOOK optional, exec this (bind.sh) at startup with a
+#                         SessionStart payload carrying the worker's own id
+#   FAKE_CLAUDE_NESTED_HOOK optional, exec this (stop.sh) mid-turn under another
+#                         session id: a CLI the worker started, holding the same
+#                         UMBEL_* environment (jahala/umbel#118)
+#   FAKE_CLAUDE_NESTED_SESSION_ID optional, that other session's id
+#   FAKE_CLAUDE_NESTED_TRANSCRIPT optional, the transcript path in that payload
+#   FAKE_CLAUDE_POST_NESTED_MS optional, ms the outer turn keeps running after
+#                         the nested hook fired
 
 set -euo pipefail
 
@@ -75,6 +84,11 @@ LATE_NO_TOOL="${FAKE_CLAUDE_LATE_NO_TOOL:-}"
 BACKGROUND_CMD="${FAKE_CLAUDE_BACKGROUND_CMD:-}"
 BACKGROUND_STARTED=''
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
+BIND_HOOK="${FAKE_CLAUDE_BIND_HOOK:-}"
+NESTED_HOOK="${FAKE_CLAUDE_NESTED_HOOK:-}"
+NESTED_SESSION_ID="${FAKE_CLAUDE_NESTED_SESSION_ID:-nested-session}"
+NESTED_TRANSCRIPT="${FAKE_CLAUDE_NESTED_TRANSCRIPT:-}"
+POST_NESTED_MS="${FAKE_CLAUDE_POST_NESTED_MS:-0}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
   mkdir -p "${FAKE_CLAUDE_JSONL_DIR}"
@@ -97,6 +111,12 @@ fi
 
 # Touch the JSONL file immediately so discoverSessionJsonl can find it
 touch "${JSONL_FILE}"
+
+# The provider's start event binds the worker's own id before any turn runs.
+if [[ -n "$BIND_HOOK" && -x "$BIND_HOOK" ]]; then
+  printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"SessionStart","source":"startup"}' \
+    "${SESSION_ID}" "${JSONL_FILE}" "$(pwd)" | bash "$BIND_HOOK"
+fi
 
 fire_hook() {
   if [[ -n "${FAKE_CLAUDE_HOOK:-}" && -x "${FAKE_CLAUDE_HOOK}" ]]; then
@@ -214,6 +234,16 @@ write_turn() {
   # Partial assistant entry (no stop_reason)
   printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Thinking..."}],"stop_reason":null},"uuid":"a1-%s","timestamp":"%s"}\n' \
     "$$" "$now" >> "$JSONL_FILE"
+
+  # A CLI the worker started finishes its own turn here. It inherited UMBEL_*
+  # and fires the same hook script under its own session id (umbel#118).
+  if [[ -n "$NESTED_HOOK" && -x "$NESTED_HOOK" ]]; then
+    printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"Stop"}' \
+      "${NESTED_SESSION_ID}" "${NESTED_TRANSCRIPT}" "$(pwd)" | bash "$NESTED_HOOK"
+    if [[ "$POST_NESTED_MS" -gt 0 ]]; then
+      sleep "$(echo "scale=3; $POST_NESTED_MS / 1000" | bc)"
+    fi
+  fi
 
   # Final assistant entry with end_turn
   printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"uuid":"a2-%s","timestamp":"%s"}\n' \
