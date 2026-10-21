@@ -23,8 +23,9 @@
 // umbel's own plumbing. The rule is stated, not inferred: only the `-c` form is
 // verified, so a provider that runs tool commands another way would report none.
 //
-// The listing is `ps -A -o pid=,ppid=,args=`. Quoting is lost by ps, so a path
-// containing spaces is split; the command name stays right for everything else.
+// A tool shell still running with nothing under it is running builtins, so the
+// shell itself is reported. The listing is `ps -A -o pid=,ppid=,args=`; ps
+// drops quoting, so an executable whose path holds a space is misnamed.
 
 export interface RunningCommand {
   pid: number;
@@ -55,14 +56,12 @@ function baseName(path: string): string {
   return slash === -1 ? path : path.slice(slash + 1);
 }
 
-// The process's command line, named by its executable rather than the ps
-// `comm` column: on macOS comm is truncated to 16 characters and can itself
-// contain a space, which makes it unusable as a name.
+// The executable's name and nothing else: arguments can carry a token, and a
+// conductor stores what status says. Taken from argv rather than the ps `comm`
+// column, which macOS truncates to 16 characters.
 function describe(p: Proc): string {
-  const [argv0, ...rest] = p.argv;
-  if (argv0 === undefined) return '?';
-  const text = [baseName(argv0), ...rest].join(' ');
-  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+  const argv0 = p.argv[0];
+  return argv0 === undefined ? '?' : baseName(argv0);
 }
 
 // `<shell> -c <command>`: the CLI asked a shell to run a command string. Hooks
@@ -99,14 +98,23 @@ export function runningCommands(psOutput: string, panePid: number): RunningComma
   }
 
   const found: RunningCommand[] = [];
-  const walk = (p: Proc, inToolShell: boolean): void => {
+  // Returns how many commands were found at or below p.
+  const walk = (p: Proc, inToolShell: boolean): number => {
     const shell = isCommandShell(p);
     if (inToolShell && !shell) {
       found.push({ pid: p.pid, command: describe(p) });
       // Everything below is part of this command, not a command of its own.
-      return;
+      return 1;
     }
-    for (const child of children.get(p.pid) ?? []) walk(child, inToolShell || shell);
+    let below = 0;
+    for (const child of children.get(p.pid) ?? []) below += walk(child, inToolShell || shell);
+    // A tool shell with nothing under it is running builtins (a while loop):
+    // the shell itself is the command.
+    if (shell && below === 0) {
+      found.push({ pid: p.pid, command: describe(p) });
+      return 1;
+    }
+    return below;
   };
 
   for (const worker of children.get(panePid) ?? []) walk(worker, false);

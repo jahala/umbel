@@ -18,13 +18,27 @@ describe('runningCommands', () => {
 
   test('a background sleep is named, and the shell that ran it is not', () => {
     expect(runningCommands(fixture('claude-background.ps'), PANE)).toEqual([
-      { pid: 18123, command: 'sleep 600' },
+      { pid: 18123, command: 'sleep' },
     ]);
+  });
+
+  // Arguments can carry a token, and the conductor stores what status says, so
+  // a command is named by its executable alone.
+  test('a command is named without its arguments', () => {
+    const ps = `${PANE} 1 bash launch.sh\n2 ${PANE} claude\n3 2 /bin/zsh -c curl\n4 3 /usr/bin/curl -H Authorization:secret https://x\n`;
+    expect(runningCommands(ps, PANE)).toEqual([{ pid: 4, command: 'curl' }]);
+  });
+
+  // A loop of shell builtins runs with no child process of its own; the tool
+  // shell still running is the command.
+  test('a tool shell running only builtins is reported as the shell', () => {
+    const ps = `${PANE} 1 bash launch.sh\n2 ${PANE} claude\n3 2 /bin/zsh -c while true; do :; done\n`;
+    expect(runningCommands(ps, PANE)).toEqual([{ pid: 3, command: 'zsh' }]);
   });
 
   test('the Stop hook and its own work are not commands the worker left running', () => {
     expect(runningCommands(fixture('claude-stop-hook.ps'), PANE)).toEqual([
-      { pid: 18123, command: 'sleep 600' },
+      { pid: 18123, command: 'sleep' },
     ]);
   });
 

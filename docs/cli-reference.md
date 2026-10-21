@@ -264,7 +264,7 @@ Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `que
 
 `awaitingProviderSince` (claude) is the timestamp of a model request the worker has sent and not yet answered. A slow model leaves the pane, the event log and the transcript still, so this field tells a worker waiting on the provider from one that is wedged. It clears when the answer lands. Absent when nothing is in flight, for a dead worker, and for providers whose transcript cannot say.
 
-`runningCommands` lists `{pid, command}` for each command the worker's CLI still has running in its pane, empty when none. A worker that started a long command in the background and ended its turn reports it here, so a caller knows the worktree may still be changing. Only commands the CLI started through a shell count; its own infrastructure, such as MCP servers, does not. One `ps` call is made per status, shared by every entry in the listing.
+`runningCommands` lists `{pid, command}` for each command the worker's CLI still has running in its pane, empty when none. `command` is the executable's name without its arguments, which can carry a token. A worker that started a long command in the background and ended its turn reports it here, so a caller knows the worktree may still be changing. Only commands the CLI started through a shell count; its own infrastructure, such as MCP servers, does not. One `ps` call is made per status, shared by every entry in the listing.
 
 A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInputReason: permission` instead of hanging silently. Avoid it by allowlisting your project's MCP (read-only) tools at spawn — and note that **`Write` does not imply `Edit`** (appending to a file uses `Edit`).
 

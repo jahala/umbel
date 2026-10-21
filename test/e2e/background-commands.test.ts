@@ -120,7 +120,7 @@ describe('a stopped worker that left a command running', () => {
     };
     expect(payload.reason).toBe('stop');
     expect(payload.runningCommands).toHaveLength(1);
-    expect(payload.runningCommands?.[0]?.command).toBe('sleep 30');
+    expect(payload.runningCommands?.[0]?.command).toBe('sleep');
 
     // The same answer from a separate `status` process, which reads the pane's
     // live process tree rather than anything the wait kept.
