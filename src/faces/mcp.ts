@@ -44,7 +44,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
   umbel_status:
-    "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands — the commands the CLI still has running in its pane (a background command it left behind), so a stopped worker's unfinished work is visible. Tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
+    'Inspect one session by name, or all if omitted: alive/dead, provider, cwd, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands (commands a stopped worker left running).',
   umbel_ls: 'List all sessions. Same as umbel_status with no name.',
   umbel_kill:
     'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
