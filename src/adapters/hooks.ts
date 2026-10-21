@@ -74,12 +74,15 @@ date +%s%N >> "$state/events/log"
 // to events/worker-session is what lets stop.sh and notify.sh tell the worker's
 // own hook from one a nested CLI fired. First writer wins: the binding exists
 // before any prompt, and replacing it later would hand the worker's identity to
-// whatever ran last.
+// whatever ran last. `bind.sh rebind` replaces it, for a CLI whose start event
+// only the worker can fire: a claude the worker starts has no umbel settings,
+// so every claude SessionStart is the worker's own, and /clear gives the
+// worker a new session id that must keep counting.
 export const BIND_HOOK_SCRIPT: string = `#!/usr/bin/env bash
 set -euo pipefail
 state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
-if [ -f "$state/events/worker-session" ]; then
+if [ "\${1:-}" != "rebind" ] && [ -f "$state/events/worker-session" ]; then
   exit 0
 fi
 payload=$(cat || true)
@@ -255,7 +258,7 @@ export function buildSettingsJson(opts: {
     hooksBlock.SessionStart = [
       {
         matcher: '',
-        hooks: [{ type: 'command', command: opts.bindScriptPath }],
+        hooks: [{ type: 'command', command: `${opts.bindScriptPath} rebind` }],
       },
     ];
   }

@@ -249,8 +249,9 @@ async function fire(
   scriptPath: string,
   sessionId: string,
   payload: object,
+  args: string[] = [],
 ): Promise<number | null> {
-  const proc = Bun.spawn(['bash', scriptPath], {
+  const proc = Bun.spawn(['bash', scriptPath, ...args], {
     env: { UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: sessionId },
     stdin: 'pipe',
     stdout: 'pipe',
@@ -285,7 +286,9 @@ describe('BIND_HOOK_SCRIPT and identity', () => {
     const commands = (obj.hooks?.SessionStart ?? []).flatMap((g) =>
       (g.hooks ?? []).map((h) => h.command),
     );
-    expect(commands).toContain(bind);
+    // Only the worker's own claude runs umbel's settings, so its SessionStart
+    // may rebind: /clear starts a new session id in the same worker.
+    expect(commands).toContain(`${bind} rebind`);
   });
 
   test('buildSettingsJson without a bind script has no SessionStart block', () => {
@@ -317,6 +320,19 @@ describe('BIND_HOOK_SCRIPT and identity', () => {
     const later = { session_id: 'ses_nested', hook_event_name: 'SessionStart' };
     expect(await fire(bindScriptPath, sessionId, later)).toBe(0);
     expect(await Bun.file(join(sessionEvents(sessionId), 'worker-session')).text()).toBe('ses_own');
+  });
+
+  test('bind.sh rebind replaces the id, for a CLI whose start event only the worker fires', async () => {
+    const env = await setup();
+    const { bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-cleared';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_before_clear' }, ['rebind']);
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_after_clear' }, ['rebind']);
+    expect(await Bun.file(join(sessionEvents(sessionId), 'worker-session')).text()).toBe(
+      'ses_after_clear',
+    );
   });
 
   test('stop.sh ignores a stop from another session once bound', async () => {
