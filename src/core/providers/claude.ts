@@ -209,11 +209,14 @@ function turnEndedIn(content: string): boolean {
 // a message's content and is not a new one. Verified against Claude Code
 // 2.1.306. Subagent transcripts carry no api-request entries, so a subagent's
 // own request is invisible here; the idle net's subagent writes are its only
-// sign of life.
+// sign of life. Lines are parsed from the end and only until one decides, since
+// status asks this of every live worker and a transcript can run to megabytes.
 function requestInFlightIn(content: string): string | undefined {
-  const entries = parseAllEntries(content);
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
+  const lines = content.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] ?? '';
+    if (line.trim().length === 0) continue;
+    const entry = parseLine(line);
     if (entry === null || typeof entry !== 'object') continue;
     const obj = entry as JsonObj;
     if (obj.type === 'assistant') return undefined;
