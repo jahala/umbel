@@ -48,9 +48,9 @@ export async function send(opts: SendOpts): Promise<SendResult> {
   const sinceMtime = await mtimeOrZero(join(eventsDir, 'stop'));
 
   // Snapshot the turn-start signal before typing, so only this prompt's turn
-  // can advance it.
+  // can advance it. The signal is the one the worker was launched with.
   const turnStartPath =
-    provider.turnStartEvent !== undefined ? join(eventsDir, provider.turnStartEvent) : undefined;
+    meta.turnStartEvent !== undefined ? join(eventsDir, meta.turnStartEvent) : undefined;
   const sinceTurnStart = turnStartPath !== undefined ? await mtimeOrZero(turnStartPath) : 0;
 
   await d.tmux.sendText(

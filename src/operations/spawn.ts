@@ -487,6 +487,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     createdAt: sinceMs,
     jsonlPath: null,
     baseUrl: workerEnvFinal.ANTHROPIC_BASE_URL ?? null,
+    turnStartEvent: provider.turnStartEvent,
   });
 
   try {

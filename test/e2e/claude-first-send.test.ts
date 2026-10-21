@@ -12,7 +12,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { killSession } from '../../src/adapters/tmux.ts';
@@ -131,5 +131,22 @@ describe('umbel spawn/send with claude — the first prompt lands, or the send f
       w.env,
     );
     expect(JSON.parse(waited.stdout.trim())).toMatchObject({ reason: 'stop' });
+  }, 60_000);
+
+  // A worker records the turn-start signal it was launched with. One spawned by
+  // an older umbel has no UserPromptSubmit hook, so checking it for a signal it
+  // never sends would fail every send to a healthy, long-lived worker.
+  test('send checks the signal the worker was launched with, not the one claude has today', async () => {
+    const w = await spawnClaude({ FAKE_CLAUDE_IGNORE_FIRST_ENTER: '1' });
+    const metaPath = join(w.env.UMBEL_STATE ?? '', 'sessions', w.name, 'meta.json');
+    const meta = JSON.parse(await readFile(metaPath, 'utf8')) as Record<string, unknown>;
+    expect(meta.turnStartEvent).toBe('turn-start');
+
+    delete meta.turnStartEvent;
+    await writeFile(metaPath, JSON.stringify(meta));
+    const sent = await runCli(['send', w.name, 'unchecked, as before'], w.env);
+
+    expect(sent.stderr).toBe('');
+    expect(sent.code).toBe(0);
   }, 60_000);
 });

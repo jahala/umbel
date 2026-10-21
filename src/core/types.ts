@@ -38,6 +38,11 @@ export const SessionSchema = z.object({
   // worker was launched with, or null. Non-secret routing info surfaced by
   // status so callers can confirm routing without a printenv round-trip.
   baseUrl: z.string().nullable().default(null),
+  // The events file the worker's hooks touch when a submitted prompt starts a
+  // turn, as launched (umbel#116, #121). send checks the signal the worker was
+  // spawned with: one spawned by an older umbel has no such hook, and checking
+  // it for one would fail every send to a healthy worker.
+  turnStartEvent: z.string().optional(),
 });
 
 export type Session = z.infer<typeof SessionSchema>;
