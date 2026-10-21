@@ -20,6 +20,7 @@ import {
   WorkerBlockedError,
 } from '../core/errors.ts';
 import { isValidSessionName } from '../core/id.ts';
+import type { RunningCommand } from '../core/procs.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { EnvValue } from '../core/types.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
@@ -201,6 +202,7 @@ function printStatusTable(entries: StatusEntry[]): void {
   const rows = entries.map((e) => ({
     name: e.name,
     status: statusWord(e),
+    running: String(e.runningCommands.length),
     model: e.model ?? '—',
     cwd: truncateCwd(e.cwd),
     created: formatTimestamp(e.createdAt),
@@ -211,6 +213,7 @@ function printStatusTable(entries: StatusEntry[]): void {
   const cols: Array<{ key: RowKey; header: string }> = [
     { key: 'name', header: 'NAME' },
     { key: 'status', header: 'STATUS' },
+    { key: 'running', header: 'RUNNING' },
     { key: 'model', header: 'MODEL' },
     { key: 'cwd', header: 'CWD' },
     { key: 'created', header: 'CREATED' },
@@ -528,6 +531,7 @@ async function verbWait(
       message?: string;
       exitCode?: number;
       paneSnapshot?: string;
+      runningCommands?: RunningCommand[];
     } = {
       reason: result.reason,
     };
@@ -539,6 +543,9 @@ async function verbWait(
     }
     if (result.exitCode !== undefined) {
       payload.exitCode = result.exitCode;
+    }
+    if (result.runningCommands !== undefined) {
+      payload.runningCommands = result.runningCommands;
     }
     // The last screen goes in the JSON, not only on stderr: a caller branching
     // on this object has nothing else to read, and when the worker died it is
@@ -563,6 +570,15 @@ async function verbWait(
   }
   if (result.reason === 'stop' && result.message !== undefined) {
     process.stderr.write(`umbel: ${result.message}\n`);
+  }
+  if (result.reason === 'stop' && result.runningCommands !== undefined) {
+    const count = result.runningCommands.length;
+    if (count > 0) {
+      const names = result.runningCommands.map((c) => c.command).join(', ');
+      process.stderr.write(
+        `umbel: session '${name}' stopped with ${count} command${count === 1 ? '' : 's'} still running: ${names}\n`,
+      );
+    }
   }
   if (result.reason === 'input' || result.reason === 'idle' || result.reason === 'provider-error') {
     const hasMsg = result.message !== undefined && result.message.length > 0;

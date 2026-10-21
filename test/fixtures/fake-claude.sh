@@ -41,6 +41,9 @@
 #                         someone else (tmux records the same wait status)
 #   FAKE_CLAUDE_SIGN_IN   optional, a file: print it and wait there, as a CLI with no
 #                         credentials opens on its sign-in screen and stays on it
+#   FAKE_CLAUDE_BACKGROUND_CMD optional, a shell command the worker starts once,
+#                         through `<shell> -c`, and leaves running across the turn
+#                         as a background Bash tool call does (e.g. `sleep 30`)
 
 set -euo pipefail
 
@@ -69,6 +72,8 @@ DIE_ON="${FAKE_CLAUDE_DIE_ON:-}"
 EXIT_CODE="${FAKE_CLAUDE_EXIT_CODE:-1}"
 LATE_FINAL_MS="${FAKE_CLAUDE_LATE_FINAL_MS:-0}"
 LATE_NO_TOOL="${FAKE_CLAUDE_LATE_NO_TOOL:-}"
+BACKGROUND_CMD="${FAKE_CLAUDE_BACKGROUND_CMD:-}"
+BACKGROUND_STARTED=''
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 
 if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
@@ -112,6 +117,14 @@ write_turn() {
   local prompt="$1"
   local now
   now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+  # The shell stays alive so the command remains a descendant of the worker, as
+  # Claude Code's Bash tool keeps its shell for a background command. Started
+  # once, so later turns still see it running until it ends.
+  if [[ -z "$BACKGROUND_STARTED" && -n "$BACKGROUND_CMD" ]]; then
+    BACKGROUND_STARTED=1
+    bash -c "$BACKGROUND_CMD & wait" &
+  fi
 
   # User message line
   printf '{"type":"human","message":{"role":"user","content":[{"type":"text","text":%s}]},"uuid":"u-%s","timestamp":"%s"}\n' \

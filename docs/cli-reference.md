@@ -220,6 +220,8 @@ The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `
 
 With `--json` the exit code is the same; the JSON carries the `reason` and `message`.
 
+A `stop` result also carries `runningCommands`, the commands the worker's CLI still has running in its pane at the stop: `[{pid, command}]`, empty when none. A turn can end while a command it started keeps running and writing into the worktree, so a stop is not a promise the worktree is quiet. Only commands the CLI started through a shell count; its own infrastructure (MCP servers it runs, for instance) and the Stop hook itself do not. A command that detaches from the tree, for example under `setsid`, cannot be seen. The listing is read once, at the stop, bounded at 5 seconds. When it cannot be read the field is absent.
+
 **Examples**
 
 ```bash
@@ -240,7 +242,7 @@ umbel wait reviewer --until pattern --pattern "All tests passed"
 
 ### status
 
-Show the status table for one or all sessions. Columns: NAME, STATUS (alive/dead), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
+Show the status table for one or all sessions. Columns: NAME, STATUS (alive/dead), RUNNING (commands the worker still has running), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
 
 ```
 umbel status [name] [--json]
@@ -261,6 +263,8 @@ umbel status [name] [--json]
 Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields. `needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
 
 `awaitingProviderSince` (claude) is the timestamp of a model request the worker has sent and not yet answered. A slow model leaves the pane, the event log and the transcript still, so this field tells a worker waiting on the provider from one that is wedged. It clears when the answer lands. Absent when nothing is in flight, for a dead worker, and for providers whose transcript cannot say.
+
+`runningCommands` lists `{pid, command}` for each command the worker's CLI still has running in its pane, empty when none. `command` is the executable's name without its arguments, which can carry a token. A worker that started a long command in the background and ended its turn reports it here, so a caller knows the worktree may still be changing. Only commands the CLI started through a shell count; its own infrastructure, such as MCP servers, does not. One `ps` call is made per status, shared by every entry in the listing.
 
 A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInputReason: permission` instead of hanging silently. Avoid it by allowlisting your project's MCP (read-only) tools at spawn — and note that **`Write` does not imply `Edit`** (appending to a file uses `Edit`).
 

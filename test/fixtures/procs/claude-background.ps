@@ -1,0 +1,14 @@
+# ps -A -o pid=,ppid=,args= after a claude worker started `sleep 600` with
+# the Bash tool's background option and ended its turn (umbel probe, 2026-10-21).
+# Claude runs tool commands through `<shell> -c <command>`: 18121 is that zsh,
+# 18123 the command it left running. The rest is the same idle infrastructure.
+16555 16553 bash /tmp/umbel-probe106-state.FjaF9U/hooks/launch.sh umbel-env-probe106 claude --settings {"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/tmp/um
+16579 16555 claude --settings {"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/tmp/umbel-probe106-state.FjaF9U/hooks/stop.sh"}]}],"Notification":[{"matcher":"
+16793 16579 node /opt/homebrew/bin/tilth --mcp --edit
+16794 16579 npm exec @playwright/mcp@latest   
+16795 16579 /Users/jahala/.local/bin/umbel mcp
+16801 16793 /opt/homebrew/lib/node_modules/tilth/bin/tilth --mcp --edit
+16848 16579 node /Users/jahala/.local/share/pollen/pollen.mjs
+16912 16794 node /Users/jahala/.npm/_npx/9833c18b2d85bc59/node_modules/.bin/playwright-mcp
+18121 16579 /bin/zsh -c source /Users/jahala/.claude/shell-snapshots/snapshot-zsh-1792612180494-2qqu3e.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/nu
+18123 18121 sleep 600
