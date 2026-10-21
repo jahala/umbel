@@ -159,6 +159,22 @@ describe('umbel wait --json --idle-timeout — wedged vs busy through the CLI', 
     expect(r.json.reason).toBe('stop');
     expect(r.code).toBe(0);
   }, 40_000);
+
+  test('an unanswered model request holds the idle net until the answer arrives', async () => {
+    // Nothing moves on the pane, in the events dir or in the transcript while
+    // the request is in flight. The idle net must read the transcript's
+    // unanswered api-request entry and keep waiting, then settle stop when the
+    // answer lands (umbel#117).
+    const w = await spawnCli('claude', { FAKE_CLAUDE_INFLIGHT_MS: '4000' });
+
+    const r = await sendAndWait(w, '1500ms');
+
+    expect(r.json.reason).toBe('stop');
+    expect(r.code).toBe(0);
+    // The silence outlasted the idle threshold: only the in-flight request
+    // kept the net from settling.
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(3500);
+  }, 40_000);
 });
 
 describe('the exit code 122 and the idle message are documented', () => {

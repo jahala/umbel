@@ -677,7 +677,14 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       const onDisk = (mtime: number): IdleSource['lastChangeAt'] =>
         mtime === 0 ? 'absent' : mtime;
 
-      const fileSources = async (poll: number): Promise<IdleSource[]> => {
+      const fileSources = async (
+        poll: number,
+      ): Promise<{
+        sources: IdleSource[];
+        meta: Session | undefined;
+        transcript: string | undefined;
+        transcriptMtime: number;
+      }> => {
         let meta: Session | undefined;
         try {
           meta = await d.fs.readMeta(name, env);
@@ -696,13 +703,46 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         ]);
         const unresolvedOr = (mtime: number): IdleSource['lastChangeAt'] =>
           transcript === undefined ? 'unresolved' : onDisk(mtime);
-        return [
-          { name: 'events', lastChangeAt: onDisk(events) },
-          { name: 'transcript', lastChangeAt: unresolvedOr(transcriptMtime) },
-          ...(subagentDir === undefined
-            ? []
-            : [{ name: 'subagents', lastChangeAt: unresolvedOr(subagentsMtime) }]),
-        ];
+        return {
+          sources: [
+            { name: 'events', lastChangeAt: onDisk(events) },
+            { name: 'transcript', lastChangeAt: unresolvedOr(transcriptMtime) },
+            ...(subagentDir === undefined
+              ? []
+              : [{ name: 'subagents', lastChangeAt: unresolvedOr(subagentsMtime) }]),
+          ],
+          meta,
+          transcript,
+          transcriptMtime,
+        };
+      };
+
+      // A model request in flight writes nothing until the answer arrives, so on
+      // a slow model or a large context the pane, the events dir and the
+      // transcript all stay still for minutes (umbel#117). Before reading that
+      // silence as a wedged worker, ask the provider whether its transcript
+      // holds an unanswered request. A transcript that has not changed cannot
+      // have answered, so the answer is reused until the file moves.
+      let inFlight: { key: string; since: string | undefined } | undefined;
+      const unansweredRequest = async (
+        meta: Session | undefined,
+        transcript: string | undefined,
+        transcriptMtime: number,
+      ): Promise<string | undefined> => {
+        const provider = meta === undefined ? undefined : PROVIDERS[meta.provider];
+        if (provider?.requestInFlight === undefined || transcript === undefined) return undefined;
+        const key = `${transcript}\0${transcriptMtime}`;
+        if (inFlight?.key === key) return inFlight.since;
+        let content: string;
+        try {
+          content = await readFile(transcript, 'utf8');
+        } catch {
+          // Unreadable this poll: nothing proves a request is in flight.
+          return undefined;
+        }
+        const since = provider.requestInFlight(content);
+        inFlight = { key, since };
+        return since;
       };
 
       const idlePollMs = Math.max(250, Math.min(2000, Math.floor(idleMs / 4)));
@@ -744,14 +784,25 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
             });
             return;
           }
-          const sources: IdleSource[] = [{ name: 'pane', lastChangeAt: paneChangedAt }, ...files];
+          const sources: IdleSource[] = [
+            { name: 'pane', lastChangeAt: paneChangedAt },
+            ...files.sources,
+          ];
           if ((stillForMs(sources, now) ?? 0) >= idleMs) {
-            settle({
-              stopped: false,
-              reason: 'idle',
-              message: formatIdleMessage(sources, now),
-              ...(pane !== '' ? { paneSnapshot: pane } : {}),
-            });
+            const since = await unansweredRequest(
+              files.meta,
+              files.transcript,
+              files.transcriptMtime,
+            );
+            if (settled) return;
+            if (since === undefined) {
+              settle({
+                stopped: false,
+                reason: 'idle',
+                message: formatIdleMessage(sources, now),
+                ...(pane !== '' ? { paneSnapshot: pane } : {}),
+              });
+            }
           }
         })();
       }, idlePollMs);

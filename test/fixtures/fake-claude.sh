@@ -9,6 +9,9 @@
 #   FAKE_CLAUDE_SUBAGENT_MS optional, ms a silent subagent runs: nothing on the pane,
 #                         one line every 300 ms to <transcript>/subagents/agent-fake.jsonl
 #   FAKE_CLAUDE_HANG_MS   optional, ms to hang mid-turn: nothing on the pane, nothing written
+#   FAKE_CLAUDE_INFLIGHT_MS optional, ms a model request stays in flight: writes the
+#                         api-request entry real claude writes as it sends, then
+#                         nothing until the answer lands
 #   FAKE_CLAUDE_PANE_MS   optional, ms to print a progress line to the pane every 500 ms
 #   FAKE_CLAUDE_ERROR     optional, print this line to the pane at the start of a turn
 #   FAKE_CLAUDE_EXIT_AT_START optional, exit with this status before printing or
@@ -58,6 +61,7 @@ ERROR_LINE="${FAKE_CLAUDE_ERROR:-}"
 DELAY="${FAKE_CLAUDE_DELAY:-0}"
 SUBAGENT_MS="${FAKE_CLAUDE_SUBAGENT_MS:-0}"
 HANG_MS="${FAKE_CLAUDE_HANG_MS:-0}"
+INFLIGHT_MS="${FAKE_CLAUDE_INFLIGHT_MS:-0}"
 PANE_MS="${FAKE_CLAUDE_PANE_MS:-0}"
 DIE_MS="${FAKE_CLAUDE_DIE_MS:-0}"
 DIE_SIGNAL="${FAKE_CLAUDE_DIE_SIGNAL:-}"
@@ -115,6 +119,14 @@ write_turn() {
     "$$" "$now" >> "$JSONL_FILE"
 
   [[ -n "$ERROR_LINE" ]] && echo "$ERROR_LINE"
+
+  # A request goes out: real claude writes an api-request entry as it sends,
+  # then nothing at all until the answer arrives, however long that takes.
+  if [[ "$INFLIGHT_MS" -gt 0 ]]; then
+    printf '{"type":"api-request","timestamp":"%s","querySource":"repl_main_thread","params":{"model":"fake"}}\n' \
+      "$now" >> "$JSONL_FILE"
+    sleep "$(echo "scale=3; $INFLIGHT_MS / 1000" | bc)"
+  fi
 
   # Dies mid-turn: nothing more on the transcript, no hook, so the only record
   # of the death is the pane and the status tmux keeps with it. The last line is
