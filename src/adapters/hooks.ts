@@ -46,6 +46,24 @@ date +%s%N >> "$state/events/log"
 `;
 
 // ---------------------------------------------------------------------------
+// TURN_START_HOOK_SCRIPT — claude accepted a submitted prompt
+// ---------------------------------------------------------------------------
+
+// The counterpart of the Stop hook. Claude's UserPromptSubmit event fires when
+// a prompt is submitted and a turn begins, so `send` can prove the prompt
+// landed instead of trusting that the keys reached the input box. It fires
+// immediately even when the prompt is queued onto a turn already running
+// (verified on 2.1.306). `send` snapshots this file's mtime before typing.
+export const TURN_START_HOOK_SCRIPT: string = `#!/usr/bin/env bash
+set -euo pipefail
+state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
+mkdir -p "$state/events"
+cat >/dev/null || true
+touch "$state/events/turn-start"
+date +%s%N >> "$state/events/log"
+`;
+
+// ---------------------------------------------------------------------------
 // NOTIFY_HOOK_SCRIPT — fired when the worker is BLOCKED waiting on the user
 // ---------------------------------------------------------------------------
 
@@ -236,6 +254,9 @@ export function buildSettingsJson(opts: {
   permissionMode?: string;
   unattended?: boolean;
   statusLineScriptPath?: string;
+  // claude's UserPromptSubmit hook: touches events/turn-start when a submitted
+  // prompt begins a turn (see TURN_START_HOOK_SCRIPT).
+  turnStartScriptPath?: string;
 }): string {
   const hooksBlock: Record<string, unknown> = {
     Stop: [
@@ -260,6 +281,13 @@ export function buildSettingsJson(opts: {
         matcher: '',
         hooks: [{ type: 'command', command: `${opts.bindScriptPath} rebind` }],
       },
+    ];
+  }
+
+  if (opts.turnStartScriptPath !== undefined) {
+    // No matcher: UserPromptSubmit has no tool to match on.
+    hooksBlock.UserPromptSubmit = [
+      { hooks: [{ type: 'command', command: opts.turnStartScriptPath }] },
     ];
   }
 
@@ -320,6 +348,7 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   notifyScriptPath: string;
   bindScriptPath: string;
   statusLineScriptPath: string;
+  turnStartScriptPath: string;
   launchScriptPath: string;
   streamScriptPath: string;
 }> {
@@ -342,6 +371,10 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
   await writeFile(statusLineScriptPath, STATUSLINE_SCRIPT, { encoding: 'utf8' });
   await chmod(statusLineScriptPath, 0o755);
 
+  const turnStartScriptPath = join(hooksDir, 'turn-start.sh');
+  await writeFile(turnStartScriptPath, TURN_START_HOOK_SCRIPT, { encoding: 'utf8' });
+  await chmod(turnStartScriptPath, 0o755);
+
   const launchScriptPath = join(hooksDir, 'launch.sh');
   await writeFile(launchScriptPath, EXEC_WRAPPER_SCRIPT, { encoding: 'utf8' });
   await chmod(launchScriptPath, 0o755);
@@ -355,6 +388,7 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
     notifyScriptPath,
     bindScriptPath,
     statusLineScriptPath,
+    turnStartScriptPath,
     launchScriptPath,
     streamScriptPath,
   };

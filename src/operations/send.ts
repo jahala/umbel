@@ -38,30 +38,19 @@ export async function send(opts: SendOpts): Promise<SendResult> {
   const meta = await d.fs.readMeta(opts.name, env);
   const provider = getProvider(meta.provider);
 
-  // Verify the worker is alive. Its pane answers that, not its session: with
-  // remain-on-exit the session outlives the worker, so a send to a corpse would
-  // otherwise be accepted and silently go nowhere.
-  const pane = await d.tmux.paneState(opts.name, env);
-  if (!pane.exists) {
-    throw new SessionDeadError(opts.name, 'tmux session not found');
-  }
-  if (pane.dead) {
-    throw new SessionDeadError(
-      opts.name,
-      pane.exitCode !== undefined
-        ? `worker exited with status ${pane.exitCode}`
-        : 'worker exited without a status (killed by a signal)',
-    );
-  }
+  // Verify the worker is alive before typing. Its pane answers that, not its
+  // session: with remain-on-exit the session outlives the worker, so a send to
+  // a corpse would otherwise be accepted and silently go nowhere.
+  await assertAlive(d, opts.name, env);
 
   // Snapshot mtime of events/stop before send (0 if absent)
   const eventsDir = d.fs.eventsDir(opts.name, env);
   const sinceMtime = await mtimeOrZero(join(eventsDir, 'stop'));
 
   // Snapshot the turn-start signal before typing, so only this prompt's turn
-  // can advance it.
+  // can advance it. The signal is the one the worker was launched with.
   const turnStartPath =
-    provider.turnStartEvent !== undefined ? join(eventsDir, provider.turnStartEvent) : undefined;
+    meta.turnStartEvent !== undefined ? join(eventsDir, meta.turnStartEvent) : undefined;
   const sinceTurnStart = turnStartPath !== undefined ? await mtimeOrZero(turnStartPath) : 0;
 
   await d.tmux.sendText(
@@ -99,8 +88,9 @@ async function mtimeOrZero(path: string): Promise<number> {
 // ---------------------------------------------------------------------------
 
 const TURN_START_POLL_MS = 200;
-// opencode reports busy as soon as the prompt is submitted. A prompt that
-// started nothing in this window never reached the input box.
+// opencode reports busy as soon as the prompt is submitted; claude's
+// UserPromptSubmit fires at submit. A prompt that started nothing in this
+// window never reached the input box.
 const TURN_START_TIMEOUT_MS = 10_000;
 
 async function confirmTurnStarted(
@@ -113,11 +103,37 @@ async function confirmTurnStarted(
   const deadline = Date.now() + TURN_START_TIMEOUT_MS;
   for (;;) {
     if ((await mtimeOrZero(path)) > sinceMtime) return;
+    // A worker that died in the window did not lose the prompt; report the
+    // death. Checked after the signal, so a turn that began before the worker
+    // ended still counts as started.
+    await assertAlive(d, name, env);
     if (Date.now() >= deadline) {
       const pane = await d.tmux.capturePane(name, 40, env);
       throw new SendTurnNotStartedError(name, pane, TURN_START_TIMEOUT_MS);
     }
     await Bun.sleep(TURN_START_POLL_MS);
+  }
+}
+
+async function assertAlive(
+  d: Pick<Deps, 'tmux'>,
+  name: string,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  // Liveness comes from the worker's pane, not its session: with
+  // remain-on-exit the session outlives the worker, so a send to a corpse would
+  // otherwise be accepted and silently go nowhere.
+  const pane = await d.tmux.paneState(name, env);
+  if (!pane.exists) {
+    throw new SessionDeadError(name, 'tmux session not found');
+  }
+  if (pane.dead) {
+    throw new SessionDeadError(
+      name,
+      pane.exitCode !== undefined
+        ? `worker exited with status ${pane.exitCode}`
+        : 'worker exited without a status (killed by a signal)',
+    );
   }
 }
 

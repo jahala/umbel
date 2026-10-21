@@ -117,6 +117,7 @@ A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEn
 - `buildLaunch` → `bin: 'claude', args: ['--settings', JSON, '--model', model]`. No `--session-id`: the CLI picks the transcript filename and the Stop payload reports `transcript_path`. The settings JSON registers `Stop`, `SessionStart` (`bind.sh`) and optionally `Notification`.
 - `files: []` — Claude supports inline `--settings`, no scratch files needed
 - `stopEventName: 'Stop'`
+- `turnStartEvent: 'turn-start'` — the `UserPromptSubmit` hook (`turn-start.sh`) touches it when a submitted prompt begins a turn, so `send` fails instead of reporting a lost prompt as sent. `submitDelayMs: 750` separates the paste from the submitting Enter, because claude can read them as one stream while startup settles (umbel#121)
 - `parseTranscript`: walks backward from end of JSONL, finds last assistant index, joins consecutive assistant entries (handles thinking + text blocks; per real-claude trace findings)
 - Trust dialog auto-dismiss via `isRealClaudeBin` gate
 - Custom endpoints: pointing `ANTHROPIC_BASE_URL`/`AUTH_TOKEN`/`MODEL` (via the env passthrough) at any Anthropic-compatible API (DeepSeek, OpenRouter, local) runs that model under Claude Code's harness — the **second** model-agnostic lane alongside OpenCode, API-billed not subscription. Not a new provider: same binary, hooks, transcript.

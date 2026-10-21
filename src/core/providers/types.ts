@@ -110,6 +110,8 @@ export interface AgentProvider {
     // absolute path to our statusline.sh — captures the provider's status
     // payload (subscription rate limits) as state instead of pane text.
     statusLineScriptPath?: string;
+    // absolute path to our turn-start.sh — claude's UserPromptSubmit hook.
+    turnStartScriptPath?: string;
     model?: string;
     allowedTools?: string;
     permissionMode?: string;

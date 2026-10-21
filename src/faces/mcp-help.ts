@@ -13,7 +13,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 ## spawn → send → wait → read → kill
 
 - spawn: starts a tmux session running the provider TUI; returns the session name.
-- send: types the prompt via tmux paste-buffer and confirms a turn started (opencode: up to 10s on events/turn-start, error if it never does). Does NOT wait for the turn to finish.
+- send: types the prompt via tmux paste-buffer and confirms a turn started (opencode and claude: up to 10s on events/turn-start, error if it never does). Does NOT wait for the turn to finish.
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
 - kill: tears down the tmux session and leaves its directory as a tombstone (events/dead, logs, transcript). Pass purge=true to remove it.
@@ -158,6 +158,7 @@ OpenCode is NOT subscription-billed — it is: local (ollama/…, free), free-ti
 Claude (\`provider: claude\`)
 - Hook config delivered inline via \`--settings '<json>'\` (no file write).
 - stopEventName: "Stop". Trust dialog auto-dismissed on first launch in a fresh cwd.
+- A UserPromptSubmit hook touches events/turn-start, so send proves the prompt began a turn. send pauses 750 ms between the paste and the Enter, which keeps claude from swallowing the Enter while its startup work settles (umbel#121).
 - Flags: --model <name>, --allowedTools "Read,Write,...".
 - Custom endpoint: target any Anthropic-compatible API (DeepSeek, OpenRouter, local proxy) by giving the worker ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL (+ ANTHROPIC_SMALL_FAST_MODEL for background calls) — via inherited env (a claude worker inherits ANTHROPIC_* and CLAUDE_CONFIG_DIR), --env / env:, or {fromEnv} references (resolved from the umbel server's env, so a secret never enters the caller's transcript). Use AUTH_TOKEN not API_KEY: umbel drops an inherited ANTHROPIC_API_KEY when a custom AUTH_TOKEN is set (else it shadows the endpoint and wedges the worker on the "use this key?" prompt). Same hooks/transcript — still Claude Code, a different brain. Billed per-token by that endpoint, NOT a Claude subscription. status reports the effective baseUrl.
 
