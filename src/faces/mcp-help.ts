@@ -13,7 +13,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 ## spawn → send → wait → read → kill
 
 - spawn: starts a tmux session running the provider TUI; returns the session name.
-- send: enqueues a prompt via tmux paste-buffer. Returns immediately. Does NOT wait.
+- send: types the prompt via tmux paste-buffer and confirms a turn started (opencode: up to 10s on events/turn-start, error if it never does). Does NOT wait for the turn to finish.
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
 - kill: tears down the tmux session and leaves its directory as a tombstone (events/dead, logs, transcript). Pass purge=true to remove it.
@@ -176,7 +176,8 @@ OpenCode (\`provider: opencode\`)
 - opencode.jsonc is read as JSONC and edited in place: umbel inserts only its plugin entry and preserves every other byte, comments included. A file that already has the entry is not written.
 - An unparsable opencode.jsonc refuses the spawn (exit 1) naming file, line and column, and the file is left untouched.
 - No JSONL transcript (SQLite only). Output read via \`opencode export <sessionID>\`.
-- stopEventName: "session.status" idle (plugin-based).
+- stopEventName: "session.status" idle (plugin-based). The plugin also touches events/turn-start on session.status busy, so send proves the prompt started a turn.
+- Launched with OPENCODE_DISABLE_AUTOUPDATE=1: the autoupdate modal holds the keyboard and used to swallow the first prompt sent after spawn (umbel#116). send still exits non-zero if no turn starts within 10s, so a lost prompt is never reported as sent.
 - Model flag: -m provider/model, checked against \`opencode models\` at spawn; an unlisted model refuses the spawn (exit 2) before a worker exists. Examples: opencode/big-pickle (free keyless Zen), ollama/qwen2.5-coder (local), openrouter/deepseek/deepseek-v4-flash (cloud, needs your OPENROUTER_API_KEY).
 - An opencode worker inherits only OPENCODE_CONFIG* from umbel's env; pass any other key by reference ({fromEnv}, or --env NAME on the CLI). umbel does not manage keys.
 

@@ -233,6 +233,13 @@ export interface AgentProvider {
   // when the TUI takes the first Enter reliably.
   readonly pendingInputMatch?: RegExp;
 
+  // Optional: a file in the session's events dir that this provider's hook
+  // touches when a submitted prompt starts a turn (opencode: session.status
+  // busy, umbel#116). send snapshots its mtime before typing and fails, rather
+  // than reporting success, when the mtime does not advance. This catches a TUI
+  // that took the paste and Enter into something other than its input box.
+  readonly turnStartEvent?: string;
+
   // For providers without hook lifecycle (aider): anchor-string fallback.
   // Mutually exclusive with hook-based completion; the operations layer
   // checks this field to choose its wait strategy.

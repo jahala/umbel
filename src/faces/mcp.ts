@@ -40,7 +40,8 @@ Lifecycle: spawn → send → wait → read → (loop or kill). umbel_send does 
 export const TOOL_DESCRIPTIONS = {
   umbel_spawn:
     'Spawn a worker. `provider` selects claude/codex/gemini/opencode. Returns the session name to pass to other verbs.',
-  umbel_send: 'Send a prompt to a session. Returns immediately — pair with umbel_wait.',
+  umbel_send:
+    'Send a prompt to a session and confirm a turn started (opencode may take up to 10s; error if no turn starts). Does not wait for the turn — pair with umbel_wait.',
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
   umbel_status:

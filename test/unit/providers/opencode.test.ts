@@ -3,6 +3,7 @@ import {
   OpenCodeProvider,
   opencodePluginShouldFire,
   opencodePluginShouldFireNotification,
+  opencodePluginShouldFireTurnStart,
   PLUGIN_SOURCE,
 } from '../../../src/core/providers/opencode.ts';
 
@@ -194,9 +195,9 @@ describe('OpenCodeProvider.buildLaunch', () => {
     expect(spec.files).toEqual([]);
   });
 
-  test('env is empty object', () => {
+  test('disables the autoupdate check that opens a modal over the input box', () => {
     const spec = OpenCodeProvider.buildLaunch(baseOpts);
-    expect(spec.env).toEqual({});
+    expect(spec.env).toEqual({ OPENCODE_DISABLE_AUTOUPDATE: '1' });
   });
 
   test('without model, args is empty', () => {
@@ -229,6 +230,10 @@ describe('OpenCodeProvider static fields', () => {
 
   test('stopEventName is "session.status"', () => {
     expect(OpenCodeProvider.stopEventName).toBe('session.status');
+  });
+
+  test('turnStartEvent is "turn-start", written when a submitted prompt starts a turn', () => {
+    expect(OpenCodeProvider.turnStartEvent).toBe('turn-start');
   });
 
   test('startupDialogs is an empty array', () => {
@@ -291,6 +296,28 @@ describe('opencodePluginShouldFire (plugin env-gating)', () => {
   });
 });
 
+describe('opencodePluginShouldFireTurnStart (the prompt started a turn)', () => {
+  const busy = { type: 'session.status', properties: { status: { type: 'busy' } } };
+  const umbelEnv = { UMBEL_STATE: '/tmp/state', UMBEL_SESSION_ID: 'sess1' };
+
+  test('fires on session.status busy under umbel', () => {
+    expect(opencodePluginShouldFireTurnStart(busy, umbelEnv)).toBe(true);
+  });
+
+  test('does NOT fire on idle (that is the stop signal)', () => {
+    const idle = { type: 'session.status', properties: { status: { type: 'idle' } } };
+    expect(opencodePluginShouldFireTurnStart(idle, umbelEnv)).toBe(false);
+  });
+
+  test("does NOT fire during the user's own opencode use (no umbel env)", () => {
+    expect(opencodePluginShouldFireTurnStart(busy, {})).toBe(false);
+  });
+
+  test('does not throw on a malformed event', () => {
+    expect(opencodePluginShouldFireTurnStart({}, umbelEnv)).toBe(false);
+  });
+});
+
 describe('opencodePluginShouldFireNotification (permission detection)', () => {
   const umbelEnv = { UMBEL_STATE: '/tmp/state', UMBEL_SESSION_ID: 'sess1' };
 
@@ -311,6 +338,13 @@ describe('opencodePluginShouldFireNotification (permission detection)', () => {
 
   test('does not throw on a malformed event', () => {
     expect(opencodePluginShouldFireNotification({}, umbelEnv)).toBe(false);
+  });
+});
+
+describe('PLUGIN_SOURCE turn-start handler', () => {
+  test('writes events/turn-start on session.status busy', () => {
+    expect(PLUGIN_SOURCE).toContain('"busy"');
+    expect(PLUGIN_SOURCE).toContain('"turn-start"');
   });
 });
 

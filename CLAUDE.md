@@ -126,6 +126,11 @@ Each provider lives in `src/core/providers/<name>.ts` and contributes a `buildLa
 - Hook config delivered via `<cwd>/.gemini/settings.json`.
 - `stopEventName: 'AfterAgent'` (not `Stop`). `matcher: "*"`, timeout in ms (Codex uses seconds).
 
+**OpenCode** (`opencode`)
+- Hook delivery: a global JS plugin (`PLUGIN_SOURCE`) installed once into the user's opencode config (`$XDG_CONFIG_HOME/opencode/opencode.jsonc`), inert without `UMBEL_STATE`/`UMBEL_SESSION_ID`. On `session.status` busy it touches `events/turn-start`; on idle it writes `events/session-id` and touches `events/stop`; on `permission.updated` it appends `events/notification`. The transcript is read via `opencode export <sessionID>`; there is no JSONL.
+- Launched with `OPENCODE_DISABLE_AUTOUPDATE=1`. The autoupdate check opens a modal seconds after launch that holds the keyboard; the first prompt typed at it reached no input box and no turn started, while `send` reported success (umbel#116). `turnStartEvent: 'turn-start'` makes `send` wait up to 10 s for the busy signal and exit 1 when no turn begins, so a lost prompt is never reported as sent.
+- `readyMatch: /Ask anything\.\.\.|Build · /`; an unlisted `--model` refuses the spawn (checked against `opencode models`).
+
 ## Open questions (verify before baking — see docs/architecture-v3.md §14)
 
 If you encounter behavior that contradicts the design, STOP and update the architecture doc before working around it.

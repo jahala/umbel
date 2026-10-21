@@ -10,6 +10,7 @@ import {
   ProviderNotSignedInError,
   ProviderUnknownError,
   SendNotSubmittedError,
+  SendTurnNotStartedError,
   SessionDeadError,
   SessionNotCreatedError,
   SessionNotFoundError,
@@ -248,6 +249,7 @@ function errorExitCode(err: unknown): number {
   if (
     err instanceof SessionDeadError ||
     err instanceof SendNotSubmittedError ||
+    err instanceof SendTurnNotStartedError ||
     err instanceof TmuxError ||
     err instanceof HookTimeoutError ||
     err instanceof SessionNotFoundError ||

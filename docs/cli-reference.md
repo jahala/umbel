@@ -66,6 +66,8 @@ A CLI with no credentials opens on its sign-in screen and waits there for a pers
 
 Before returning, `spawn` waits for the worker to be ready and dismisses the provider's startup dialogs (workspace trust, hook review, update notice) as they appear. Ready means the provider's idle prompt line is on the pane with no dialog pending. For providers that declare a settle window (codex: 1.5 s), the pane must also stay unchanged for that window, because codex keeps redrawing its banner and can raise the trust dialog seconds after the prompt line first appears. A dialog that arrives during the settle is still dismissed. Dialogs are matched on the visible screen, never on scrollback, so a dialog already answered is not answered again. codex is also started with its working directory trusted, so a directory it has never seen (a new worktree) opens without the trust dialog.
 
+An opencode worker is launched with `OPENCODE_DISABLE_AUTOUPDATE=1`. opencode's autoupdate check runs after launch and opens a modal that holds the keyboard until it is answered; a prompt sent while it is up lands on the modal and no turn starts (umbel#116).
+
 `--provider` is only valid on `spawn` and `-p`. For `send`, `wait`, `read`, `kill`, `status`, `ls`, `attach`, `capture`, and `logs`, the provider is looked up automatically from `meta.json` — no `--provider` flag is accepted.
 
 **Examples**
@@ -123,7 +125,7 @@ The keyless opencode models are a free lane, and they are slow: fine for a probe
 
 ### send
 
-Send a prompt to an existing session. The session must be alive. This only dispatches the text; it does not wait for a response. Use `umbel wait` after.
+Send a prompt to an existing session. The session must be alive. This dispatches the text and confirms a turn began; it does not wait for the response. Use `umbel wait` after.
 
 ```
 umbel send [--json] <name> <prompt>
@@ -145,6 +147,8 @@ umbel send [--json] <name> <prompt>
 Multi-line prompts are handled automatically via `tmux load-buffer` + `paste-buffer` (see `src/adapters/tmux.ts`).
 
 `send` returns once the worker has taken the prompt. After the submitting Enter it re-reads the pane. For a provider that shows pending input (codex: `[Pasted Content N chars]` in its input box), while that input is still pending after a short grace, `send` presses Enter again, at most three times. If the input is still pending after that, `send` exits 1 with a message naming the session and the pending input line, and types nothing more. The worker is left alive: inspect it with `umbel capture`, then retry or kill it.
+
+A provider that can lose the paste outright declares a turn-start signal. For opencode, the plugin touches `events/turn-start` when `session.status` turns `busy`, which happens when a submitted prompt starts a turn. `send` snapshots that file before typing and waits up to 10 s for it to advance. If no turn starts, `send` exits 1 naming the session and types nothing more. The worker is left alive. opencode 1.18.18 lost the first prompt this way because its autoupdate modal opened over the TUI and held the keyboard, so opencode workers are launched with `OPENCODE_DISABLE_AUTOUPDATE=1` (umbel#116).
 
 **Examples**
 
