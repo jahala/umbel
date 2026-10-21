@@ -26,11 +26,11 @@
 ## Architecture layers (strict downward dependency)
 
 ```
-faces/             cli  |  mcp  |  workflow  |  -p          ← side-effecty user surfaces
-operations/        spawn  send  wait  status  kill          ← composition of adapters
-adapters/          tmux  fs-state  hooks  fs-watch  jsonl   ← thin I/O wrappers
-core/              types  errors  wait  workflow  id        ← pure
-core/providers/    types  claude  codex  gemini  registry   ← pure provider abstraction
+faces/             cli  |  mcp  |  workflow  |  -p                ← side-effecty user surfaces
+operations/        spawn  send  wait  status  kill                ← composition of adapters
+adapters/          tmux  fs-state  hooks  fs-watch  jsonl  procs  ← thin I/O wrappers
+core/              types  errors  wait  workflow  id              ← pure
+core/providers/    types  claude  codex  gemini  registry         ← pure provider abstraction
 ```
 
 Adapters are injected into operations. Operations are called by faces. Providers are looked up by `name` from `core/providers/registry.ts`. **Nothing reaches across layers.**
@@ -88,6 +88,8 @@ The stop precedes the handback. Claude fires its Stop hook before it writes the 
 Liveness fallback: a worker can die mid-turn (crash / non-zero exit) without ever firing the hook, so `events/stop` would never advance. `waitFor` polls `tmux has-session` and, when the session vanishes with the condition still unmet, returns `reason: 'dead'` instead of blocking until the timeout (previously a 30-min hang). The real condition is always evaluated *before* the liveness probe, so a turn that fired stop and then exited still resolves as `stop`.
 
 Deadlines outlive tmux (umbel#98). `waitFor` evaluates its deadline inside `check()`, and `check()` awaits tmux calls, so a tmux that stops answering used to hold a wait past its timeout. Every tmux client now runs through `runTmux` in `adapters/tmux.ts`, bounded at `TMUX_CALL_TIMEOUT_MS`. The bound is on the wait for its output, not only on the process, because a killed client can leave a child holding the pipe. The wait's deadline also settles on its own timer `DEADLINE_GRACE_MS` past the deadline, with the last pane seen alive. Never add a tmux spawn outside `runTmux`, and never put an unbounded await between a deadline and its settle.
+
+A stop is not a promise the worktree is quiet (umbel#106). A turn can end while a command it started, a background Bash call for example, keeps running under the worker's CLI, so a caller that runs a gate at the stop reads a half-written tree. `runningCommands` in `core/procs.ts` filters the pane's process tree to commands the CLI started through a shell (`<shell> -c`, how Claude's Bash tool runs them); the CLI's own children (MCP servers, `caffeinate`) and the Stop hook itself are not counted. `wait` reads it once at the stop, and `status` reads it per entry with one shared `ps` call, both through `adapters/procs.ts` injected in `Deps`. Only the `-c` form is verified against real claude; another provider whose command runner differs may report none.
 
 Needs-input detection (the inverse keystone): a worker blocked on a prompt (a permission ask, or idle) is *alive* and has *not* fired stop, so it would hang to the timeout. A second global hook `notify.sh` (`NOTIFY_HOOK_SCRIPT`) touches `events/notification` on those events; `waitFor` watches it and settles `reason: 'input'` with the prompt message, so the caller can `send` an answer and `wait` again — the ping. Each provider registers its equivalent, all verified against the installed binary: Claude `Notification` (`permission_prompt` + `idle_prompt` in `buildSettingsJson`), Codex `PermissionRequest` (in the global `$CODEX_HOME/hooks.json`), Gemini `Notification`/`ToolPermission` (`.gemini/settings.json`), OpenCode `permission.updated` (plugin event — `permission.asked` is v2-only). The opt-in pane-activity idle net (`waitFor`'s `idleTimeoutMs` → `reason: 'idle'`) is the universal backstop for a flaky or missing hook (none of the four exposes an *idle* event). A model request in flight is not stillness: claude writes an `api-request` entry as it sends and the answer as following `assistant` entries, so the net holds while one is unanswered, and `status` reports `awaitingProviderSince` (umbel#117). `events/notification` is append-only JSONL (one line per hook fire); `core/notification.ts` classifies the latest line, so `umbel_status` exposes `needsInput` + `needsInputReason` (permission/idle/question) + `pendingTool` (and `umbel status --json` serves non-MCP watchers) — disambiguating a worker blocked on a prompt from one that's merely done-and-idle. `waitFor` settles `reason: 'input'` only for awaiting types; informational pings (`auth_success`, elicitation completion) are ignored. A per-worker reliability primitive — orchestration stays with the caller.
 

@@ -258,6 +258,9 @@ export interface PaneState {
   exitCode?: number;
   // The signal that killed the process, as tmux names it ('term', 'kill').
   signal?: string;
+  // The pane's own process (the launch wrapper), when the pane is alive. Its
+  // children are the worker CLI and whatever the CLI left running (#106).
+  pid?: number;
 }
 
 export async function paneState(
@@ -273,7 +276,7 @@ export async function paneState(
         '-t',
         prefixed(name),
         '-F',
-        '#{pane_dead} #{pane_dead_status} #{pane_dead_signal}',
+        '#{pane_dead} #{pane_dead_status} #{pane_dead_signal} #{pane_pid}',
       ],
       env,
     );
@@ -289,7 +292,10 @@ export async function paneState(
   // order, where without it tmux answers for the CURRENT window only. A worker
   // has tmux in its own environment and can open a window of its own; that
   // window's live pane would otherwise report the dead worker as running.
-  const [deadFlag = '', status = '', signal = ''] = (stdout.split('\n')[0] ?? '').split(' ');
+  const [deadFlag = '', status = '', signal = '', pidText = ''] = (
+    stdout.split('\n')[0] ?? ''
+  ).split(' ');
+  const pid = Number.parseInt(pidText, 10);
   const dead = deadFlag === '1';
   const exitCode = Number.parseInt(status, 10);
   return {
@@ -297,6 +303,7 @@ export async function paneState(
     dead,
     ...(dead && Number.isInteger(exitCode) ? { exitCode } : {}),
     ...(dead && signal !== '' ? { signal } : {}),
+    ...(!dead && Number.isInteger(pid) ? { pid } : {}),
   };
 }
 

@@ -51,7 +51,7 @@ Three faces, one engine, multiple providers:
 ├──────────────────────────────────────────────────────────────┤
 │  operations/  spawn  send  wait  status  kill  resolve-jsonl │  ← composition
 ├──────────────────────────────────────────────────────────────┤
-│  adapters/   tmux  fs-state  hooks  fs-watch  jsonl          │  ← I/O wrappers
+│  adapters/   tmux  fs-state  hooks  fs-watch  jsonl  procs   │  ← I/O wrappers
 ├──────────────────────────────────────────────────────────────┤
 │  core/       types  errors  wait  workflow  id               │  ← pure
 │  core/providers/  types  claude  codex  gemini  index        │  ← NEW: provider abstraction

@@ -41,8 +41,10 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 
 ## Wait outcomes (the \`reason\` field in the result)
 
-umbel_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
-  stop   → turn complete; umbel_read the result.
+umbel_wait returns { reason, message?, paneSnapshot?, runningCommands? }. Branch on reason:
+  stop   → turn complete; umbel_read the result. \`runningCommands\` lists any command
+           the CLI still has running in its pane (a background command the turn left
+           behind): a stop is not a promise the worktree is quiet. Empty when none.
   input  → the worker is BLOCKED on a prompt (a permission ask, or idle). \`message\`
            is the question — answer it with umbel_send ("1", "yes", or a
            clarification), then umbel_wait again. This is the ping: you do NOT hang
@@ -54,7 +56,7 @@ umbel_wait returns { reason, message?, paneSnapshot? }. Branch on reason:
   dead   → the worker exited without finishing. Respawn or fail.
   timeout→ hard deadline hit; paneSnapshot shows the stuck pane.
 
-For poll-style control of a fleet, umbel_status carries needsInput + needsInputReason (permission/idle/question) per worker — the same disambiguation without a blocking wait. It also carries awaitingProviderSince (claude) when the worker has a model request out and unanswered: a slow provider, not a wedged worker. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
+For poll-style control of a fleet, umbel_status carries needsInput + needsInputReason (permission/idle/question) and runningCommands per worker — the same disambiguation without a blocking wait. It also carries awaitingProviderSince (claude) when the worker has a model request out and unanswered: a slow provider, not a wedged worker. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
 
 ## Interrupt discipline
 

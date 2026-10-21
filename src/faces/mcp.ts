@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { SessionDeadError } from '../core/errors.ts';
+import type { RunningCommand } from '../core/procs.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import { truncateAssistantText } from '../core/truncate.ts';
 import type { ProviderName } from '../core/types.ts';
@@ -43,7 +44,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
   umbel_status:
-    "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, and needsInput + needsInputReason (permission/idle/question) — tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
+    "Inspect one session by name, or all if omitted. Shows alive/dead, provider, cwd, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands — the commands the CLI still has running in its pane (a background command it left behind), so a stopped worker's unfinished work is visible. Tells a worker blocked on a prompt from one that's done-and-idle, without scraping the pane.",
   umbel_ls: 'List all sessions. Same as umbel_status with no name.',
   umbel_kill:
     'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
@@ -191,11 +192,15 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         message?: string;
         exitCode?: number;
         paneSnapshot?: string;
+        runningCommands?: RunningCommand[];
       } = { reason: result.reason };
       if (result.inputReason !== undefined) payload.inputReason = result.inputReason;
       if (result.message !== undefined) payload.message = result.message;
       if (result.exitCode !== undefined) payload.exitCode = result.exitCode;
       if (result.paneSnapshot !== undefined) payload.paneSnapshot = result.paneSnapshot;
+      if (result.runningCommands !== undefined) {
+        payload.runningCommands = result.runningCommands;
+      }
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
       };

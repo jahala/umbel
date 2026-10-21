@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
+import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import { parseQuota, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
@@ -30,6 +31,11 @@ export interface StatusEntry extends Session {
   // still, so this is what tells it from a wedged worker (umbel#117). Absent
   // when nothing is in flight, or when the provider's transcript cannot say.
   awaitingProviderSince?: string;
+  // Commands the worker's CLI still has running in its pane — a background
+  // command it started and left behind when the turn ended. Empty when none or
+  // when the worker is gone. A non-empty list means the turn finished but its
+  // work did not (jahala/umbel#106).
+  runningCommands: RunningCommand[];
   // Subscription rate-limit usage, when the provider reports any. Absent is the
   // normal case and means no limit pressure was reported — a caller can re-cast
   // a node to another provider before dispatch instead of losing its work to a
@@ -64,6 +70,7 @@ async function enrich(
   session: Session,
   d: Deps,
   env: Record<string, string | undefined>,
+  processList: () => Promise<string>,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
   const [pane, dead, logMtime, notifMtime, stopMtime] = await Promise.all([
@@ -76,7 +83,15 @@ async function enrich(
 
   // Alive is the pane, not the session: remain-on-exit keeps a dead worker's
   // session standing, and has-session would call that running.
-  const entry: StatusEntry = { ...session, alive: pane.exists && !pane.dead, needsInput: false };
+  const entry: StatusEntry = {
+    ...session,
+    alive: pane.exists && !pane.dead,
+    needsInput: false,
+    runningCommands: [],
+  };
+  if (pane.pid !== undefined) {
+    entry.runningCommands = runningCommands(await processList(), pane.pid);
+  }
   if (logMtime > 0) {
     entry.lastActivityAt = logMtime;
   }
@@ -177,9 +192,14 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
   const d = { ...defaultDeps, ...opts.deps };
   const env = opts.env ?? {};
 
+  // One process listing per status call, shared by every session: a fleet is
+  // asked about together, and one ps per session would be a ps per row.
+  let processList: Promise<string> | undefined;
+  const processes = (): Promise<string> => (processList ??= d.procs.list());
+
   if (opts.name !== undefined) {
     const session = await d.fs.readMeta(opts.name, env);
-    const entry = await enrich(session, d, env);
+    const entry = await enrich(session, d, env, processes);
     return [entry];
   }
 
@@ -187,13 +207,14 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
   const entries: StatusEntry[] = [];
 
   for (const name of names) {
+    let session: Session;
     try {
-      const session = await d.fs.readMeta(name, env);
-      const entry = await enrich(session, d, env);
-      entries.push(entry);
+      session = await d.fs.readMeta(name, env);
     } catch {
       // Skip sessions whose meta cannot be read
+      continue;
     }
+    entries.push(await enrich(session, d, env, processes));
   }
 
   // Sort by createdAt ascending

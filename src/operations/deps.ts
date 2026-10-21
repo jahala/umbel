@@ -3,6 +3,7 @@ import * as fsState from '../adapters/fs-state.ts';
 import { watch } from '../adapters/fs-watch.ts';
 import * as hooks from '../adapters/hooks.ts';
 import * as jsonl from '../adapters/jsonl.ts';
+import * as procs from '../adapters/procs.ts';
 import * as tmux from '../adapters/tmux.ts';
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,7 @@ export const defaultDeps = {
   hooks,
   jsonl,
   exec,
+  procs,
   watch,
 };
 

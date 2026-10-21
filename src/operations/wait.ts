@@ -8,6 +8,7 @@ import {
   stillForMs,
 } from '../core/idle.ts';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
+import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import { signInLine } from '../core/startup-dialogs.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
@@ -68,6 +69,10 @@ export interface WaitResult {
   // from its pane. Absent when it died by a signal: tmux records no status for
   // one, and `message` names the signal instead.
   exitCode?: number;
+  // When reason is 'stop', the commands the worker's CLI still has running in
+  // its pane — work it started and left behind when the turn ended. Empty when
+  // none. Absent when the process listing could not be read.
+  runningCommands?: RunningCommand[];
   // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
   // moment the wait settled — so a stuck worker's cause (e.g. an unexpected
   // provider dialog) is visible. Absent for clean reasons and when capture fails.
@@ -357,6 +362,21 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       return `the worker stopped, but its final message was not in the transcript within ${TURN_END_SETTLE_MS / 1000}s; read may return an earlier message`;
     }
 
+    // What the worker left running, read from the pane's process tree at the
+    // moment stop is reported. A turn that ends with a background command still
+    // writing into the worktree is not a quiet handback (jahala/umbel#106).
+    // Undefined when the listing cannot be read, rather than an empty list that
+    // would claim the pane is quiet.
+    async function commandsLeftRunning(): Promise<RunningCommand[] | undefined> {
+      try {
+        const pane = await d.tmux.paneState(name, env);
+        if (!pane.exists || pane.pid === undefined) return [];
+        return runningCommands(await d.procs.list(), pane.pid);
+      } catch {
+        return undefined;
+      }
+    }
+
     function settle(result: WaitResult): void {
       if (settled) return;
       settled = true;
@@ -552,7 +572,14 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         stopHeld = true;
         const message = await handbackGap();
         if (settled) return;
-        settle({ stopped: true, reason, ...(message !== undefined ? { message } : {}) });
+        const left = await commandsLeftRunning();
+        if (settled) return;
+        settle({
+          stopped: true,
+          reason,
+          ...(message !== undefined ? { message } : {}),
+          ...(left !== undefined ? { runningCommands: left } : {}),
+        });
       } else {
         settle({ stopped: true, reason });
       }
