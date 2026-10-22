@@ -3,13 +3,17 @@
    Design language: tend — warm paper, editorial serif masthead, mono labels,
    single clay accent, three-tone palette, borders on large elements only. */
 
+/* Webfonts. Every family below also has a local fallback stack, so a page opened
+   offline or from file:// still renders — it just renders in the fallback. */
+@import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400..900&family=IBM+Plex+Mono:wght@400;600;700&family=Mona+Sans:ital,wdth,wght@0,75..125,200..900;1,75..125,200..900&display=swap');
+
 :root {
-  --serif: ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-  --sans:  system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --serif: 'Golos Text', ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --sans:  'Mona Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --mono:  'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --bg:            #fbfaf8;
-  --bg-2:          #f5f3ee;
+  --bg:            #fbfafa;
+  --bg-2:          #f5f3f0;
   --surface:       #ffffff;
   --text:          #3a3a3a;
   --text-2:        #5a5a56;
@@ -18,11 +22,11 @@
   --border-strong: #c8c5be;
   --heading:       #1a1a18;
   --accent:        #D97757;
-  --accent-d:      #A04E33;  /* link colour — ≥4.5:1 on all three light backgrounds (AA) */
+  --accent-d:      #bf4E33;  /* link colour — AA on --bg (4.6) and --surface (4.8); 4.4 on --bg-2, 4.2 on --accent-weak */
   --accent-weak:   #fbeee5;
 
   /* check / state colours */
-  --ok:      #2d6b25;  --ok-bg:      #eef6ec;  --ok-bd:      #b8d9b4;
+  --ok:      #2d6b25;  --ok-bg:      #eefaec;  --ok-bd:      #b0d4b0;
   --fail:    #a03030;  --fail-bg:    #fdeeee;  --fail-bd:    #eec3c3;
   --human:   #7a5200;  --human-bg:   #fff8e8;  --human-bd:   #f0d88a;
   --open:    #6a6a66;  --open-bg:    #f0efeb;  --open-bd:    #d8d5cf;
@@ -82,6 +86,15 @@ body {
 }
 a { color: var(--accent-d); text-decoration: none; }
 a:hover { text-decoration: underline; }
+
+/* inline code — one rule for every prose surface (lede, narrative, claims, tried).
+   Sized in em so it tracks whatever text it sits in. */
+code {
+  font-family: var(--mono); font-size: .86em;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 1px 5px;
+}
+pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 
 /* ── mono label (small caps convention everywhere) ── */
 .lp-label {
@@ -214,18 +227,12 @@ a.lp-chip:hover { border-color: var(--accent); color: var(--accent-d); text-deco
 .lp-article ul, .lp-article ol { margin: 0 0 var(--sp-4); padding-left: var(--sp-6); }
 .lp-article li { margin-bottom: var(--sp-2); }
 .lp-article li::marker { color: var(--accent); }
-.lp-article code {
-  font-family: var(--mono); font-size: 13.5px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 1px 5px;
-}
 .lp-article pre {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: var(--sp-4);
   overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.6;
   margin: var(--sp-6) 0;
 }
-.lp-article pre code { background: none; border: 0; padding: 0; }
 .lp-article blockquote {
   margin: var(--sp-6) 0; padding: var(--sp-3) var(--sp-5, 20px);
   border-left: 3px solid var(--accent); background: var(--accent-weak);
@@ -238,6 +245,18 @@ a.lp-chip:hover { border-color: var(--accent); color: var(--accent-d); text-deco
   font-family: var(--mono); font-size: 11px; color: var(--text-muted);
   margin-top: var(--sp-2); letter-spacing: .03em;
 }
+/* a figure the allowlist refused (FORMAT.md §7.17): the reason, never the SVG */
+.lp-figure__removed {
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--fail);
+  background: var(--fail-bg); border: 1px dashed var(--fail-bd);
+  border-radius: var(--radius); padding: var(--sp-3) var(--sp-4); margin: 0;
+}
+
+/* ── the shape (a loop's screen, as drawn) ──
+   Box-drawing characters only join into a frame when the lines touch, so the
+   frame sets tighter than code does. */
+.lp-shape > :first-child { margin-top: 0; }
+.lp-shape pre { line-height: 1.3; margin: var(--sp-4) 0; }
 
 /* ── checks (in article) ── */
 .lp-checks { display: flex; flex-direction: column; gap: var(--sp-3); margin: var(--sp-4) 0 0; }
@@ -313,6 +332,11 @@ a.lp-chip:hover { border-color: var(--accent); color: var(--accent-d); text-deco
   font-family: var(--mono); font-size: 11px; color: var(--accent-d);
   margin-right: var(--sp-2);
 }
+/* where the job came from: said quietly, after the story */
+.lp-job .lp-job__source {
+  font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+  margin-left: var(--sp-2); white-space: nowrap;
+}
 
 /* ── signals (opportunity) ── */
 .lp-signals { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-4); }
@@ -353,17 +377,31 @@ a.lp-chip:hover { border-color: var(--accent); color: var(--accent-d); text-deco
   display: flex; gap: var(--sp-4); flex-wrap: wrap;
 }
 
-/* ── the pen (tend2 serve) — live controls, or the exact command ── */
+/* ── the pen — one control in the top bar, the folder grant, the verifier's commands ── */
 .lp-pen__state {
-  display: inline-flex; align-items: center; gap: var(--sp-2);
-  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
-  color: var(--text-muted);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); padding: 2px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
-.lp-pen__state--off { opacity: .8; }
-.lp-pen__dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent);
+.lp-pen__toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1;
+  padding: 7px 13px; border-radius: var(--radius); cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease;
 }
+.lp-pen__toggle:hover { border-color: var(--accent); color: var(--accent-d); }
+.lp-pen__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lp-pen__toggle svg { width: 13px; height: 13px; }
+.lp-pen__toggle--save { background: var(--accent-d); border-color: var(--accent-d); color: #fff; }
+.lp-pen__toggle--save:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.lp-pen__dirty { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.lp-pen__flash {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ok); white-space: nowrap;
+  opacity: 0; transition: opacity .28s ease; pointer-events: none;
+}
+.lp-pen__flash:empty { display: none; }
+.lp-pen__flash--on { opacity: 1; }
 .lp-pen__row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 .lp-check__body > .lp-pen__row { margin-top: var(--sp-3); }
 .lp-pen__btn {
@@ -376,13 +414,59 @@ a.lp-chip:hover { border-color: var(--accent); color: var(--accent-d); text-deco
 .lp-pen__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .lp-pen__btn--go { color: var(--surface); background: var(--accent-d); border-color: var(--accent-d); }
 .lp-pen__btn--go:hover { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+.lp-pen__btn--ghost { border-color: transparent; background: none; color: var(--text-muted); }
+.lp-pen__btn--ghost:hover { color: var(--text); border-color: var(--border); }
 .lp-pen__hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-muted); }
+.lp-pen__hint--dirty { color: var(--accent-d); }
 .lp-pen__cmd {
   display: block; margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3);
   font-family: var(--mono); font-size: 12px; color: var(--text);
   background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
   user-select: all; overflow-wrap: anywhere;
 }
+/* A refusal is not transient: it sits under the bar until the reader deals with it. */
+.lp-pen__refusal {
+  position: sticky; top: 42px; z-index: 29;
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-6);
+  font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  color: var(--fail); background: var(--fail-bg); border-bottom: 1px solid var(--fail-bd);
+}
+.lp-pen__refusal-text { flex: 1; min-width: 0; }
+
+/* The one-time grant: the folder, its copy affordance, the drop zone, the two ways out. */
+.lp-grant {
+  width: calc(100% - 40px); max-width: 500px; padding: 0;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.18);
+}
+.lp-grant::backdrop { background: rgba(26,26,24,.38); backdrop-filter: blur(2px); }
+.lp-grant__body { padding: 28px; }
+.lp-grant__title { font-family: var(--serif); font-weight: 500; font-size: 24px; color: var(--heading); margin: 10px 0 12px; }
+.lp-grant__text { font-size: 15px; line-height: 1.6; color: var(--text-2); margin: 0 0 16px; }
+.lp-grant__path { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 14px; }
+.lp-grant__folder {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* Long paths keep their tail — the folder's own name is the part that matters. */
+  direction: rtl; text-align: left;
+  padding: 7px 10px; font-family: var(--mono); font-size: 11.5px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.lp-grant__drop {
+  border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg);
+  padding: 26px 20px; text-align: center; background: var(--bg-2);
+  transition: border-color .15s ease, background-color .15s ease, transform .15s ease;
+}
+.lp-grant__drop svg { width: 30px; height: 30px; color: var(--border-strong); margin-bottom: var(--sp-2); }
+.lp-grant__drop-main { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text-2); }
+.lp-grant__drop-sub { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+.lp-grant__drop--over { border-color: var(--accent); background: var(--accent-weak); transform: scale(1.015); }
+.lp-grant__drop--over svg, .lp-grant__drop--over .lp-grant__drop-main { color: var(--accent-d); }
+.lp-grant__why { font-family: var(--mono); font-size: 12px; color: var(--fail); margin: var(--sp-3) 0 0; }
+.lp-grant__why:empty { display: none; }
+.lp-grant__row { display: flex; gap: 10px; justify-content: flex-end; margin-top: var(--sp-6); }
+.lp-grant__row .lp-pen__btn { font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: var(--radius); }
+.lp-grant__hint { font-size: 12.5px; color: var(--text-muted); margin: 14px 0 0; text-align: right; }
 
 /* ── editing in place ──
    Authorable text is edited ON the element that renders it: the affordance is
@@ -412,7 +496,7 @@ a.lp-chip:hover { border-color: var(--accent); color: var(--accent-d); text-deco
   padding: var(--sp-2) var(--sp-3);
   margin: calc(-1 * var(--sp-2)) calc(-1 * var(--sp-3));
 }
-.lp-narrative__sec.lp-edit--on, .lp-check__claim.lp-edit--on, .lp-links.lp-edit--on {
+.lp-narrative__sec.lp-edit--on, .lp-shape.lp-edit--on, .lp-check__claim.lp-edit--on, .lp-links.lp-edit--on {
   font-family: var(--mono); font-size: 13px; line-height: 1.7;
 }
 [data-edit]:empty::before {

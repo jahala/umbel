@@ -3,11 +3,14 @@
 (() => {
   // src/core/parse.ts
   var CHECK_RE = /^-\s*\[([x~! ])\]\s*\((code|agent|human|eval)\)\s*(.+)$/;
+  var CHECK_LIKE_RE = /^-\s*\[/;
   var SHA_RE = /\s@([0-9a-f]{6,40})(?:\s·\sby\s(\S+))?\s*$/;
+  var READS_RE = /\s·\sreads:\s*(.*)$/;
   var DEK_RE = /^\*\*(Goal|Who|Pain|Sample)\.\*\*\s*(.*)$/;
+  var ID_PATTERN = String.raw`[\w][\w.-]*`;
   function parseIds(text) {
     const ids = [];
-    const re = /#([\w][\w.-]*)/g;
+    const re = new RegExp(`#(${ID_PATTERN})`, "g");
     let match;
     while ((match = re.exec(text)) !== null) ids.push(match[1]);
     return ids;
@@ -33,8 +36,14 @@
       claim = rest.slice(0, sep).trim();
       evidence = rest.slice(sep + 3).trim();
     }
+    let reads = [];
+    const readsMatch = evidence.match(READS_RE);
+    if (readsMatch) {
+      reads = readsMatch[1].split(",").map((p) => p.trim()).filter((p) => p !== "");
+      evidence = evidence.replace(READS_RE, "").trimEnd();
+    }
     const state = box === "x" ? sha !== null ? "pass" : "claimed" : box === "!" ? "fail" : box === "~" ? "human" : "open";
-    return { state, method, claim, evidence, sha, principal, line };
+    return { state, method, claim, evidence, reads, sha, principal, line };
   }
   var ID_SECTIONS = ["needs", "children", "forIds", "solvedBy"];
   var ID_SECTION_LABEL = {
@@ -54,9 +63,114 @@
     if (/^jobs\b/i.test(name)) return { section: "jobs", inlineIds: [] };
     if (/^signals\b/i.test(name)) return { section: "signals", inlineIds: [] };
     if (/^tried\b/i.test(name)) return { section: "tried", inlineIds: [] };
+    if (/^the shape$/i.test(name)) return { section: "shape", inlineIds: [] };
     const idSection = /^needs(?=\s*(#|$))/i.test(name) ? "needs" : /^children(?=\s*(#|$))/i.test(name) ? "children" : /^for(?=\s*(#|$))/i.test(name) ? "forIds" : /^solved by(?=\s*(#|$))/i.test(name) ? "solvedBy" : null;
     if (idSection !== null) return { section: idSection, inlineIds: parseIds(name) };
     return null;
+  }
+  function readLines(lines) {
+    const read = [];
+    const at = (section2, role, header = null) => {
+      read.push({ section: section2, role, header });
+    };
+    let section = "head";
+    let inFence = false;
+    let titled = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const isFenceMarker = /^```/.test(line);
+      if (!titled && !inFence && /^#\s/.test(line)) {
+        titled = line.replace(/^#\s+/, "").trim() !== "";
+        section = "head";
+        at("head", "title");
+        continue;
+      }
+      if (!inFence) {
+        const header = classifySectionHeader(line);
+        if (header !== null) {
+          section = header.section;
+          at(section, "header", header);
+          continue;
+        }
+        if (/^##\s/.test(line) && section !== "head" && section !== "narrative") {
+          section = "narrative";
+        }
+      }
+      const role = isFenceMarker ? "fence" : inFence ? "fenced" : "body";
+      if (section === "head") {
+        if (DEK_RE.test(line)) {
+          at("head", "dek");
+          while (i + 1 < lines.length && lines[i + 1].trim() !== "" && !/^#/.test(lines[i + 1])) {
+            i++;
+            at("head", "dek-more");
+          }
+          section = "narrative";
+          continue;
+        }
+        if (line.trim() !== "") section = "narrative";
+      }
+      if (isFenceMarker) inFence = !inFence;
+      at(section, role);
+    }
+    return read;
+  }
+  var JOB_SOURCE_RE = /^(.*\S)\s·\s(?:from\s+(\S.*?)|(guessed))\s*$/;
+  function parseJob(item) {
+    const match = item.match(JOB_SOURCE_RE);
+    if (match === null) return { text: item, source: null };
+    return { text: match[1].trim(), source: match[3] ?? match[2].trim() };
+  }
+  var STATES_RE = /^\s*states:\s*(.*)$/i;
+  var STATES_MORE_RE = /^\s*(?:→|->|←|↔|⇄)/;
+  var STATE_SEPARATOR_RE = /→|->|←|↔|⇄|,|·|\|/;
+  function readShape(lines) {
+    const statesLines = /* @__PURE__ */ new Set();
+    const at = lines.findIndex((line) => line.role !== "fence" && STATES_RE.test(line.text));
+    if (at !== -1) {
+      statesLines.add(at);
+      for (let i = at + 1; i < lines.length && lines[i].role === lines[at].role && STATES_MORE_RE.test(lines[i].text); i++) {
+        statesLines.add(i);
+      }
+    }
+    const named = [...statesLines].map((i) => i === at ? lines[i].text.match(STATES_RE)[1] : lines[i].text).join(" ").replace(/\([^)]*\)/g, " ");
+    const states = named.split(STATE_SEPARATOR_RE).map((state) => state.replace(/^[\s.;:]+|[\s.;:]+$/g, "")).filter((state) => state !== "");
+    const frames = [];
+    let frame = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.role === "fence") {
+        if (frame === null) frame = [];
+        else {
+          frames.push(frame.join("\n"));
+          frame = null;
+        }
+      } else if (line.role === "fenced" && frame !== null && !statesLines.has(i)) {
+        frame.push(line.text);
+      }
+    }
+    if (frame !== null) frames.push(frame.join("\n"));
+    const drawn2 = frames.filter((body) => body.trim() !== "");
+    return {
+      text: lines.map((line) => line.text).join("\n").trim(),
+      wireframe: drawn2.length === 0 ? null : drawn2.join("\n\n"),
+      states
+    };
+  }
+  function citesShape(check) {
+    return CITES_SHAPE_RE.test(check.claim) || CITES_SHAPE_RE.test(check.evidence);
+  }
+  var CITES_SHAPE_RE = /##\s*the shape\b/i;
+  var ITEM_RE = /^-\s+(.*)$/;
+  function locateTried(payload) {
+    const lines = payload.replace(/\r\n/g, "\n").split("\n");
+    const read = readLines(lines);
+    const header = read.findIndex((r) => r.role === "header" && r.section === "tried");
+    if (header === -1) return null;
+    const entries = [];
+    read.forEach((r, i) => {
+      if (r.section === "tried" && r.role === "body" && ITEM_RE.test(lines[i])) entries.push(i);
+    });
+    return { header, entries };
   }
   function parse(payload) {
     const lines = payload.replace(/\r\n/g, "\n").split("\n");
@@ -65,6 +179,7 @@
       dek: "",
       narrativeRaw: "",
       kind: "loop",
+      shape: null,
       checks: [],
       jobs: [],
       signals: [],
@@ -75,89 +190,70 @@
       tried: []
     };
     const narrative = [];
-    let section = "head";
-    let inFence = false;
+    const shape = [];
+    let shaped = false;
+    let dek = [];
     let declaredSample = false;
-    for (let i = 0; i < lines.length; i++) {
+    readLines(lines).forEach((read, i) => {
       const line = lines[i];
-      const isFenceMarker = /^```/.test(line);
-      if (doc.title === "" && !inFence && /^#\s/.test(line)) {
-        doc.title = line.replace(/^#\s+/, "").trim();
-        section = "head";
-        continue;
-      }
-      if (!inFence) {
-        const header = classifySectionHeader(line);
-        if (header !== null) {
-          section = header.section;
-          if (isIdSection(header.section)) doc[header.section].push(...header.inlineIds);
-          continue;
+      switch (read.role) {
+        case "title":
+          doc.title = line.replace(/^#\s+/, "").trim();
+          return;
+        case "header":
+          if (isIdSection(read.section)) doc[read.section].push(...read.header.inlineIds);
+          if (read.section === "shape") shaped = true;
+          return;
+        case "dek": {
+          const match = line.match(DEK_RE);
+          dek = [match[2]];
+          doc.dek = dek.join(" ").trim();
+          if (match[1] === "Sample") declaredSample = true;
+          return;
         }
-        if (/^##\s/.test(line) && section !== "head" && section !== "narrative") {
-          section = "narrative";
-        }
-      }
-      switch (section) {
-        case "head": {
-          const dek = line.match(DEK_RE);
-          if (dek) {
-            const buffer = [dek[2]];
-            while (i + 1 < lines.length && lines[i + 1].trim() !== "" && !/^#/.test(lines[i + 1])) {
-              i++;
-              buffer.push(lines[i].trim());
-            }
-            doc.dek = buffer.join(" ").trim();
-            if (dek[1] === "Sample") declaredSample = true;
-            section = "narrative";
-          } else if (line.trim() !== "") {
-            section = "narrative";
-            narrative.push(line);
-            if (isFenceMarker) inFence = !inFence;
-          }
+        case "dek-more":
+          dek.push(line.trim());
+          doc.dek = dek.join(" ").trim();
+          return;
+        default:
           break;
-        }
-        case "narrative": {
-          narrative.push(line);
-          if (isFenceMarker) inFence = !inFence;
+      }
+      if (read.section === "narrative") {
+        narrative.push(line);
+        return;
+      }
+      if (read.section === "shape") {
+        shape.push({ text: line, role: read.role });
+        return;
+      }
+      if (read.role !== "body") return;
+      switch (read.section) {
+        case "head":
           break;
-        }
         case "tests": {
-          if (isFenceMarker) {
-            inFence = !inFence;
-            break;
-          }
-          if (inFence) break;
           const check = parseCheck(line, i);
           if (check !== null) doc.checks.push(check);
           break;
         }
-        case "jobs":
+        case "jobs": {
+          const item = line.match(ITEM_RE);
+          if (item) doc.jobs.push(parseJob(item[1].trim()));
+          break;
+        }
         case "signals":
         case "tried": {
-          if (isFenceMarker) {
-            inFence = !inFence;
-            break;
-          }
-          if (inFence) break;
-          const item = line.match(/^-\s+(.*)$/);
-          if (item) {
-            const target = section === "jobs" ? doc.jobs : section === "signals" ? doc.signals : doc.tried;
-            target.push(item[1].trim());
-          }
+          const item = line.match(ITEM_RE);
+          if (item) (read.section === "signals" ? doc.signals : doc.tried).push(item[1].trim());
           break;
         }
         default: {
-          if (isFenceMarker) {
-            inFence = !inFence;
-            break;
-          }
-          if (inFence) break;
-          if (/^-\s+/.test(line)) doc[section].push(...parseIds(line));
+          if (/^-\s+/.test(line)) doc[read.section].push(...parseIds(line));
           break;
         }
       }
-    }
+    });
     doc.narrativeRaw = narrative.join("\n").trim();
+    if (shaped) doc.shape = readShape(shape);
     doc.kind = declaredSample ? "sample" : doc.jobs.length > 0 ? "persona" : doc.signals.length > 0 ? "opportunity" : "loop";
     return doc;
   }
@@ -188,16 +284,40 @@
     for (const check of doc.checks) counts[check.state] += 1;
     return counts;
   }
+  function stampMismatchWords(reason) {
+    if (reason === "evidence file missing") return "its evidence file is gone since it was stamped";
+    if (reason === "read path missing") return "a path its evidence reads is gone since it was stamped";
+    return "the claim or its evidence changed since it was stamped";
+  }
+  var BOX = { pass: "x", claimed: "x", fail: "!", human: "~", open: " " };
+  function serializeCheck(check) {
+    const evidence = check.evidence !== "" ? ` \xB7 ${check.evidence}` : "";
+    const reads = check.evidence !== "" && check.reads.length > 0 ? ` \xB7 reads: ${check.reads.join(", ")}` : "";
+    const sha = check.sha !== null ? ` @${check.sha}` : "";
+    const principal = check.sha !== null && check.principal !== null ? ` \xB7 by ${check.principal}` : "";
+    return `- [${BOX[check.state]}] (${check.method}) ${check.claim}${evidence}${reads}${sha}${principal}`;
+  }
 
   // src/core/edit.ts
+  var PAYLOAD_BREAKER = /<\/script/i;
+  var STAMP_TAIL = /@[0-9a-f]{6,40}$/;
   var ID_RE = /^[\w][\w.-]*$/;
   function isLoopId(token) {
     return ID_RE.test(token);
+  }
+  function breaksPayload(text) {
+    return PAYLOAD_BREAKER.test(text);
+  }
+  function refuseText(text, what, oneLine) {
+    if (breaksPayload(text)) return `${what} cannot contain \`</script\` \u2014 it would close the payload`;
+    if (oneLine && /[\r\n]/.test(text)) return `${what} is one line`;
+    return null;
   }
   function scan(payload) {
     const lines = payload.split("\n");
     const narrative = [];
     const edges = /* @__PURE__ */ new Map();
+    const shapes = [];
     let title = -1;
     let firstSection = lines.length;
     let tried = -1;
@@ -212,9 +332,13 @@
     };
     const closeEdge = (end) => {
       if (edge === null) return;
-      const spans = edges.get(edge.section) ?? [];
-      spans.push({ start: edge.start, end });
-      edges.set(edge.section, spans);
+      if (edge.section === "shape") {
+        shapes.push({ start: edge.start, end });
+      } else {
+        const spans = edges.get(edge.section) ?? [];
+        spans.push({ start: edge.start, end });
+        edges.set(edge.section, spans);
+      }
       edge = null;
     };
     for (let i = 0; i < lines.length; i++) {
@@ -233,7 +357,7 @@
           mode = "structured";
           if (i < firstSection) firstSection = i;
           if (header.section === "tried") tried = i;
-          if (header.section === "needs" || header.section === "children" || header.section === "forIds" || header.section === "solvedBy") {
+          if (header.section === "needs" || header.section === "children" || header.section === "forIds" || header.section === "solvedBy" || header.section === "shape") {
             edge = { section: header.section, start: i };
           }
           continue;
@@ -280,7 +404,12 @@
       dek = { start: i, end, label: match[1] };
       break;
     }
-    return { lines, title, dek, narrative, edges, firstSection, tried };
+    return { lines, title, dek, narrative, edges, shapes, firstSection, tried };
+  }
+  function headRegions(payload) {
+    const { title, dek, firstSection } = scan(payload);
+    const start = dek !== null ? dek.end + 1 : title + 1;
+    return { title, dek, narrative: { start: Math.min(start, firstSection), end: firstSection } };
   }
   function titleText(payload) {
     const { lines, title } = scan(payload);
@@ -292,6 +421,508 @@
   function edgeText(payload, edge) {
     return parse(payload)[edge].map((id) => `#${id}`).join(" ");
   }
+  function spliceBlock(lines, start, end, block) {
+    const before = lines.slice(0, start);
+    while (before.length > 0 && before[before.length - 1].trim() === "") before.pop();
+    const after = lines.slice(end);
+    while (after.length > 0 && after[0].trim() === "") after.shift();
+    const body = [...block];
+    while (body.length > 0 && body[0].trim() === "") body.shift();
+    while (body.length > 0 && body[body.length - 1].trim() === "") body.pop();
+    const out = [...before];
+    if (body.length > 0) {
+      if (out.length > 0) out.push("");
+      out.push(...body);
+    }
+    if (after.length > 0) {
+      if (out.length > 0) out.push("");
+      out.push(...after);
+    }
+    return out;
+  }
+  function appendTriedLine(payload, entry, date) {
+    const lines = payload.split("\n");
+    const item = `- ${date} ${entry}`;
+    const tried = locateTried(payload);
+    if (tried === null) {
+      while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+      lines.push("", "## Tried", item, "");
+      return lines.join("\n");
+    }
+    const last = tried.entries[tried.entries.length - 1];
+    lines.splice(last === void 0 ? tried.header + 1 : last + 1, 0, item);
+    return lines.join("\n");
+  }
+  function triedHistoryHolds(before, after) {
+    const was = parse(before).tried;
+    const now = parse(after).tried;
+    if (now.length < was.length) return false;
+    return was.every((entry, i) => now[i] === entry);
+  }
+  function editTitle(payload, text) {
+    const refusal = refuseText(text, "a title", true);
+    if (refusal !== null) return { ok: false, error: refusal };
+    const title = text.replace(/^#+\s*/, "").trim();
+    if (title === "") return { ok: false, error: "a title cannot be empty \u2014 it names the page" };
+    const { lines, title: line } = scan(payload);
+    if (line === -1) return { ok: false, error: "no `# title` line to replace" };
+    lines[line] = `# ${title}`;
+    return { ok: true, payload: lines.join("\n"), voidedStamp: false };
+  }
+  function editGoal(payload, text) {
+    const refusal = refuseText(text, "a goal", true);
+    if (refusal !== null) return { ok: false, error: refusal };
+    if (text.trim() === "") return { ok: false, error: "a goal cannot be empty \u2014 it is the page's standfirst" };
+    const { lines, title, dek } = scan(payload);
+    if (dek !== null) {
+      lines.splice(dek.start, dek.end - dek.start + 1, `**${dek.label}.** ${text.trim()}`);
+    } else if (title >= 0) {
+      lines.splice(title + 1, 0, `**Goal.** ${text.trim()}`);
+    } else {
+      return { ok: false, error: "no `# title` line to hang a goal on" };
+    }
+    return { ok: true, payload: lines.join("\n"), voidedStamp: false };
+  }
+  function editNarrative(payload, text) {
+    const refusal = refuseText(text, "a narrative", false);
+    if (refusal !== null) return { ok: false, error: refusal };
+    const { narrative } = headRegions(payload);
+    const lines = spliceBlock(payload.split("\n"), narrative.start, narrative.end, text.split("\n"));
+    return { ok: true, payload: lines.join("\n"), voidedStamp: false };
+  }
+  function editNarrativeSection(payload, section, text) {
+    const refusal = refuseText(text, "a narrative", false);
+    if (refusal !== null) return { ok: false, error: refusal };
+    const sections = narrativeSections(payload);
+    if (sections.length === 0 && section === 1) return editNarrative(payload, text);
+    const region = sections[section - 1];
+    if (region === void 0) return { ok: false, error: `no narrative section ${section}` };
+    const lines = spliceBlock(payload.split("\n"), region.start, region.end, text.split("\n"));
+    return { ok: true, payload: lines.join("\n"), voidedStamp: false };
+  }
+  function editShape(payload, text) {
+    const refusal = refuseText(text, "a shape", false);
+    if (refusal !== null) return { ok: false, error: refusal };
+    const { lines, shapes } = scan(payload);
+    const first = shapes[0];
+    if (first === void 0) return { ok: false, error: "no `## The shape` section to edit" };
+    let out = lines;
+    for (const repeat of shapes.slice(1).reverse()) out = spliceBlock(out, repeat.start, repeat.end, []);
+    const body = text.split("\n");
+    while (body.length > 0 && body[0].trim() === "") body.shift();
+    while (body.length > 0 && body[body.length - 1].trim() === "") body.pop();
+    if (body.length === 0) return { ok: true, payload: spliceBlock(out, first.start, first.end, []).join("\n"), voidedStamp: false };
+    const after = out.slice(first.end);
+    while (after.length > 0 && after[0].trim() === "") after.shift();
+    out = [...out.slice(0, first.start + 1), ...body, ...after.length > 0 ? ["", ...after] : []];
+    return { ok: true, payload: out.join("\n"), voidedStamp: false };
+  }
+  function editClaim(payload, index, text) {
+    const refusal = refuseText(text, "a claim", true);
+    if (refusal !== null) return { ok: false, error: refusal };
+    const claim = text.trim();
+    if (claim === "") return { ok: false, error: "a claim cannot be empty" };
+    if (claim.includes(" \xB7 ")) return { ok: false, error: "a claim cannot contain ` \xB7 ` \u2014 that separator opens the evidence field" };
+    if (STAMP_TAIL.test(claim)) return { ok: false, error: "a claim cannot end in a stamp \u2014 `@sha` is written only by the verifier" };
+    const check = parse(payload).checks[index - 1];
+    if (check === void 0) return { ok: false, error: `no check ${index}` };
+    const voidedStamp = check.sha !== null;
+    const edited = voidedStamp ? { ...check, claim, state: "open", sha: null, principal: null } : { ...check, claim };
+    const lines = payload.split("\n");
+    lines[check.line] = serializeCheck(edited);
+    return { ok: true, payload: lines.join("\n"), voidedStamp };
+  }
+  function editEdge(payload, edge, text) {
+    const label = ID_SECTION_LABEL[edge];
+    const refusal = refuseText(text, `a \`## ${label}\` list`, true);
+    if (refusal !== null) return { ok: false, error: refusal };
+    const ids = [];
+    for (const token of text.split(/[\s,]+/).filter((t) => t !== "")) {
+      const id = token.replace(/^#/, "");
+      if (!isLoopId(id)) {
+        return { ok: false, error: `\`${token}\` is not a loop id \u2014 \`## ${label}\` holds page names, like \`#renderer\`` };
+      }
+      ids.push(id);
+    }
+    const { lines, edges, tried } = scan(payload);
+    const spans = edges.get(edge) ?? [];
+    const header = ids.length === 0 ? null : `## ${label} ${ids.map((id) => `#${id}`).join(" ")}`;
+    if (spans.length === 0) {
+      if (header === null) return { ok: true, payload, voidedStamp: false };
+      const boundary = boundaryForNewEdge(lines, edges, tried);
+      let anchor = boundary - 1;
+      while (anchor >= 0 && lines[anchor].trim() === "") anchor -= 1;
+      const block = anchor >= 0 && /^##\s/.test(lines[anchor]) ? [header] : ["", header];
+      lines.splice(anchor + 1, 0, ...block);
+      return { ok: true, payload: lines.join("\n"), voidedStamp: false };
+    }
+    const dropped = /* @__PURE__ */ new Set();
+    spans.forEach((span, i) => {
+      if (i === 0 && header !== null) lines[span.start] = header;
+      else dropped.add(span.start);
+      for (let line = span.start + 1; line < span.end; line++) {
+        if (/^-\s/.test(lines[line])) dropped.add(line);
+      }
+    });
+    const kept = lines.filter((_, i) => !dropped.has(i));
+    return { ok: true, payload: collapseBlanks(kept).join("\n"), voidedStamp: false };
+  }
+  function boundaryForNewEdge(lines, edges, tried) {
+    let boundary = -1;
+    for (const spans of edges.values()) {
+      for (const span of spans) boundary = Math.max(boundary, span.end);
+    }
+    if (boundary !== -1) return boundary;
+    return tried === -1 ? lines.length : tried;
+  }
+  function collapseBlanks(lines) {
+    return lines.filter((line, i) => !(line.trim() === "" && (lines[i - 1] ?? "x").trim() === ""));
+  }
+  function editTried(payload, text, date) {
+    const refusal = refuseText(text, "a Tried note", true);
+    if (refusal !== null) return { ok: false, error: refusal };
+    if (text.trim() === "") return { ok: false, error: "a Tried note cannot be empty" };
+    return { ok: true, payload: appendTriedLine(payload, text.trim(), date), voidedStamp: false };
+  }
+  function applyEdit(payload, edit, date) {
+    switch (edit.kind) {
+      case "title":
+        return editTitle(payload, edit.text);
+      case "goal":
+        return editGoal(payload, edit.text);
+      case "narrative":
+        return edit.section === void 0 ? editNarrative(payload, edit.text) : editNarrativeSection(payload, edit.section, edit.text);
+      case "shape":
+        return editShape(payload, edit.text);
+      case "claim":
+        return editClaim(payload, edit.check, edit.text);
+      case "edge":
+        return editEdge(payload, edit.edge, edit.text);
+      case "tried":
+        return editTried(payload, edit.text, date);
+      default:
+        return { ok: false, error: `no such edit: ${edit.kind}` };
+    }
+  }
+
+  // src/core/safe-markup.ts
+  var FIGURE_ALLOWLIST = {
+    elements: [
+      "svg",
+      "g",
+      "defs",
+      "symbol",
+      "use",
+      "title",
+      "desc",
+      "style",
+      "a",
+      "path",
+      "rect",
+      "circle",
+      "ellipse",
+      "line",
+      "polyline",
+      "polygon",
+      "text",
+      "tspan",
+      "textPath",
+      "marker",
+      "linearGradient",
+      "radialGradient",
+      "stop",
+      "clipPath",
+      "mask",
+      "pattern"
+    ],
+    attributes: [
+      "id",
+      "class",
+      "style",
+      "role",
+      "lang",
+      "aria-label",
+      "aria-labelledby",
+      "aria-describedby",
+      "aria-hidden",
+      "xmlns",
+      "xmlns:xlink",
+      "version",
+      "href",
+      "xlink:href",
+      "x",
+      "y",
+      "x1",
+      "y1",
+      "x2",
+      "y2",
+      "cx",
+      "cy",
+      "r",
+      "rx",
+      "ry",
+      "fx",
+      "fy",
+      "dx",
+      "dy",
+      "width",
+      "height",
+      "d",
+      "points",
+      "pathLength",
+      "transform",
+      "viewBox",
+      "preserveAspectRatio",
+      "refX",
+      "refY",
+      "markerWidth",
+      "markerHeight",
+      "markerUnits",
+      "orient",
+      "marker-start",
+      "marker-mid",
+      "marker-end",
+      "fill",
+      "fill-opacity",
+      "fill-rule",
+      "stroke",
+      "stroke-width",
+      "stroke-opacity",
+      "stroke-dasharray",
+      "stroke-dashoffset",
+      "stroke-linecap",
+      "stroke-linejoin",
+      "stroke-miterlimit",
+      "opacity",
+      "color",
+      "visibility",
+      "display",
+      "vector-effect",
+      "shape-rendering",
+      "paint-order",
+      "font-family",
+      "font-size",
+      "font-weight",
+      "font-style",
+      "letter-spacing",
+      "word-spacing",
+      "text-anchor",
+      "dominant-baseline",
+      "alignment-baseline",
+      "baseline-shift",
+      "text-decoration",
+      "textLength",
+      "lengthAdjust",
+      "offset",
+      "stop-color",
+      "stop-opacity",
+      "gradientUnits",
+      "gradientTransform",
+      "spreadMethod",
+      "clip-path",
+      "clip-rule",
+      "clipPathUnits",
+      "mask",
+      "maskUnits",
+      "maskContentUnits",
+      "patternUnits",
+      "patternContentUnits",
+      "patternTransform"
+    ],
+    textOnly: ["style", "title", "desc"]
+  };
+  var ELEMENTS = new Set(FIGURE_ALLOWLIST.elements.map((n) => n.toLowerCase()));
+  var ATTRIBUTES = new Set(FIGURE_ALLOWLIST.attributes.map((n) => n.toLowerCase()));
+  var TEXT_ONLY = new Set(FIGURE_ALLOWLIST.textOnly);
+  var REFERENCES = /* @__PURE__ */ new Set(["href", "xlink:href"]);
+  var LINK_SCHEMES = /* @__PURE__ */ new Set(["http", "https", "mailto"]);
+  var MARKDOWN_LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
+  var NAMED_REFERENCES = /* @__PURE__ */ new Map([
+    ["amp", "&"],
+    ["lt", "<"],
+    ["gt", ">"],
+    ["quot", '"'],
+    ["apos", "'"]
+  ]);
+  function decodeReferences(value) {
+    let unreadable = false;
+    const decoded = value.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]*);?/gi, (whole, body) => {
+      if (!whole.endsWith(";")) {
+        unreadable = true;
+        return whole;
+      }
+      if (body.startsWith("#")) {
+        const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+        if (code > 1114111) {
+          unreadable = true;
+          return whole;
+        }
+        return String.fromCodePoint(code);
+      }
+      const named = NAMED_REFERENCES.get(body);
+      if (named === void 0) {
+        unreadable = true;
+        return whole;
+      }
+      return named;
+    });
+    return unreadable ? null : decoded;
+  }
+  function cssProblem(css) {
+    const lower = css.toLowerCase();
+    if (lower.includes("\\")) return "a CSS escape";
+    for (const word of ["expression(", "javascript:", "@import", "image-set(", "-moz-binding", "behavior:"]) {
+      if (lower.includes(word)) return `\`${word}\``;
+    }
+    return urlProblem(lower);
+  }
+  function urlProblem(value) {
+    for (const match of value.toLowerCase().matchAll(/url\(\s*(['"]?)(.?)/g)) {
+      if (match[2] !== "#") return "a `url(` that is not a #fragment";
+    }
+    return null;
+  }
+  function attributeProblem(element, name, raw) {
+    const key = name.toLowerCase();
+    if (!ATTRIBUTES.has(key)) return `attribute \`${name}\` on <${element}> is not allowed`;
+    const value = decodeReferences(raw);
+    if (value === null) return `attribute \`${name}\` holds a character reference this renderer cannot read`;
+    if (REFERENCES.has(key)) return value.startsWith("#") ? null : `\`${name}\` may only point at a #fragment`;
+    const problem = key.startsWith("aria-") ? null : cssProblem(value);
+    return problem === null ? null : `attribute \`${name}\` carries ${problem}`;
+  }
+  var WS = "[\\t\\n\\f\\r ]";
+  var attributePattern = (capture) => {
+    const group = capture ? "(" : "(?:";
+    return `${WS}+${group}[A-Za-z_:][A-Za-z0-9_:.-]*)${WS}*=${WS}*(?:"${group}[^"]*)"|'${group}[^']*)')`;
+  };
+  var ATTRIBUTE = attributePattern(true);
+  var START_TAG = new RegExp(`<([A-Za-z][A-Za-z0-9:-]*)((?:${attributePattern(false)})*)${WS}*(/?)>`, "y");
+  var END_TAG = new RegExp(`</([A-Za-z][A-Za-z0-9:-]*)${WS}*>`, "y");
+  var ONLY_WHITESPACE = new RegExp(`^${WS}*$`);
+  function excerpt(svg, at) {
+    const line = svg.slice(at).split("\n")[0];
+    return line.length > 40 ? `${line.slice(0, 40)}\u2026` : line;
+  }
+  function figureVerdict(svg) {
+    const refuse = (reason) => ({ ok: false, reason });
+    const open = [];
+    let closed = false;
+    let at = 0;
+    while (at < svg.length) {
+      const lt = svg.indexOf("<", at);
+      const text = svg.slice(at, lt === -1 ? svg.length : lt);
+      if (text !== "") {
+        const parent2 = open[open.length - 1];
+        if (parent2 === void 0) {
+          if (!ONLY_WHITESPACE.test(text)) return refuse(closed ? "text after the closing </svg>" : "text before the opening <svg>");
+        } else if (parent2 === "style") {
+          const css = decodeReferences(text);
+          const problem = css === null ? "a character reference this renderer cannot read" : cssProblem(css);
+          if (problem !== null) return refuse(`<style> carries ${problem}`);
+        }
+      }
+      if (lt === -1) break;
+      at = lt;
+      if (closed) return refuse("markup after the closing </svg>");
+      const parent = open[open.length - 1];
+      if (svg.startsWith("<!--", at)) {
+        const end2 = svg.indexOf("-->", at + 4);
+        const body = end2 === -1 ? "" : svg.slice(at + 4, end2);
+        if (end2 === -1 || /^-?>/.test(body) || body.includes("--") || body.endsWith("-")) {
+          return refuse(`a comment this renderer cannot read: ${excerpt(svg, at)}`);
+        }
+        if (parent === void 0 || TEXT_ONLY.has(parent)) return refuse(`a comment outside the figure's text: ${excerpt(svg, at)}`);
+        at = end2 + 3;
+        continue;
+      }
+      END_TAG.lastIndex = at;
+      const end = END_TAG.exec(svg);
+      if (end !== null) {
+        const name2 = end[1].toLowerCase();
+        if (name2 !== parent) return refuse(`</${end[1]}> does not close ${parent === void 0 ? "anything" : `<${parent}>`}`);
+        open.pop();
+        closed = open.length === 0;
+        at = END_TAG.lastIndex;
+        continue;
+      }
+      START_TAG.lastIndex = at;
+      const start = START_TAG.exec(svg);
+      if (start === null) return refuse(`a tag this renderer cannot read: ${excerpt(svg, at)}`);
+      const element = start[1];
+      const name = element.toLowerCase();
+      if (parent === void 0 && name !== "svg") return refuse(`a figure opens with <svg>, not <${element}>`);
+      if (parent !== void 0 && TEXT_ONLY.has(parent)) return refuse(`<${parent}> holds only text, not <${element}>`);
+      if (!ELEMENTS.has(name)) return refuse(`element <${element}> is not allowed`);
+      for (const attribute of start[2].matchAll(new RegExp(ATTRIBUTE, "g"))) {
+        const problem = attributeProblem(element, attribute[1], attribute[2] ?? attribute[3] ?? "");
+        if (problem !== null) return refuse(problem);
+      }
+      if (start[3] === "/") closed = open.length === 0;
+      else open.push(name);
+      at = START_TAG.lastIndex;
+    }
+    if (!closed) return refuse(open.length === 0 ? "no <svg> element" : `unterminated <${open[open.length - 1]}>`);
+    return { ok: true };
+  }
+  function linkTargetAllowed(target) {
+    const decoded = decodeReferences(target) ?? target;
+    const url = decoded.replace(/[\t\n\r]/g, "").replace(/^[\x00-\x20]+/, "");
+    if (url.startsWith("#")) return true;
+    const cut = url.search(/[/?#]/);
+    const head = cut === -1 ? url : url.slice(0, cut);
+    if (head.includes("&")) return false;
+    const colon = head.indexOf(":");
+    return colon === -1 || LINK_SCHEMES.has(head.slice(0, colon).toLowerCase());
+  }
+  function opensFigure(line) {
+    return line.trimStart().startsWith("<svg");
+  }
+  function figureBlock(lines, start) {
+    let end = start;
+    while (end < lines.length && !lines[end].includes("</svg>")) end++;
+    return { svg: lines.slice(start, end + 1).join("\n"), next: end + 1 };
+  }
+  function unsafeMarkupIssues(payload) {
+    const issues = [];
+    const lines = payload.replace(/\r\n/g, "\n").split("\n");
+    let inFence = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (inFence) {
+        if (/^```/.test(line)) inFence = false;
+        continue;
+      }
+      if (opensFigure(line)) {
+        const block = figureBlock(lines, i);
+        const verdict = figureVerdict(block.svg);
+        if (!verdict.ok) {
+          issues.push({
+            code: "unsafe-figure",
+            severity: "error",
+            line: i,
+            message: `this figure renders as "figure removed" \u2014 ${verdict.reason} (FORMAT.md \xA77.17 lists what a figure may carry)`
+          });
+        }
+        i = block.next - 1;
+        continue;
+      }
+      if (/^```/.test(line)) {
+        inFence = true;
+        continue;
+      }
+      for (const link of line.matchAll(MARKDOWN_LINK)) {
+        if (linkTargetAllowed(link[2])) continue;
+        issues.push({
+          code: "unsafe-link",
+          severity: "error",
+          line: i,
+          message: `link target \`${link[2]}\` is not an http, https or mailto URL, a relative path or a #fragment \u2014 it renders as plain text`
+        });
+      }
+    }
+    return issues;
+  }
 
   // src/render/markdown.ts
   function esc(s) {
@@ -300,8 +931,11 @@
   function slug(s) {
     return s.toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-");
   }
+  function unesc(s) {
+    return s.replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+  }
   function inline(s) {
-    return s.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    return s.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(MARKDOWN_LINK, (_link, label, target) => linkTargetAllowed(unesc(target)) ? `<a href="${target}">${label}</a>` : label);
   }
   function mdInline(raw) {
     return inline(esc(raw));
@@ -312,19 +946,16 @@
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
-      if (line.trimStart().startsWith("<svg")) {
-        const svgLines = [line];
-        while (i < lines.length && !lines[i].includes("</svg>")) {
-          i++;
-          if (i < lines.length) svgLines.push(lines[i]);
-        }
-        i++;
+      if (opensFigure(line)) {
+        const figure = figureBlock(lines, i);
+        i = figure.next;
         let caption = "";
         if (i < lines.length && /^\^caption:\s*/.test(lines[i])) {
           caption = "<figcaption>" + mdInline(lines[i].replace(/^\^caption:\s*/, "")) + "</figcaption>";
           i++;
         }
-        out.push('<figure class="lp-figure">' + svgLines.join("\n") + caption + "</figure>");
+        const verdict = figureVerdict(figure.svg);
+        out.push(verdict.ok ? '<figure class="lp-figure">' + figure.svg + caption + "</figure>" : '<figure class="lp-figure lp-figure--removed"><p class="lp-figure__removed">figure removed: ' + esc(verdict.reason) + "</p>" + caption + "</figure>");
         continue;
       }
       if (/^```/.test(line)) {
@@ -379,7 +1010,7 @@
         continue;
       }
       const para = [];
-      while (i < lines.length && lines[i].trim() !== "" && !/^(#{2,4}\s|```|>\s?|[-*]\s+|\d+\.\s+)/.test(lines[i]) && !lines[i].trimStart().startsWith("<svg")) {
+      while (i < lines.length && lines[i].trim() !== "" && !/^(#{2,4}\s|```|>\s?|[-*]\s+|\d+\.\s+)/.test(lines[i]) && !opensFigure(lines[i])) {
         para.push(lines[i]);
         i++;
       }
@@ -411,7 +1042,7 @@
   }
 
   // src/render/inline.ts
-  var isMultiline = (target) => target.region === "narrative";
+  var isMultiline = (target) => target.region === "narrative" || target.region === "shape";
   function inlineAttrs(target) {
     const parts = [' contenteditable="plaintext-only" spellcheck="false"', ` data-edit="${target.region}"`];
     if (target.region === "narrative" || target.region === "claim") parts.push(` data-index="${target.index}"`);
@@ -434,6 +1065,8 @@
         return { region: "goal" };
       case "tried":
         return { region: "tried" };
+      case "shape":
+        return { region: "shape" };
       case "narrative":
       case "claim": {
         const index = ordinal(data.index);
@@ -459,6 +1092,8 @@
         return edgeText(payload, target.edge);
       case "claim":
         return parse(payload).checks[target.index - 1]?.claim ?? null;
+      case "shape":
+        return parse(payload).shape?.text ?? null;
       case "narrative": {
         const sections = narrativeSections(payload);
         if (sections.length === 0 && target.index === 1) return "";
@@ -480,6 +1115,8 @@
         return { kind: "claim", check: target.index, text };
       case "narrative":
         return { kind: "narrative", section: target.index, text };
+      case "shape":
+        return { kind: "shape", text };
     }
   }
   function inlineAction(event, target) {
@@ -491,16 +1128,9 @@
     return isMultiline(target) ? { do: "newline" } : { do: "commit" };
   }
 
-  // src/serve/protocol.ts
-  var DEFAULT_SERVE_PORT = 7717;
-  var HEALTH_PATH = "/api/health";
-  var LOOP_PATH = "/api/loop";
-  var DIRECTORY_PATH = "/api/directory";
+  // src/render/paths.ts
   function penCommand(file, check, verdict) {
     return `tend2 verify ${file} --${verdict} ${check}`;
-  }
-  function serveStartCommand(dir) {
-    return `tend2 serve ${dir}`;
   }
   function loopIdFromHref(href) {
     const path = href.split(/[?#]/)[0] ?? "";
@@ -514,13 +1144,17 @@
     return match === null ? null : match[1];
   }
   function pagePaths(href, id) {
-    const relative = { file: `${id}.tend2.html`, dir: "." };
+    const relative = { file: `${id}.tend2.html`, dir: ".", local: false };
     if (!href.startsWith("file://")) return relative;
     const path = decodeURIComponent(href.replace(/^file:\/\/[^/]*/, "").replace(/[?#].*$/, ""));
     const normalized = /^\/[A-Za-z]:/.test(path) ? path.slice(1) : path;
     const cut = normalized.lastIndexOf("/");
     if (cut < 0) return relative;
-    return { file: normalized, dir: normalized.slice(0, cut) };
+    return { file: normalized, dir: normalized.slice(0, cut), local: true };
+  }
+  function grantKey(href) {
+    const path = href.split(/[?#]/)[0] ?? "";
+    return path.slice(0, path.lastIndexOf("/") + 1);
   }
 
   // src/render/page.ts
@@ -532,7 +1166,7 @@
     desc: ""
   };
   function editable(ctx, target, placeholder) {
-    if (ctx.mode !== "live") return "";
+    if (!ctx.editing) return "";
     return `${inlineAttrs(target)} data-placeholder="${esc(placeholder)}"`;
   }
   function pill(state, kind) {
@@ -546,31 +1180,34 @@
     open: "\u25CB",
     claimed: "\u2713"
   };
-  function actionHtml(pen, label, attrs = "") {
-    return `<button type="button" class="lp-pen__btn" data-pen="${pen}"${attrs}>${esc(label)}</button>`;
-  }
   function commandHtml(label, command) {
     return `<button type="button" class="lp-pen__btn" data-pen="command" data-command="${esc(command)}">${esc(label)}</button>`;
   }
+  var PEN_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 1.9 14.1 4.5 5.1 13.5 1.6 14.4 2.5 10.9z"/><path d="M10.2 3.2 12.8 5.8"/></svg>';
+  var FOLDER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
   function penBarHtml(ctx) {
-    if (ctx.mode === "live") {
-      return `<span class="lp-top__right"><span class="lp-pen__state"><span class="lp-pen__dot"></span>pen on \xB7 ${esc(ctx.base.replace(/^https?:\/\//, ""))}</span><span class="lp-pen__hint">click any text to edit it</span></span>`;
+    if (ctx.mode === "read-only") {
+      return `<span class="lp-top__right"><span class="lp-pen__state">read-only</span><span class="lp-pen__hint">${esc(ctx.why)}</span></span>`;
     }
-    return '<span class="lp-top__right"><span class="lp-pen__state lp-pen__state--off">pen off</span>' + commandHtml("edit this page", serveStartCommand(ctx.dir)) + "</span>";
+    const hint = !ctx.editing ? "" : ctx.dirty ? '<span class="lp-pen__hint lp-pen__hint--dirty">unsaved changes</span>' : '<span class="lp-pen__hint">click any text to edit it \xB7 esc to close</span>';
+    return '<span class="lp-top__right"><span class="lp-pen__flash" role="status" aria-live="polite"></span>' + hint + `<button type="button" class="lp-pen__toggle${ctx.editing ? " lp-pen__toggle--save" : ""}" data-pen="toggle" aria-pressed="${ctx.editing}">${PEN_ICON}<span>${ctx.editing ? "Save" : "Edit"}</span>` + (ctx.dirty ? '<span class="lp-pen__dirty" aria-label="unsaved"></span>' : "") + "</button></span>";
+  }
+  function grantHtml(ctx) {
+    if (ctx.mode !== "disk") return "";
+    const local = ctx.folder !== "";
+    return '<dialog class="lp-grant" aria-labelledby="lp-grant-title"><div class="lp-grant__body"><span class="lp-label">One-time permission</span><h3 class="lp-grant__title" id="lp-grant-title">Point Chrome at this folder</h3><p class="lp-grant__text">Only you can grant write access \u2014 a page may not ask for a path. Every page in the folder becomes editable, and nothing leaves your machine.</p>' + (local ? `<div class="lp-grant__path"><code class="lp-grant__folder">&lrm;${esc(ctx.folder)}&lrm;</code><button type="button" class="lp-pen__btn lp-pen__btn--ghost" data-pen="grant-copy">copy</button></div>` : "") + `<div class="lp-grant__drop" data-pen-drop>${FOLDER_ICON}<div class="lp-grant__drop-main">Drag the folder here from Finder</div><div class="lp-grant__drop-sub">no dialog, no navigating</div></div><p class="lp-grant__why" role="alert"></p><div class="lp-grant__row"><button type="button" class="lp-pen__btn lp-pen__btn--ghost" data-pen="grant-cancel">Not now</button><button type="button" class="lp-pen__btn lp-pen__btn--go" data-pen="grant-pick">Choose folder\u2026</button></div>` + (local ? '<p class="lp-grant__hint">In the file dialog, <b>\u2318\u21E7G</b> pastes the path.</p>' : "") + "</div></dialog>";
+  }
+  function refusalHtml(ctx) {
+    if (ctx.refusal === "") return "";
+    return `<div class="lp-pen__refusal" role="alert"><span class="lp-pen__refusal-text">${esc(ctx.refusal)}</span><button type="button" class="lp-pen__btn" data-pen="dismiss">dismiss</button></div>`;
   }
   function checkPenHtml(check, index, ctx, penned) {
     const parts = [];
-    const humanPen = penned && check.method === "human" && check.state !== "pass";
-    if (ctx.mode === "live") {
-      if (humanPen) {
-        parts.push(actionHtml("approve", "approve", ` data-check="${index}"`));
-        parts.push(actionHtml("refute", "refute", ` data-check="${index}"`));
-      }
-      if (check.sha !== null) parts.push('<span class="lp-pen__hint">editing this claim voids the stamp</span>');
-    } else if (humanPen) {
+    if (penned && check.method === "human" && check.state !== "pass") {
       parts.push(commandHtml("approve", penCommand(ctx.file, index, "approve")));
       parts.push(commandHtml("refute", penCommand(ctx.file, index, "refute")));
     }
+    if (ctx.editing && check.sha !== null) parts.push('<span class="lp-pen__hint">editing this claim voids the stamp</span>');
     return parts.length === 0 ? "" : `<div class="lp-pen__row">${parts.join("")}</div>`;
   }
   function renderCheck(check, index, ctx, penned) {
@@ -586,7 +1223,7 @@
         badges += `<span class="lp-badge lp-badge--eval">\u2265${spec.pass}/${spec.total}${spec.repeat > 1 ? ` \xD7${spec.repeat}` : ""}</span>`;
       }
     }
-    return `<div class="lp-check lp-check--${check.state}" id="c${index + 1}"><span class="lp-check__icon">${CHECK_ICON[check.state]}</span><div class="lp-check__body"><p class="lp-check__claim"${editable(ctx, { region: "claim", index: index + 1 }, "what would prove this?")}>${mdInline(check.claim)}</p><div class="lp-check__meta"><span class="lp-method lp-method--${check.method}">${check.method}</span>` + badges + (check.evidence !== "" ? `<span class="lp-check__evidence">${esc(check.evidence)}</span>` : "") + "</div>" + checkPenHtml(check, index + 1, ctx, penned) + "</div></div>";
+    return `<div class="lp-check lp-check--${check.state}" id="c${index + 1}"><span class="lp-check__icon">${CHECK_ICON[check.state]}</span><div class="lp-check__body"><p class="lp-check__claim"${editable(ctx, { region: "claim", index: index + 1 }, "what would prove this?")}>${mdInline(check.claim)}</p><div class="lp-check__meta"><span class="lp-method lp-method--${check.method}">${check.method}</span>` + badges + (check.evidence !== "" ? `<span class="lp-check__evidence">${esc(check.evidence)}</span>` : "") + (check.reads.length > 0 ? `<span class="lp-check__evidence">reads: ${esc(check.reads.join(", "))}</span>` : "") + "</div>" + checkPenHtml(check, index + 1, ctx, penned) + "</div></div>";
   }
   function renderChecksSection(doc, ctx) {
     if (doc.checks.length === 0) return "";
@@ -597,8 +1234,14 @@
   function renderJobsSection(doc) {
     if (doc.jobs.length === 0) return "";
     return '<h2 id="jobs">Jobs <span style="font-family:var(--mono);font-size:13px;color:var(--text-muted);font-weight:400">\u2014 the moments this persona hires the product</span></h2><div class="lp-jobs">' + doc.jobs.map(
-      (job, i) => `<div class="lp-job"><span class="lp-job__n">[${i}]</span>` + mdInline(job).replace(/^(When\b)/, "<b>$1</b>") + "</div>"
+      (job, i) => `<div class="lp-job"><span class="lp-job__n">[${i}]</span>` + mdInline(job.text).replace(/^(When\b)/, "<b>$1</b>") + (job.source === null ? "" : `<span class="lp-job__source">${job.source === "guessed" ? "guessed" : `from ${esc(job.source)}`}</span>`) + "</div>"
     ).join("") + "</div>";
+  }
+  function renderShapeSection(doc, ctx) {
+    if (doc.shape === null) return "";
+    const cited = doc.checks.filter(citesShape).length;
+    const subtitle = cited === 0 ? "no check cites it" : `cited by ${cited} check${cited === 1 ? "" : "s"}`;
+    return `<h2 id="shape">The shape <span style="font-family:var(--mono);font-size:13px;color:var(--text-muted);font-weight:400">\u2014 the screen as drawn \xB7 ${subtitle}</span></h2><section class="lp-shape"${editable(ctx, { region: "shape" }, "draw the screen")}>${renderMd(doc.shape.text)}</section>`;
   }
   function renderSignalsSection(doc) {
     if (doc.signals.length === 0) return "";
@@ -643,7 +1286,7 @@
   }
   function renderEdge(doc, edge, ctx) {
     const ids = doc[edge];
-    if (ids.length === 0 && ctx.mode !== "live") return "";
+    if (ids.length === 0 && !ctx.editing) return "";
     const label = ID_SECTION_LABEL[edge];
     return `<div class="lp-rail__sec"><span class="lp-label">${label}</span><ul class="lp-links"${editable(ctx, { region: "edge", edge }, EDGE_PROMPT[edge])}>${linkList(ids, EDGE_TAG[edge])}</ul></div>`;
   }
@@ -654,7 +1297,7 @@
       if (dated) return `<li><span class="d">${dated[1]}</span>${mdInline(dated[2])}</li>`;
       return `<li>${mdInline(entry)}</li>`;
     }).join("");
-    const composer = ctx.mode === "live" ? `<li class="lp-tried__new"${editable(ctx, { region: "tried" }, "add a note \u2014 what you tried, what you decided")}></li>` : "";
+    const composer = ctx.editing ? `<li class="lp-tried__new"${editable(ctx, { region: "tried" }, "add a note \u2014 what you tried, what you decided")}></li>` : "";
     if (history !== "" || composer !== "") {
       sections.push(`<div class="lp-rail__sec"><span class="lp-label">Tried / decided</span><ul class="lp-tried">${history}${composer}</ul></div>`);
     }
@@ -664,8 +1307,8 @@
   }
   function renderNarrative(payload, ctx) {
     const sections = narrativeSections(payload);
-    const blocks = sections.length > 0 ? sections.map((section, i) => `<section class="lp-narrative__sec"${editable(ctx, { region: "narrative", index: i + 1 }, "write the story here")}>${renderMd(section.text)}</section>`) : ctx.mode === "live" ? [`<section class="lp-narrative__sec"${editable(ctx, { region: "narrative", index: 1 }, "write the story here")}></section>`] : [];
-    return `<div class="lp-narrative">${blocks.join("")}</div>`;
+    const blocks2 = sections.length > 0 ? sections.map((section, i) => `<section class="lp-narrative__sec"${editable(ctx, { region: "narrative", index: i + 1 }, "write the story here")}>${renderMd(section.text)}</section>`) : ctx.editing ? [`<section class="lp-narrative__sec"${editable(ctx, { region: "narrative", index: 1 }, "write the story here")}></section>`] : [];
+    return `<div class="lp-narrative">${blocks2.join("")}</div>`;
   }
   var H2_RE = /<h2 id="([^"]+)">(.*?)<\/h2>/g;
   function renderToc(articleHtml) {
@@ -688,9 +1331,9 @@
     if (doc.kind === "loop" && doc.checks.length > 0) chips.push(`<span class="lp-chip">${doc.checks.length} tests</span>`);
     if (doc.children.length > 0) chips.push(`<span class="lp-chip">${doc.children.length} children</span>`);
     for (const id of doc.forIds) chips.push(`<a class="lp-chip" href="${esc(id)}.tend2.html">for ${esc(id)}</a>`);
-    const articleHtml = renderNarrative(payload, ctx) + renderChecksSection(doc, ctx) + (doc.kind === "sample" ? "" : renderFailureSection(doc)) + renderJobsSection(doc) + renderSignalsSection(doc);
-    const showGoal = doc.dek !== "" || ctx.mode === "live";
-    const html = '<header class="lp-top">' + (project !== "" ? `<a class="lp-top__project" href="${slug(project)}.tend2.html">${esc(project)}</a><span class="lp-top__sep">/</span><span class="lp-top__page">${esc(pageId)}</span>` : `<span class="lp-top__project">${esc(pageId)}</span>`) + penBarHtml(ctx) + `</header><section class="lp-hero"><div class="lp-hero__inner"><div><div class="lp-kicker">${kicker}</div><h1 class="lp-hero__title"${editable(ctx, { region: "title" }, "name this page")}>${mdInline(doc.title)}</h1>` + (showGoal ? `<p class="lp-hero__goal"${editable(ctx, { region: "goal" }, "why does this exist?")}>${mdInline(doc.dek)}</p>` : "") + (chips.length > 0 ? `<div class="lp-chips">${chips.join("")}</div>` : "") + "</div>" + renderProofCard(doc, state) + '</div></section><div class="lp-band"><div class="lp-band__inner">' + renderToc(articleHtml) + `<article class="lp-article">${articleHtml}</article>` + renderRail(doc, ctx) + '</div></div><footer class="lp-foot"><div class="lp-foot__inner"><span>one markdown payload \xB7 one shared renderer</span><span>renders offline from file://</span><span>state is derived \u2014 never hand-set</span></div></footer>';
+    const articleHtml = renderNarrative(payload, ctx) + renderShapeSection(doc, ctx) + renderChecksSection(doc, ctx) + (doc.kind === "sample" ? "" : renderFailureSection(doc)) + renderJobsSection(doc) + renderSignalsSection(doc);
+    const showGoal = doc.dek !== "" || ctx.editing;
+    const html = '<header class="lp-top">' + (project !== "" ? `<a class="lp-top__project" href="${slug(project)}.tend2.html">${esc(project)}</a><span class="lp-top__sep">/</span><span class="lp-top__page">${esc(pageId)}</span>` : `<span class="lp-top__project">${esc(pageId)}</span>`) + penBarHtml(ctx) + "</header>" + refusalHtml(ctx) + `<section class="lp-hero"><div class="lp-hero__inner"><div><div class="lp-kicker">${kicker}</div><h1 class="lp-hero__title"${editable(ctx, { region: "title" }, "name this page")}>${mdInline(doc.title)}</h1>` + (showGoal ? `<p class="lp-hero__goal"${editable(ctx, { region: "goal" }, "why does this exist?")}>${mdInline(doc.dek)}</p>` : "") + (chips.length > 0 ? `<div class="lp-chips">${chips.join("")}</div>` : "") + "</div>" + renderProofCard(doc, state) + '</div></section><div class="lp-band"><div class="lp-band__inner">' + renderToc(articleHtml) + `<article class="lp-article">${articleHtml}</article>` + renderRail(doc, ctx) + '</div></div><footer class="lp-foot"><div class="lp-foot__inner"><span>one markdown payload \xB7 one shared renderer</span><span>renders offline from file://</span><span>state is derived \u2014 never hand-set</span></div></footer>' + grantHtml(ctx);
     return { html, doc, state, title: pageId + (project !== "" ? ` \xB7 ${project}` : "") };
   }
 
@@ -708,93 +1351,28 @@
     return `data:image/svg+xml,${encodeURIComponent(svg)}`;
   }
 
-  // src/serve/client.ts
-  var DEAD = { live: false, dir: "", loops: [] };
-  var isRecord = (value) => typeof value === "object" && value !== null;
-  async function readJson(fetcher, url, init) {
-    try {
-      const response = await fetcher(url, init === void 0 ? void 0 : {
-        method: init.method,
-        headers: { "content-type": "application/json" },
-        body: init.body
-      });
-      const parsed = await response.json();
-      return isRecord(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
+  // src/core/extract.ts
+  var OPEN_TAG_RE = /<script\s+type="text\/markdown"\s+id="loop"\s*>/;
+  function extractPayload(html) {
+    const match = OPEN_TAG_RE.exec(html);
+    if (match === null) return null;
+    const start = match.index + match[0].length;
+    const end = html.indexOf("</script>", start);
+    if (end === -1) return null;
+    return { payload: html.slice(start, end), start, end };
   }
-  async function probeDaemon(fetcher, base) {
-    const body = await readJson(fetcher, `${base}${HEALTH_PATH}`);
-    if (body === null || body["ok"] !== true || body["product"] !== "tend2") return DEAD;
-    const health = body;
-    return {
-      live: true,
-      dir: typeof health.dir === "string" ? health.dir : "",
-      loops: Array.isArray(health.loops) ? health.loops.filter((id) => typeof id === "string") : []
-    };
-  }
-  function penMode(probe, id) {
-    return probe.live && probe.loops.includes(id) ? "live" : "degraded";
-  }
-  function asEntry(value) {
-    if (!isRecord(value)) return null;
-    const { id, title, state } = value;
-    if (typeof id !== "string" || typeof title !== "string" || typeof state !== "string") return null;
-    return { id, title, state };
-  }
-  async function loadDirectory(fetcher, base) {
-    const body = await readJson(fetcher, `${base}${DIRECTORY_PATH}`);
-    if (body === null || body["ok"] !== true || !Array.isArray(body["loops"])) return [];
-    return body["loops"].map(asEntry).filter((entry) => entry !== null);
-  }
-  function asSnapshot(value) {
-    if (!isRecord(value)) return null;
-    const { id, payload, sha } = value;
-    if (typeof id !== "string" || typeof payload !== "string" || typeof sha !== "string") return null;
-    return { id, payload, sha };
-  }
-  async function loadLoop(fetcher, base, id) {
-    const body = await readJson(fetcher, `${base}${LOOP_PATH}/${id}`);
-    if (body === null || body["ok"] !== true) return null;
-    return asSnapshot(body["snapshot"]);
-  }
-  var unreachable = () => ({
-    ok: false,
-    code: "refused",
-    error: "the tend2 daemon stopped answering \u2014 start it again and reload"
-  });
-  function asResult(body) {
-    if (body === null) return unreachable();
-    if (body["ok"] === true) {
-      const snapshot = asSnapshot(body["snapshot"]);
-      if (snapshot === null) return unreachable();
-      const success = { ok: true, snapshot };
-      if (typeof body["voidedStamp"] === "boolean") success.voidedStamp = body["voidedStamp"];
-      return success;
-    }
-    const failure = body;
-    return failure.ok === false && typeof failure.error === "string" ? failure : unreachable();
-  }
-  async function post(fetcher, base, id, action, request) {
-    return asResult(await readJson(fetcher, `${base}${LOOP_PATH}/${id}/${action}`, {
-      method: "POST",
-      body: JSON.stringify(request)
-    }));
-  }
-  function saveEdit(fetcher, base, id, request) {
-    return post(fetcher, base, id, "edit", request);
-  }
-  function sendPen(fetcher, base, id, request) {
-    return post(fetcher, base, id, "pen", request);
-  }
-  async function resync(fetcher, base, id, result) {
-    if (result.ok) return result.snapshot;
-    if (result.code === "stale" && result.snapshot !== void 0) return result.snapshot;
-    return loadLoop(fetcher, base, id);
+  function replacePayload(html, payload) {
+    const extracted = extractPayload(html);
+    if (extracted === null) return null;
+    return html.slice(0, extracted.start) + (payload.startsWith("\n") ? "" : "\n") + payload + (payload.endsWith("\n") ? "" : "\n") + html.slice(extracted.end);
   }
 
   // src/render/suggest.ts
+  function entryOf(id, html) {
+    const extracted = html === null ? null : extractPayload(html);
+    const doc = parse(extracted === null ? "" : extracted.payload);
+    return { id, title: doc.title, state: deriveState(doc) };
+  }
   var SEPARATOR = /[\s,]/;
   var TOKEN = /[^\s,]+/g;
   var DEFAULT_LIMIT = 8;
@@ -870,10 +1448,809 @@
     return state.active < 0 ? { do: "pass" } : { do: "accept", index: state.active };
   }
 
+  // src/core/prompt-line.ts
+  var OPEN = "\u2039replace:";
+  function isPromptLine(line) {
+    return line.replace(/`[^`]*`/g, "").includes(OPEN);
+  }
+
+  // src/core/narrative.ts
+  var FUNCTION_WORDS = /* @__PURE__ */ new Set([
+    "a",
+    "about",
+    "above",
+    "after",
+    "again",
+    "against",
+    "all",
+    "also",
+    "am",
+    "an",
+    "and",
+    "any",
+    "are",
+    "as",
+    "at",
+    "be",
+    "because",
+    "been",
+    "before",
+    "being",
+    "below",
+    "between",
+    "both",
+    "but",
+    "by",
+    "can",
+    "cannot",
+    "did",
+    "do",
+    "does",
+    "doing",
+    "done",
+    "down",
+    "during",
+    "each",
+    "either",
+    "else",
+    "enough",
+    "even",
+    "ever",
+    "every",
+    "few",
+    "for",
+    "from",
+    "further",
+    "had",
+    "has",
+    "have",
+    "having",
+    "he",
+    "her",
+    "here",
+    "hers",
+    "him",
+    "his",
+    "how",
+    "however",
+    "i",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "itself",
+    "just",
+    "least",
+    "less",
+    "like",
+    "many",
+    "may",
+    "me",
+    "might",
+    "mine",
+    "more",
+    "most",
+    "much",
+    "must",
+    "my",
+    "neither",
+    "never",
+    "no",
+    "none",
+    "nor",
+    "not",
+    "nothing",
+    "now",
+    "of",
+    "off",
+    "on",
+    "once",
+    "one",
+    "only",
+    "or",
+    "other",
+    "others",
+    "ought",
+    "our",
+    "ours",
+    "out",
+    "over",
+    "own",
+    "per",
+    "rather",
+    "same",
+    "shall",
+    "she",
+    "should",
+    "since",
+    "so",
+    "some",
+    "still",
+    "such",
+    "than",
+    "that",
+    "the",
+    "their",
+    "theirs",
+    "them",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "though",
+    "through",
+    "to",
+    "too",
+    "under",
+    "until",
+    "up",
+    "upon",
+    "us",
+    "very",
+    "was",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "whether",
+    "which",
+    "while",
+    "who",
+    "whom",
+    "whose",
+    "why",
+    "will",
+    "with",
+    "within",
+    "without",
+    "would",
+    "yet",
+    "you",
+    "your",
+    "yours"
+  ]);
+  function stem(word) {
+    let w = word;
+    if (w.length > 5 && w.endsWith("ing")) w = w.slice(0, -3);
+    else if (w.length > 4 && w.endsWith("ed")) w = w.slice(0, -2);
+    else if (w.length > 4 && w.endsWith("es")) w = w.slice(0, -2);
+    else if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) w = w.slice(0, -1);
+    if (w.length > 3 && w.endsWith("e")) w = w.slice(0, -1);
+    if (w.length > 3 && w.endsWith("y")) w = `${w.slice(0, -1)}i`;
+    return w;
+  }
+  function prose(text) {
+    return text.replace(/^```[\s\S]*?^```/gm, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]*>/g, " ").replace(/\]\([^)]*\)/g, "] ").replace(/^\^caption:/gm, " ");
+  }
+  function contentTerms(text) {
+    const terms = /* @__PURE__ */ new Set();
+    for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
+      if (raw.length < 3) continue;
+      if (/^[0-9]/.test(raw)) continue;
+      if (FUNCTION_WORDS.has(raw)) continue;
+      terms.add(stem(raw));
+    }
+    return terms;
+  }
+  function delegates(text, doc, selfId) {
+    const body = text.replace(/^#{1,6}\s.*$/gm, " ");
+    const linked = [...body.matchAll(/([\w][\w.-]*)\.tend2\.html/g)].map((m) => m[1]);
+    if (linked.some((id) => id !== selfId)) return true;
+    const edges = /* @__PURE__ */ new Set([...doc.needs, ...doc.children, ...doc.forIds, ...doc.solvedBy]);
+    return parseIds(body).some((id) => id !== selfId && edges.has(id));
+  }
+  function blocks(payload, doc, selfId) {
+    return narrativeSections(payload).map((section) => {
+      const first = section.text.split("\n", 1)[0] ?? "";
+      const headingMatch = first.match(/^#{2,4}\s+(.+)$/);
+      return {
+        heading: headingMatch !== null ? headingMatch[1].trim() : "",
+        line: section.start,
+        terms: contentTerms(prose(section.text)),
+        delegates: delegates(section.text, doc, selfId)
+      };
+    });
+  }
+  function checkTerms(doc) {
+    const terms = /* @__PURE__ */ new Set();
+    for (const check of doc.checks) {
+      for (const term of contentTerms(`${check.claim} ${check.evidence}`)) terms.add(term);
+    }
+    return terms;
+  }
+  function covers(vocabulary, term) {
+    return vocabulary.some((known) => known === term || known.length >= 5 && term.startsWith(known) || term.length >= 5 && known.startsWith(term));
+  }
+  function uncoveredNarrative(payload, doc, selfId) {
+    if (doc.kind !== "loop" || doc.checks.length === 0) return [];
+    const all = blocks(payload, doc, selfId);
+    const shared = /* @__PURE__ */ new Set();
+    const seen = /* @__PURE__ */ new Set();
+    for (const block of all) {
+      for (const term of block.terms) {
+        if (seen.has(term)) shared.add(term);
+        seen.add(term);
+      }
+    }
+    const vocabulary = [...checkTerms(doc)];
+    const uncovered = [];
+    for (const block of all) {
+      if (block.heading === "" || block.delegates) continue;
+      const subject = [...block.terms].filter((term) => !shared.has(term));
+      if (subject.length === 0) continue;
+      if (subject.some((term) => covers(vocabulary, term))) continue;
+      uncovered.push({ heading: block.heading, line: block.line, subject: subject.sort() });
+    }
+    return uncovered;
+  }
+  function narrativeScopeIssues(payload, doc, selfId) {
+    return uncoveredNarrative(payload, doc, selfId).map((section) => ({
+      code: "narrative-uncovered",
+      severity: "warn",
+      line: section.line,
+      message: `\`${section.heading}\` narrates ground no check claims \u2014 anchor a check to it, name the page that carries it, or move the thinking to \`## Tried\``
+    }));
+  }
+
+  // src/core/rubric.ts
+  function proseBlocks(payload, doc, selfId) {
+    const lines = payload.split("\n");
+    const blocks2 = [];
+    const { dek } = headRegions(payload);
+    if (dek !== null) {
+      const text = lines.slice(dek.start, dek.end + 1).join("\n").replace(/^\*\*[^*]*\*\*/, " ");
+      blocks2.push({ line: dek.start, terms: contentTerms(prose(text)) });
+    }
+    for (const section of narrativeSections(payload)) {
+      if (doc !== null && delegates(section.text, doc, selfId)) continue;
+      blocks2.push({ line: section.start, terms: contentTerms(prose(section.text)) });
+    }
+    return blocks2;
+  }
+  function everydayAt(pages) {
+    return Math.max(3, Math.floor(pages / 10) + 1);
+  }
+  function rubricBackground(rubric) {
+    const seen = /* @__PURE__ */ new Set();
+    const shared = /* @__PURE__ */ new Set();
+    for (const line of rubric.lines) {
+      for (const term of contentTerms(prose(line.text))) {
+        if (seen.has(term)) shared.add(term);
+        seen.add(term);
+      }
+    }
+    return shared;
+  }
+  function rubricIssues(payload, doc, reading, selfId) {
+    const { rubric, map } = reading;
+    if (doc.kind !== "loop" || doc.checks.length === 0 || rubric.lines.length === 0) return [];
+    const blocks2 = proseBlocks(payload, doc, selfId);
+    const pageVocabulary = [...new Set(blocks2.flatMap((block) => [...block.terms]))];
+    const checkVocabulary = [...checkTerms(doc)];
+    const background = rubricBackground(rubric);
+    const everyday = everydayAt(map.pages);
+    const issues = [];
+    for (const line of rubric.lines) {
+      const subject = [...contentTerms(prose(line.text))].filter((term) => !background.has(term) && (map.carrying.get(term) ?? 0) < everyday && covers(pageVocabulary, term)).sort();
+      if (subject.length === 0) continue;
+      if (subject.some((term) => covers(checkVocabulary, term))) continue;
+      const anchor = blocks2.find((block) => subject.some((term) => covers([...block.terms], term)));
+      issues.push({
+        code: "rubric-uncovered",
+        severity: "warn",
+        line: anchor?.line ?? null,
+        message: `\`${line.text}\` (${rubric.path}:${line.line + 1}) meets this page on \`${subject.join("`, `")}\` \u2014 the prose carries it and no check claims it; anchor a check to it, or leave the subject to the page that proves it`
+      });
+    }
+    return issues;
+  }
+
+  // src/core/lint.ts
+  var METHODS = ["code", "agent", "human", "eval"];
+  var SELF_REF_SECTIONS = /* @__PURE__ */ new Set(["needs", "children"]);
+  function commonPrefixLength(a, b) {
+    const limit = Math.min(a.length, b.length);
+    let n = 0;
+    while (n < limit && a[n] === b[n]) n += 1;
+    return n;
+  }
+  function nearestId(missing, candidates) {
+    let best = null;
+    let bestLength = 0;
+    for (const candidate of candidates) {
+      const length = commonPrefixLength(missing, candidate);
+      if (length === 0) continue;
+      if (length > bestLength || length === bestLength && best !== null && candidate < best) {
+        best = candidate;
+        bestLength = length;
+      }
+    }
+    return best;
+  }
+  function danglingEdges(doc, directoryIds) {
+    if (directoryIds.length === 0) return [];
+    const known = new Set(directoryIds);
+    const edges = [];
+    for (const section of ID_SECTIONS) {
+      for (const id of doc[section]) {
+        if (known.has(id)) continue;
+        edges.push({ kind: ID_SECTION_LABEL[section], id, nearest: nearestId(id, directoryIds) });
+      }
+    }
+    return edges;
+  }
+  function danglingEdgeMessage(edge) {
+    return `#${edge.id} in \`## ${edge.kind}\` names no ${edge.id}.tend2.html in the map directory \u2014 ` + (edge.nearest === null ? "no existing id shares a prefix with it" : `nearest existing id is #${edge.nearest}`);
+  }
+  function drawn(shape, state) {
+    const escaped = state.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}_-])${escaped}(?![\\p{L}\\p{N}_-])`, "iu").test(shape.wireframe ?? "");
+  }
+  function lint(payload, options = {}) {
+    return lintReport(payload, options).issues;
+  }
+  function lintReport(payload, options = {}) {
+    const issues = [];
+    const notRun = [];
+    const doc = parse(payload);
+    if (doc.title === "") {
+      issues.push({
+        code: "missing-title",
+        severity: "error",
+        line: null,
+        message: "no `# title` line found \u2014 every loop file needs one"
+      });
+    }
+    if (doc.checks.length > 0 && (doc.jobs.length > 0 || doc.signals.length > 0)) {
+      issues.push({
+        code: "shape-conflict",
+        severity: "error",
+        line: null,
+        message: "a file cannot mix `## Tests` with `## Jobs`/`## Signals` \u2014 loops and descriptions are different shapes"
+      });
+    }
+    if (doc.jobs.length > 0 && doc.signals.length > 0) {
+      issues.push({
+        code: "shape-conflict",
+        severity: "error",
+        line: null,
+        message: "a file cannot mix `## Jobs` with `## Signals` \u2014 persona and opportunity are different shapes"
+      });
+    }
+    for (const check of doc.checks) {
+      if (check.state === "claimed") {
+        issues.push({
+          code: "naked-pass",
+          severity: "warn",
+          line: check.line,
+          message: "`[x]` without a verifier `@sha` \u2014 renders as claimed, not proven"
+        });
+      }
+      if (check.method === "eval") {
+        if (parseEvalSpec(check.claim) === null) {
+          issues.push({
+            code: "eval-no-threshold",
+            severity: "error",
+            line: check.line,
+            message: 'an (eval) check needs a threshold in its claim \u2014 e.g. "\u22659/10 cases, repeat 3\xD7"'
+          });
+        }
+        if (check.evidence === "") {
+          issues.push({
+            code: "eval-no-cases",
+            severity: "error",
+            line: check.line,
+            message: "an (eval) check needs a case file as evidence \u2014 `\xB7 evals/<name>.cases.md`"
+          });
+        }
+      }
+    }
+    const lines = payload.replace(/\r\n/g, "\n").split("\n");
+    let inTests = false;
+    let inFence = false;
+    let titleSeen = false;
+    const opens = /* @__PURE__ */ new Map();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^```/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+      if (isPromptLine(line)) {
+        issues.push({
+          code: "placeholder-content",
+          severity: "error",
+          line: i,
+          message: "a prompt `tend2 init` planted is still here \u2014 replace the whole line with what you know, or remove it"
+        });
+      }
+      if (!titleSeen && /^#\s/.test(line)) {
+        titleSeen = true;
+        continue;
+      }
+      const header = classifySectionHeader(line);
+      if (header !== null) {
+        if (!opens.has(header.section)) opens.set(header.section, i);
+        inTests = header.section === "tests";
+        continue;
+      }
+      if (/^##\s/.test(line)) {
+        inTests = false;
+        continue;
+      }
+      if (inTests && CHECK_LIKE_RE.test(line) && parseCheck(line, i) === null) {
+        const methodMatch = line.match(/^-\s*\[[x~! ]\]\s*\(([^)]+)\)/);
+        if (methodMatch && !METHODS.includes(methodMatch[1])) {
+          issues.push({
+            code: "unknown-method",
+            severity: "error",
+            line: i,
+            message: `unknown method \`(${methodMatch[1]})\` \u2014 must be code | agent | human`
+          });
+        } else {
+          issues.push({
+            code: "malformed-check",
+            severity: "error",
+            line: i,
+            message: "looks like a check but does not match `- [S] (M) claim [\xB7 evidence [\xB7 reads: path, \u2026]] [@sha]`"
+          });
+        }
+      }
+    }
+    if (doc.kind === "loop" && doc.shape !== null) {
+      const line = opens.get("shape") ?? null;
+      if (!doc.checks.some(citesShape)) {
+        issues.push({
+          code: "shape-uncited",
+          severity: "warn",
+          line,
+          message: "no check cites `## The shape` \u2014 a wireframe no check cites is drifting decoration; name `## The shape` in the claim of the check that judges the built screen against it"
+        });
+      }
+      for (const state of doc.shape.states) {
+        if (drawn(doc.shape, state)) continue;
+        issues.push({
+          code: "shape-state-unknown",
+          severity: "warn",
+          line,
+          message: `\`${state}\` is on the \`states:\` line and drawn nowhere in the wireframe \u2014 draw it, or take it off the line`
+        });
+      }
+    }
+    if (doc.kind === "persona" && doc.jobs.every((job) => job.source === null)) {
+      issues.push({
+        code: "jobs-unsourced",
+        severity: "warn",
+        line: opens.get("jobs") ?? null,
+        message: "no job says where it came from \u2014 end a job line with ` \xB7 from <source>`, or ` \xB7 guessed` when it is a guess"
+      });
+    }
+    if (doc.kind === "loop" && doc.checks.length > 0 && doc.forIds.length === 0) {
+      issues.push({
+        code: "loop-without-for",
+        severity: "warn",
+        line: null,
+        message: "a loop with checks names nobody in `## For` \u2014 say which persona or opportunity these checks serve: `## For #<persona>`"
+      });
+    }
+    if (options.stamps === void 0) {
+      notRun.push({
+        code: "stamp-unmatched",
+        reason: "the page was not read with its repository \u2014 lint hashes no evidence of its own"
+      });
+    }
+    for (const check of options.stamps ?? []) {
+      if (check.unmatched === void 0 || check.sha === null) continue;
+      issues.push({
+        code: "stamp-unmatched",
+        severity: "warn",
+        line: check.line,
+        message: `stamp @${check.sha} no longer matches \u2014 ${stampMismatchWords(check.unmatched)}; the check reads as claimed until \`tend2 verify\` re-earns it`
+      });
+    }
+    const directoryIds = options.directoryIds ?? [];
+    if (directoryIds.length === 0) {
+      notRun.push({
+        code: "dangling-edge",
+        reason: "the map directory ids were not given \u2014 lint reads no directory of its own"
+      });
+    }
+    for (const edge of danglingEdges(doc, directoryIds)) {
+      issues.push({ code: "dangling-edge", severity: "warn", line: null, message: danglingEdgeMessage(edge) });
+    }
+    for (const section of ID_SECTIONS) {
+      const name = ID_SECTION_LABEL[section];
+      const seen = /* @__PURE__ */ new Set();
+      for (const id of doc[section]) {
+        if (seen.has(id)) {
+          issues.push({
+            code: "duplicate-ref",
+            severity: "warn",
+            line: null,
+            message: `#${id} appears more than once in \`## ${name}\``
+          });
+        }
+        seen.add(id);
+        if (SELF_REF_SECTIONS.has(section) && options.id !== void 0 && id === options.id) {
+          issues.push({
+            code: "self-ref",
+            severity: "error",
+            line: null,
+            message: `#${id} references its own file in \`## ${name}\``
+          });
+        }
+      }
+    }
+    issues.push(...unsafeMarkupIssues(payload));
+    issues.push(...narrativeScopeIssues(payload, doc, options.id));
+    if (options.rubric === void 0) {
+      notRun.push({
+        code: "rubric-uncovered",
+        reason: "the repository rubric beside the map was not given \u2014 lint reads no directory of its own"
+      });
+    } else {
+      issues.push(...rubricIssues(payload, doc, options.rubric, options.id));
+    }
+    return { issues, notRun };
+  }
+
+  // src/core/write-rules.ts
+  function ruleOnWrite(proposal) {
+    const issues = lint(proposal.next, { id: proposal.id });
+    const inherited = new Set((proposal.previous ?? "").split("\n").filter(isPromptLine));
+    const nextLines = proposal.next.split("\n");
+    const errors = issues.filter((i) => i.severity === "error" && !(i.code === "placeholder-content" && i.line !== null && inherited.has(nextLines[i.line] ?? "")));
+    if (errors.length > 0) {
+      return { ok: false, error: errors.map((i) => `${i.code}: ${i.message}`).join("; "), issues };
+    }
+    if (breaksPayload(proposal.next)) {
+      return { ok: false, error: "refused: a payload cannot contain `</script` \u2014 it would close its own container and cut the page short", issues };
+    }
+    const newDoc = parse(proposal.next);
+    if (proposal.previous === null) {
+      if (newDoc.checks.some((c) => c.sha !== null)) {
+        return { ok: false, error: "refused: a new loop cannot be born proven \u2014 pass stamps are written only by loop_verify", issues };
+      }
+      return { ok: true, issues };
+    }
+    const oldStamps = new Set(
+      parse(proposal.previous).checks.filter((c) => c.sha !== null).map((c) => `${c.sha}\0${c.claim}`)
+    );
+    const forged = newDoc.checks.filter((c) => c.sha !== null && !oldStamps.has(`${c.sha}\0${c.claim}`));
+    if (forged.length > 0) {
+      return {
+        ok: false,
+        error: `refused: pass stamps are written only by loop_verify (forged or moved sha on: ${forged.map((c) => `"${c.claim}"`).join(", ")})`,
+        issues
+      };
+    }
+    return { ok: true, issues };
+  }
+  function planPageWrite(write) {
+    const extracted = extractPayload(write.html);
+    if (extracted === null) {
+      return { ok: false, code: "refused", error: `${write.id}.tend2.html on disk has no loop payload to replace`, issues: [] };
+    }
+    if (extracted.payload !== write.baseline) {
+      return {
+        ok: false,
+        code: "stale",
+        error: "this file changed on disk since the page read it \u2014 saving now would drop that change. Reload to pick it up, then edit again.",
+        payload: extracted.payload,
+        issues: []
+      };
+    }
+    if (!triedHistoryHolds(write.baseline, write.next)) {
+      return { ok: false, code: "refused", error: "Tried is history \u2014 entries may be appended, never rewritten or dropped", issues: [] };
+    }
+    const ruling = ruleOnWrite({ id: write.id, previous: write.baseline, next: write.next });
+    if (!ruling.ok) return { ok: false, code: "refused", error: ruling.error, issues: ruling.issues };
+    const html = replacePayload(write.html, write.next);
+    if (html === null) {
+      return { ok: false, code: "refused", error: `${write.id}.tend2.html on disk has no loop payload to replace`, issues: [] };
+    }
+    return { ok: true, html, payload: extractPayload(html).payload, issues: ruling.issues };
+  }
+  function readBackProblem(onDisk, wrote) {
+    if (onDisk === wrote) return null;
+    if (wrote.startsWith(onDisk)) {
+      return `the disk kept ${onDisk.length} of the ${wrote.length} characters written`;
+    }
+    return "the file on disk does not hold the edit that was written";
+  }
+
+  // src/render/disk.ts
+  var LOOPBACK = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]"]);
+  function penCapability(env) {
+    if (!env.hasApi) {
+      return { mode: "read-only", why: "this browser cannot save a page \u2014 Chrome, Edge or Arc can" };
+    }
+    if (env.protocol === "file:" || LOOPBACK.has(env.hostname)) return { mode: "disk" };
+    return { mode: "read-only", why: "a published copy \u2014 edit the page from your own checkout" };
+  }
+  var reasonOf = (error) => error instanceof Error ? error.message !== "" ? error.message : error.name : String(error);
+  async function readText(folder, name) {
+    try {
+      const handle = await folder.getFileHandle(name);
+      return { ok: true, text: await (await handle.getFile()).text() };
+    } catch (error) {
+      return { ok: false, error: `${folder.name}/ has no ${name} the page can read (${reasonOf(error)}) \u2014 pick the folder this page is in` };
+    }
+  }
+  async function readPage(folder, name) {
+    const read = await readText(folder, name);
+    if (!read.ok) return read;
+    const extracted = extractPayload(read.text);
+    if (extracted === null) return { ok: false, error: `${name} on disk has no loop payload to edit` };
+    return { ok: true, html: read.text, payload: extracted.payload };
+  }
+  var tempName = (name) => `${name}.pen-tmp`;
+  async function discard(folder, name) {
+    try {
+      await folder.removeEntry(name);
+    } catch {
+    }
+  }
+  async function writePage(folder, name, request) {
+    const current = await readText(folder, name);
+    if (!current.ok) return { ok: false, code: "failed", error: current.error, issues: [] };
+    const plan = planPageWrite({ id: request.id, html: current.text, baseline: request.baseline, next: request.next });
+    if (!plan.ok) return plan;
+    const temp = tempName(name);
+    const stopped = async (why) => {
+      await discard(folder, temp);
+      return { ok: false, code: "failed", error: `${why} \u2014 the save was stopped and ${name} is unchanged`, issues: plan.issues };
+    };
+    let handle;
+    let writable = null;
+    try {
+      handle = await folder.getFileHandle(temp, { create: true });
+      writable = await handle.createWritable();
+      await writable.write(plan.html);
+      await writable.close();
+    } catch (error) {
+      if (writable !== null) await writable.abort().catch(() => void 0);
+      return stopped(`the write did not complete (${reasonOf(error)})`);
+    }
+    const staged = await readText(folder, temp);
+    const short = staged.ok ? readBackProblem(staged.text, plan.html) : staged.error;
+    if (short !== null) return stopped(short);
+    try {
+      await handle.move(name);
+    } catch (error) {
+      return stopped(`the new page could not be moved into place (${reasonOf(error)})`);
+    }
+    const back = await readText(folder, name);
+    const problem = back.ok ? readBackProblem(back.text, plan.html) : back.error;
+    if (problem !== null) {
+      return { ok: false, code: "unverified", error: `${problem} \u2014 do not reload; copy what you typed first`, issues: plan.issues };
+    }
+    return { ok: true, payload: plan.payload, issues: plan.issues };
+  }
+  async function listMap(folder) {
+    const entries = [];
+    try {
+      for await (const entry of folder.values()) {
+        if (entry.kind !== "file" || !entry.name.endsWith(".tend2.html")) continue;
+        const id = entry.name.slice(0, -".tend2.html".length);
+        let html = null;
+        try {
+          html = await (await entry.getFile()).text();
+        } catch {
+        }
+        entries.push(entryOf(id, html));
+      }
+    } catch {
+      return [];
+    }
+    return entries.sort((a, b) => a.id.localeCompare(b.id));
+  }
+  async function pickFolder(picker) {
+    if (typeof picker.showDirectoryPicker !== "function") return { ok: false, error: "this browser has no folder picker" };
+    try {
+      return { ok: true, folder: await picker.showDirectoryPicker({ mode: "readwrite", id: "tend2-map" }) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error && error.name === "AbortError" ? null : reasonOf(error) };
+    }
+  }
+  async function folderFromDrop(item) {
+    if (item === null || typeof item.getAsFileSystemHandle !== "function") {
+      return { ok: false, error: "nothing this browser can open came with that drop" };
+    }
+    try {
+      const handle = await item.getAsFileSystemHandle();
+      if (handle === null || handle.kind !== "directory") return { ok: false, error: "that is a file, not a folder \u2014 drop the folder the page is in" };
+      return { ok: true, folder: handle };
+    } catch (error) {
+      return { ok: false, error: reasonOf(error) };
+    }
+  }
+  async function mayWrite(folder, ask) {
+    try {
+      let state = await folder.queryPermission({ mode: "readwrite" });
+      if (state !== "granted" && ask) state = await folder.requestPermission({ mode: "readwrite" });
+      return state === "granted";
+    } catch {
+      return false;
+    }
+  }
+  var DB = "tend2-pen";
+  var STORE = "folders";
+  function openStore(idb) {
+    return new Promise((resolve) => {
+      try {
+        const request = idb.open(DB, 1);
+        request.onupgradeneeded = () => {
+          request.result.createObjectStore(STORE);
+        };
+        request.onsuccess = () => {
+          resolve(request.result);
+        };
+        request.onerror = () => {
+          resolve(null);
+        };
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+  async function rememberFolder(idb, key, folder) {
+    const db = await openStore(idb);
+    if (db === null) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(folder, key);
+        tx.oncomplete = () => {
+          resolve(true);
+        };
+        tx.onerror = () => {
+          resolve(false);
+        };
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+  async function recallFolder(idb, key) {
+    const db = await openStore(idb);
+    if (db === null) return null;
+    return new Promise((resolve) => {
+      try {
+        const request = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
+        request.onsuccess = () => {
+          const found = request.result;
+          resolve(typeof found === "object" && found !== null && found.kind === "directory" ? found : null);
+        };
+        request.onerror = () => {
+          resolve(null);
+        };
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
   // src/render/pen.ts
-  var http = (url, init) => fetch(url, init);
-  var mounted = null;
+  var session = null;
   var wired = false;
+  var pointerDown = false;
+  var afterPointer = null;
+  function afterGesture(run) {
+    if (pointerDown) afterPointer = run;
+    else setTimeout(run, 0);
+  }
+  var FLASH_MS = 4500;
+  var today = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  function setCtx(patch) {
+    if (session !== null) session.ctx = { ...session.ctx, ...patch };
+  }
   function note(message, tone) {
     const existing = document.querySelector(".lp-pen__note");
     if (existing !== null) existing.remove();
@@ -907,47 +2284,185 @@
       }
     );
   }
-  async function settle(result) {
-    if (mounted === null) return;
-    const { ctx, rerender } = mounted;
-    if (result.ok) {
-      const next = { ...ctx, sha: result.snapshot.sha };
-      mounted.ctx = next;
-      rerender(result.snapshot.payload, next);
-      note(result.voidedStamp === true ? "saved \u2014 the reworded claim is open again" : "saved", "ok");
+  function flash(message) {
+    const el = document.querySelector(".lp-pen__flash");
+    if (el === null) return;
+    el.textContent = message;
+    el.classList.add("lp-pen__flash--on");
+    setTimeout(() => {
+      el.classList.remove("lp-pen__flash--on");
+    }, FLASH_MS);
+  }
+  function repaintBar() {
+    if (session === null) return;
+    setCtx({ dirty: session.working !== session.baseline || isTyping() });
+    const bar = document.querySelector(".lp-top__right");
+    if (bar !== null) bar.outerHTML = penBarHtml(session.ctx);
+  }
+  function isTyping() {
+    const active = document.activeElement;
+    return active instanceof HTMLElement && seeded.has(active) && typedText(active) !== seeded.get(active);
+  }
+  function markTyping() {
+    if (session === null || session.ctx.dirty) return;
+    setCtx({ dirty: true });
+    const bar = document.querySelector(".lp-top__right");
+    if (bar !== null) bar.outerHTML = penBarHtml(session.ctx);
+  }
+  var grantDialog = () => document.querySelector("dialog.lp-grant");
+  function tellGrant(message) {
+    const why = document.querySelector(".lp-grant__why");
+    if (why !== null) why.textContent = message;
+  }
+  function openGrant() {
+    tellGrant("");
+    grantDialog()?.showModal();
+  }
+  async function adopt(folder) {
+    if (session === null) return "the page is not ready";
+    const read = await readPage(folder, session.name);
+    if (!read.ok) return read.error;
+    session.folder = folder;
+    if (read.payload !== session.baseline) {
+      session.baseline = read.payload;
+      session.working = read.payload;
+      session.voided = 0;
+    }
+    return null;
+  }
+  async function accept(folder) {
+    if (session === null) return;
+    if (!await mayWrite(folder, true)) {
+      tellGrant("Without write permission this page can only be read.");
       return;
     }
-    if (result.code === "stale") {
-      const fresh = await resync(http, ctx.base, ctx.id, result);
-      if (fresh !== null) {
-        const next = { ...ctx, sha: fresh.sha };
-        mounted.ctx = next;
-        rerender(fresh.payload, next);
-        note("the file changed on disk \u2014 reloaded from it, try again", "warn");
+    const refused = await adopt(folder);
+    if (refused !== null) {
+      tellGrant(refused);
+      return;
+    }
+    void rememberFolder(session.idb, session.grantKey, folder);
+    grantDialog()?.close();
+    openPen();
+  }
+  async function pick() {
+    if (session === null) return;
+    const picked = await pickFolder(session.picker);
+    if (picked.ok) await accept(picked.folder);
+    else if (picked.error !== null) tellGrant(picked.error);
+  }
+  async function drop(item) {
+    const dropped = await folderFromDrop(item);
+    if (dropped.ok) await accept(dropped.folder);
+    else tellGrant(dropped.error);
+  }
+  async function copyFolder(button) {
+    if (session === null) return;
+    try {
+      await navigator.clipboard.writeText(session.ctx.folder);
+      button.textContent = "copied";
+    } catch {
+      const path = document.querySelector(".lp-grant__folder");
+      if (path !== null) {
+        const range = document.createRange();
+        range.selectNodeContents(path);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      button.textContent = "press \u2318C";
+    }
+    setTimeout(() => {
+      button.textContent = "copy";
+    }, 2500);
+  }
+  function openPen() {
+    setCtx({ editing: true, refusal: "" });
+    show();
+  }
+  function closePen() {
+    if (session === null) return;
+    session.working = session.baseline;
+    session.voided = 0;
+    setCtx({ editing: false, dirty: false, refusal: "" });
+    show();
+  }
+  async function takeUp() {
+    if (session === null) return;
+    const folder = session.folder;
+    if (folder === null) {
+      openGrant();
+      return;
+    }
+    if (!await mayWrite(folder, true)) {
+      openGrant();
+      return;
+    }
+    const refused = await adopt(folder);
+    if (refused !== null) {
+      setCtx({ refusal: refused });
+      show();
+      return;
+    }
+    openPen();
+  }
+  function stage(edit) {
+    if (session === null) return;
+    const result = applyEdit(session.working, edit, today());
+    if (!result.ok) {
+      setCtx({ refusal: result.error });
+      return;
+    }
+    session.working = result.payload;
+    if (result.voidedStamp) session.voided += 1;
+    setCtx({ dirty: session.working !== session.baseline });
+  }
+  async function save() {
+    if (session === null) return;
+    if (session.working === session.baseline) {
+      closePen();
+      return;
+    }
+    if (session.folder === null) {
+      openGrant();
+      return;
+    }
+    const result = await writePage(session.folder, session.name, {
+      id: session.ctx.id,
+      baseline: session.baseline,
+      next: session.working
+    });
+    if (!result.ok) {
+      setCtx({ refusal: result.error });
+      show();
+      return;
+    }
+    const voided = session.voided;
+    session.baseline = result.payload;
+    session.working = result.payload;
+    session.voided = 0;
+    setCtx({ editing: false, dirty: false, refusal: "" });
+    show();
+    flash(voided === 0 ? "Changes saved" : voided === 1 ? "Changes saved \u2014 the reworded claim is open again" : `Changes saved \u2014 ${voided} reworded claims are open again`);
+  }
+  function shapeOf(payload) {
+    return `${narrativeSections(payload).length}:${parse(payload).checks.length}`;
+  }
+  function descriptorOf(el) {
+    return parseInlineTarget({ edit: el.dataset["edit"], index: el.dataset["index"], edge: el.dataset["edge"] });
+  }
+  function repaintKeepingFocus(shape) {
+    if (session === null) return;
+    const active = document.activeElement;
+    const target = active instanceof HTMLElement && seeded.has(active) ? descriptorOf(active) : null;
+    show();
+    if (target === null || shapeOf(session.working) !== shape) return;
+    for (const el of document.querySelectorAll("[data-edit]")) {
+      if (JSON.stringify(descriptorOf(el)) === JSON.stringify(target)) {
+        el.focus();
+        placeCaret(el, typedText(el).length);
         return;
       }
-    }
-    rerender(mounted.payload, ctx);
-    note(result.error, "warn");
-  }
-  function submitEdit(edit) {
-    if (mounted === null) return;
-    const { ctx } = mounted;
-    void saveEdit(http, ctx.base, ctx.id, { sha: ctx.sha, edit }).then(settle);
-  }
-  function submitPen(check, verdict) {
-    if (mounted === null) return;
-    const { ctx } = mounted;
-    void sendPen(http, ctx.base, ctx.id, { sha: ctx.sha, check, verdict }).then(settle);
-  }
-  function handleAction(button) {
-    const action = button.dataset["pen"] ?? "";
-    if (action === "command") {
-      revealCommand(button, button.dataset["command"] ?? "");
-      return;
-    }
-    if (action === "approve" || action === "refute") {
-      submitPen(Number.parseInt(button.dataset["check"] ?? "", 10), action);
     }
   }
   var rendered = /* @__PURE__ */ new WeakMap();
@@ -957,8 +2472,8 @@
     return raw.replace(/\u00a0/g, " ").replace(/\n+$/, "");
   }
   function seed(el, target) {
-    if (mounted === null || seeded.has(el)) return;
-    const source = inlineSource(mounted.payload, target);
+    if (session === null || seeded.has(el)) return;
+    const source = inlineSource(session.working, target);
     if (source === null) return;
     rendered.set(el, el.innerHTML);
     seeded.set(el, source);
@@ -975,15 +2490,20 @@
   }
   function commit(el, target) {
     const source = seeded.get(el);
-    if (source === void 0) return;
+    if (source === void 0 || session === null || !session.ctx.editing) return;
     const text = typedText(el);
     if (text.trim() === source.trim()) {
       restore(el);
+      repaintBar();
       return;
     }
     seeded.delete(el);
     el.classList.remove("lp-edit--on");
-    submitEdit(inlineEdit(target, text));
+    const shape = shapeOf(session.working);
+    stage(inlineEdit(target, text));
+    afterGesture(() => {
+      repaintKeepingFocus(shape);
+    });
   }
   var directory = [];
   var list = null;
@@ -1072,14 +2592,14 @@
     refreshList(el, target);
   }
   function refreshList(el, target) {
-    if (mounted === null || !seeded.has(el)) {
+    if (session === null || !seeded.has(el)) {
       closeList();
       return;
     }
     const rows = suggestEdges(directory, {
       text: typedText(el),
       caret: caretOffset(el),
-      self: mounted.ctx.id
+      self: session.ctx.id
     });
     if (rows.length === 0) {
       closeList();
@@ -1107,8 +2627,8 @@
     paintList();
   }
   async function openList(el, target) {
-    if (mounted === null) return;
-    directory = await loadDirectory(http, mounted.ctx.base);
+    if (session === null) return;
+    directory = session.folder === null ? [] : await listMap(session.folder);
     if (seeded.has(el)) refreshList(el, target);
   }
   var linkUnder = (event) => event.target instanceof Element ? event.target.closest("a[href]") : null;
@@ -1150,6 +2670,7 @@
       closeList();
       commit(el, target);
     });
+    el.addEventListener("input", markTyping);
     if (target.region === "edge") {
       el.addEventListener("input", () => {
         refreshList(el, target);
@@ -1169,45 +2690,95 @@
         event.preventDefault();
         closeList();
         restore(el);
+        repaintBar();
       }
     });
   }
-  function mountPen(doc, payload, ctx, rerender) {
-    mounted = { doc, payload, ctx, rerender };
+  function show() {
+    if (session === null) return;
+    session.paint(session.working, session.ctx);
     list = null;
-    if (ctx.mode === "live") {
-      document.querySelectorAll("[data-edit]").forEach((el) => {
-        const target = parseInlineTarget({
-          edit: el.dataset["edit"],
-          index: el.dataset["index"],
-          edge: el.dataset["edge"]
-        });
-        if (target !== null) bindInline(el, target);
-      });
-    }
-    if (!wired) {
-      wired = true;
-      document.body.addEventListener("click", (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        const button = target.closest("[data-pen]");
-        if (button !== null) handleAction(button);
-      });
+    if (!session.ctx.editing) return;
+    document.querySelectorAll("[data-edit]").forEach((el) => {
+      const target = descriptorOf(el);
+      if (target !== null) bindInline(el, target);
+    });
+  }
+  function handleAction(button) {
+    if (session === null) return;
+    const action = button.dataset["pen"] ?? "";
+    if (action === "command") revealCommand(button, button.dataset["command"] ?? "");
+    else if (action === "toggle") void (session.ctx.editing ? save() : takeUp());
+    else if (action === "grant-pick") void pick();
+    else if (action === "grant-cancel") grantDialog()?.close();
+    else if (action === "grant-copy") void copyFolder(button);
+    else if (action === "dismiss") {
+      setCtx({ refusal: "" });
+      show();
     }
   }
-  async function probePen(href, id, port = DEFAULT_SERVE_PORT) {
-    const paths = pagePaths(href, id);
-    const base = href.startsWith("http") ? new URL(href).origin : `http://127.0.0.1:${port}`;
-    const degraded = { id, file: paths.file, dir: paths.dir, base, mode: "degraded", sha: "" };
-    const probe = await probeDaemon(http, base);
-    if (penMode(probe, id) !== "live") return { ctx: degraded, snapshot: null };
-    const snapshot = await loadLoop(http, base, id);
-    if (snapshot === null) return { ctx: degraded, snapshot: null };
-    const dir = probe.dir !== "" ? probe.dir : paths.dir;
-    return {
-      ctx: { id, file: `${dir}/${id}.tend2.html`, dir, base, mode: "live", sha: snapshot.sha },
-      snapshot
+  var dropZone = (event) => event.target instanceof Element ? event.target.closest("[data-pen-drop]") : null;
+  function wire() {
+    if (wired) return;
+    wired = true;
+    document.addEventListener("pointerdown", () => {
+      pointerDown = true;
+    }, true);
+    const released = () => {
+      pointerDown = false;
+      const run = afterPointer;
+      afterPointer = null;
+      if (run !== null) setTimeout(run, 0);
     };
+    document.addEventListener("pointerup", released, true);
+    document.addEventListener("pointercancel", released, true);
+    document.body.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-pen]") : null;
+      if (button !== null) handleAction(button);
+    });
+    for (const type of ["dragenter", "dragover"]) {
+      document.body.addEventListener(type, (event) => {
+        const zone = dropZone(event);
+        if (zone === null) return;
+        event.preventDefault();
+        zone.classList.add("lp-grant__drop--over");
+      });
+    }
+    document.body.addEventListener("dragleave", (event) => {
+      dropZone(event)?.classList.remove("lp-grant__drop--over");
+    });
+    document.body.addEventListener("drop", (event) => {
+      const zone = dropZone(event);
+      if (zone === null) return;
+      event.preventDefault();
+      zone.classList.remove("lp-grant__drop--over");
+      void drop(event.dataTransfer?.items[0] ?? null);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (session === null || event.key !== "Escape" || event.defaultPrevented || !session.ctx.editing) return;
+      if (grantDialog()?.open === true) return;
+      if (session.ctx.dirty && !window.confirm("You have unsaved changes. Put the pen down and lose them?")) return;
+      closePen();
+    });
+    window.addEventListener("beforeunload", (event) => {
+      if (session === null || !session.ctx.dirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+  }
+  function startPen(start) {
+    session = { ...start, folder: null, baseline: start.payload, working: start.payload, voided: 0 };
+    wire();
+    show();
+    if (start.ctx.mode !== "disk") return;
+    void recallFolder(start.idb, start.grantKey).then(async (folder) => {
+      if (session === null || folder === null) return;
+      session.folder = folder;
+      if (!await mayWrite(folder, false)) return;
+      const before = session.working;
+      const refused = await adopt(folder);
+      if (refused === null && session.working !== before && !session.ctx.editing) show();
+    });
   }
 
   // src/render/boot.ts
@@ -1220,16 +2791,12 @@
     }
     icon.href = href;
   }
-  function render(payload, pen) {
+  function crumbOf(payload) {
     const titleParts = (document.title || "").split("\xB7");
-    const page = renderPage(payload, pen, {
+    return {
       pageId: (titleParts[0] ?? parse(payload).title).trim(),
       project: (titleParts[1] ?? "").trim()
-    });
-    paintFavicon(faviconDataUri(page.state));
-    document.body.innerHTML = page.html;
-    document.title = page.title;
-    mountPen(page.doc, payload, pen, render);
+    };
   }
   function boot() {
     const payload = document.getElementById("loop");
@@ -1238,11 +2805,38 @@
       return;
     }
     const text = payload.textContent ?? "";
-    const id = loopIdFromHref(location.href) ?? (document.title || parse(text).title).split("\xB7")[0].trim();
+    const crumb = crumbOf(text);
+    const id = loopIdFromHref(location.href) ?? crumb.pageId;
+    const paint = (markdown, ctx) => {
+      const page = renderPage(markdown, ctx, crumb);
+      paintFavicon(faviconDataUri(page.state));
+      document.body.innerHTML = page.html;
+      document.title = page.title;
+    };
+    const picker = window;
+    const capability = penCapability({
+      hasApi: typeof picker.showDirectoryPicker === "function",
+      protocol: location.protocol,
+      hostname: location.hostname
+    });
     const paths = pagePaths(location.href, id);
-    render(text, { id, file: paths.file, dir: paths.dir, base: "", mode: "degraded", sha: "" });
-    void probePen(location.href, id).then(({ ctx, snapshot }) => {
-      if (ctx.mode === "live") render(snapshot !== null ? snapshot.payload : text, ctx);
+    startPen({
+      payload: text,
+      ctx: {
+        id,
+        file: paths.file,
+        folder: paths.local ? paths.dir : "",
+        mode: capability.mode,
+        why: capability.mode === "read-only" ? capability.why : "",
+        editing: false,
+        dirty: false,
+        refusal: ""
+      },
+      name: `${id}.tend2.html`,
+      grantKey: grantKey(location.href),
+      paint,
+      picker,
+      idb: window.indexedDB
     });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
