@@ -336,29 +336,27 @@ const codexProvider: AgentProvider = {
   // "... does not exist or you do not have access to it" on 2026-09-10.
   errorMatch: [/unexpected status \d{3}/i, /does not exist or you do not have access/i],
 
-  // Codex's TUI shows up to THREE interactive gates on first launch in a
-  // fresh cwd (verified against the real 0.133/0.135 binary). They appear in
-  // this order, but each is matched independently against the live pane, so
-  // the loop dismisses whichever is actually showing:
-  //   1. "Update available!" — options Update now / Skip / Skip until next.
-  //      We MUST avoid the default "Update now" (it runs `npm install -g`);
-  //      Down then Enter selects "Skip". Only appears when an update is
-  //      pending, hence variable ordering. Matched on its last option: the
-  //      ready screen repeats "Update available!" as a banner, and a Down
-  //      there is typed into the worker's input.
-  //   2. "Do you trust the contents of this directory?" — default "Yes,
-  //      continue"; a single Enter dismisses it. Also gates hook loading —
-  //      until the dir is trusted, hooks won't load at all. buildLaunch
-  //      trusts the cwd on the command line, so this shows only if a codex
-  //      ignores that.
-  //   3. "Hooks need review" — we need option 2 "Trust all and continue",
-  //      reached with Down then Enter, so our Stop hook runs.
-  // codex persists the hook decision to the config.toml in CODEX_HOME, so
-  // later launches skip 3 — the loop then no-ops and readyMatch fires.
+  // Codex's TUI shows up to three gates at startup: the update dialog (only
+  // when an update is pending), the directory trust dialog (only if a codex
+  // ignores the trust buildLaunch passes), and "Hooks need review" (whenever
+  // umbel's hooks.json is new or changed for this CODEX_HOME). Each is matched
+  // on its HIGHLIGHTED option (the line starting with ›), so the keys depend on
+  // where the cursor actually sits, as claude's dialogs do. Relative keys sent
+  // twice moved the cursor past the answer: codex keeps the hooks dialog on
+  // screen while it writes the trust ("Trusting hooks..."), the loop read that
+  // as swallowed keys and pressed Down+Enter again, which confirmed "Continue
+  // without trusting", so no umbel hook loaded and workers never stopped
+  // (verified on 0.154.0, 2026-10-22). Option text taken from that binary.
+  // "Update now" runs `npm install -g` and must never be confirmed.
   startupDialogs: [
-    { match: /skip until next version/i, keys: ['Down', 'Enter'] },
-    { match: /trust the contents of this directory/i, keys: ['Enter'] },
-    { match: /hooks need review/i, keys: ['Down', 'Enter'] },
+    { match: /^\s*›\s*1\. Update now/m, keys: ['Down', 'Enter'] },
+    { match: /^\s*›\s*2\. Skip\s*$/m, keys: ['Enter'] },
+    { match: /^\s*›\s*3\. Skip until next version/m, keys: ['Enter'] },
+    { match: /^\s*›\s*1\. Yes, continue/m, keys: ['Enter'] },
+    { match: /^\s*›\s*2\. No, quit/m, keys: ['Up', 'Enter'] },
+    { match: /^\s*›\s*Review hooks\s*$/m, keys: ['Down', 'Enter'] },
+    { match: /^\s*›\s*Trust all and continue\s*$/m, keys: ['Enter'] },
+    { match: /^\s*›\s*Continue without trusting/m, keys: ['Up', 'Enter'] },
   ],
   // The idle prompt line (0.154.0: "› Ask Codex to do anything"; older builds:
   // "Implement {feature}"). The banner paints before the model has loaded and
