@@ -381,6 +381,16 @@ const claudeProvider: AgentProvider = {
   // and then its login menu; either means a person must run claude once here.
   signInMatch:
     /^\s*(?:Select login method:|Choose the text style that looks best with your terminal)\s*$/m,
+  // Hitting the account's usage limit opens a dialog and waits there, firing the
+  // same Notification as an input prompt, so a wait could not tell a quota from
+  // a question. The binary (2.1.308) composes the line as `You've hit your
+  // <limit> · resets <time>`; the limits are session, weekly, Opus, Sonnet,
+  // Fable and usage credit. Each further ` · ` segment is a hint the binary
+  // appends. `You've used <n>% of your <limit>` is a warning shown while the
+  // worker keeps working (status reports it as quota), so it is not matched.
+  // Whole-line, like signInMatch: a worker's own output can quote the words.
+  limitMatch:
+    /^\s*You've hit your (?:session|weekly|Opus|Sonnet|Fable|usage credit) limit(?: · [^·\n]*)*\s*$/m,
 
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsJson = buildSettingsJson({

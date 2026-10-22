@@ -77,8 +77,8 @@ Exit codes:
   123  wait idle — pane, events and transcript still for --idle-timeout
   124  wait timeout — hard deadline hit
   125  wait dead — worker exited before finishing its turn
-  126  wait input — worker is blocked waiting for input (permission / prompt);
-       spawn refused: the CLI needs a person to sign in first
+  126  wait input — worker is blocked waiting for input (permission / prompt /
+       usage limit); spawn refused: the CLI needs a person to sign in first
   130  Aborted (SIGINT)
 `;
 

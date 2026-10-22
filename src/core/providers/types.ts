@@ -214,6 +214,13 @@ export interface AgentProvider {
   // meets it later settles `input` (umbel#105). Absent for a CLI that has none.
   readonly signInMatch?: RegExp;
 
+  // Optional: the CLI's usage-limit dialog, as a whole-line pattern (`^…$`, m
+  // flag) taken from the text the binary composes and its panes show. The
+  // dialog blocks the worker the same way an input prompt does, so a wait that
+  // settles `input` while it is on the pane reports the dialog's own line,
+  // reset time included (umbel#75). Absent for a CLI that has none.
+  readonly limitMatch?: RegExp;
+
   // Optional: a marker that the main UI has rendered (past all dialogs). Lets
   // spawn stop polling early when the cwd is already trusted (no dialogs
   // appear) instead of waiting out the full timeout.

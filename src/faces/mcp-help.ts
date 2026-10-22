@@ -48,7 +48,10 @@ umbel_wait returns { reason, message?, paneSnapshot?, runningCommands? }. Branch
   input  → the worker is BLOCKED on a prompt (a permission ask, or idle). \`message\`
            is the question — answer it with umbel_send ("1", "yes", or a
            clarification), then umbel_wait again. This is the ping: you do NOT hang
-           to the timeout when a worker needs you.
+           to the timeout when a worker needs you. When the pane shows the
+           provider's usage-limit dialog, \`message\` is that dialog line, reset
+           time included: it is not a question, so re-queue the work for the reset
+           instead of replying.
   idle   → no pane activity for idle_timeout. Pass idle_timeout: "3m" to enable this
            net (off by default — a worker may run a long silent tool call). A model
            request still in flight holds the net, so a slow provider is not idle.

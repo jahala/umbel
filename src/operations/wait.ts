@@ -10,7 +10,8 @@ import {
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
-import { signInLine } from '../core/startup-dialogs.ts';
+import type { AgentProvider } from '../core/providers/types.ts';
+import { matchedLine } from '../core/startup-dialogs.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
@@ -313,21 +314,19 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       }
     }
 
-    // The worker's sign-in screen, from its provider, read from meta once. A
-    // failed read is not kept, so the next check tries again.
-    let signInScreen: Promise<{ provider: string; match: RegExp } | undefined> | undefined;
-    function signInScreenOf(): Promise<{ provider: string; match: RegExp } | undefined> {
-      signInScreen ??= d.fs.readMeta(name, env).then(
-        (meta) => {
-          const match = PROVIDERS[meta.provider]?.signInMatch;
-          return match === undefined ? undefined : { provider: meta.provider, match };
-        },
+    // The worker's provider, read from meta once, for the pane patterns below
+    // (its sign-in screen, its usage-limit dialog). A failed read is not kept,
+    // so the next check tries again.
+    let providerOf: Promise<AgentProvider | undefined> | undefined;
+    function providerOfWorker(): Promise<AgentProvider | undefined> {
+      providerOf ??= d.fs.readMeta(name, env).then(
+        (meta) => PROVIDERS[meta.provider],
         () => {
-          signInScreen = undefined;
+          providerOf = undefined;
           return undefined;
         },
       );
-      return signInScreen;
+      return providerOf;
     }
 
     // Claude fires its Stop hook before it writes the turn's final message, so a
@@ -443,11 +442,30 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
               // pane capture failed — settle without it.
             }
             if (settled) return;
+            const provider = await providerOfWorker();
+            if (settled) return;
+            // A usage-limit dialog fires the same Notification as an input
+            // prompt, but it is not a question: the caller needs the limit and
+            // its reset time to schedule a resume instead of quarantining the
+            // worker (umbel#75). The dialog's own line is the message. Read from
+            // the screen alone: a limit hit and resolved earlier stays in
+            // scrollback and must not label a later question.
+            let screen = '';
+            if (provider?.limitMatch !== undefined) {
+              try {
+                screen = await d.tmux.capturePane(name, 0, env);
+              } catch {
+                // No screen: keep the hook's own message.
+              }
+              if (settled) return;
+            }
+            const limit = matchedLine(screen, provider?.limitMatch);
+            const message = limit ?? cls.message;
             settle({
               stopped: false,
               reason: 'input',
               inputReason: cls.reason,
-              ...(cls.message !== undefined ? { message: cls.message } : {}),
+              ...(message !== undefined ? { message } : {}),
               ...(paneSnapshot !== undefined ? { paneSnapshot } : {}),
             });
             return;
@@ -500,14 +518,14 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           // will until one does: its credentials expired, or it never had any.
           // Waiting out the deadline gave a conductor a timeout to retry, and
           // the retry met the same screen (umbel#105).
-          const screen = await signInScreenOf();
-          const line = signInLine(lastAlivePane ?? '', screen?.match);
-          if (screen !== undefined && line !== undefined && lastAlivePane !== undefined) {
+          const provider = await providerOfWorker();
+          const line = matchedLine(lastAlivePane ?? '', provider?.signInMatch);
+          if (provider !== undefined && line !== undefined && lastAlivePane !== undefined) {
             settle({
               stopped: false,
               reason: 'input',
               inputReason: 'sign-in',
-              message: `${screen.provider} is asking a person to sign in: "${line}"`,
+              message: `${provider.name} is asking a person to sign in: "${line}"`,
               paneSnapshot: lastAlivePane,
             });
           }

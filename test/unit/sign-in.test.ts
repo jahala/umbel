@@ -5,7 +5,7 @@ import { ClaudeProvider } from '../../src/core/providers/claude.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
 import { GeminiProvider } from '../../src/core/providers/gemini.ts';
 import { OpenCodeProvider } from '../../src/core/providers/opencode.ts';
-import { signInLine } from '../../src/core/startup-dialogs.ts';
+import { matchedLine } from '../../src/core/startup-dialogs.ts';
 
 // ---------------------------------------------------------------------------
 // umbel#105: a CLI with no credentials opens on its sign-in screen and stays
@@ -16,7 +16,7 @@ import { signInLine } from '../../src/core/startup-dialogs.ts';
 const FIXTURES = join(import.meta.dir, '../fixtures');
 const pane = (file: string): string => readFileSync(join(FIXTURES, file), 'utf8');
 
-describe('signInLine', () => {
+describe('signInMatch', () => {
   test.each([
     [
       'claude, first-run setup',
@@ -38,11 +38,11 @@ describe('signInLine', () => {
       'How would you like to authenticate for this project?',
     ],
   ])('names the line of %s', (_, provider, file, line) => {
-    expect(signInLine(pane(file), provider.signInMatch)).toBe(line);
+    expect(matchedLine(pane(file), provider.signInMatch)).toBe(line);
   });
 
   test('a CLI that started is not at its sign-in screen', () => {
-    expect(signInLine(pane('codex-0.154-startup.txt'), CodexProvider.signInMatch)).toBeUndefined();
+    expect(matchedLine(pane('codex-0.154-startup.txt'), CodexProvider.signInMatch)).toBeUndefined();
   });
 
   test("the phrase in a worker's own output is not the sign-in screen", () => {
@@ -52,11 +52,11 @@ describe('signInLine', () => {
       '  12 +  signInMatch: /^\\s*Select login method:\\s*$/m,',
       '⏺ The claude menu reads "Select login method:" when it has no credentials.',
     ].join('\n');
-    expect(signInLine(worker, ClaudeProvider.signInMatch)).toBeUndefined();
+    expect(matchedLine(worker, ClaudeProvider.signInMatch)).toBeUndefined();
   });
 
   test('opencode has no sign-in screen', () => {
     expect(OpenCodeProvider.signInMatch).toBeUndefined();
-    expect(signInLine('anything', undefined)).toBeUndefined();
+    expect(matchedLine('anything', undefined)).toBeUndefined();
   });
 });
