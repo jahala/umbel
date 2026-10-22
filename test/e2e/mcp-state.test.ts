@@ -51,7 +51,10 @@ describe('umbel mcp', () => {
       }),
     );
     try {
-      const result = await client.callTool({ name: 'umbel_ls', arguments: {} });
+      // all=true: this session was written straight to disk and has no worker,
+      // and a listing is live sessions unless it is asked for every one
+      // (umbel#70). The root it answers from is what this test proves.
+      const result = await client.callTool({ name: 'umbel_ls', arguments: { all: true } });
       const text = (result.content as Array<{ text: string }>)[0]?.text ?? '[]';
       const names = (JSON.parse(text) as Array<{ name: string }>).map((e) => e.name);
       expect(names).toContain(name);

@@ -9,7 +9,8 @@
  *
  * What survives is what a post-mortem asks for: `capture` answers from the pane
  * while it remains and from the record once the pane is gone, and `logs`,
- * `actions` and `read` keep answering out of the kept directory.
+ * `actions` and `read` keep answering out of the kept directory, as `status
+ * <name>` always has (umbel#65).
  *
  * Driven through the CLI face, because `--purge` is part of the contract and the
  * answers a post-mortem reads are the ones printed.
@@ -228,11 +229,16 @@ describe('capture — a dead worker still shows its last screen', () => {
 // ---------------------------------------------------------------------------
 
 describe('a killed session still answers for the turn it did', () => {
-  test('logs, actions and read all answer after the kill', async () => {
+  test('logs, actions, read and status all answer after the kill', async () => {
     const env = await newState();
     const name = await completeTurn(env, 'hello');
 
     expect((await cli(['kill', name])).code).toBe(0);
+
+    const state = await cli(['status', name]);
+    expect(state.code).toBe(0);
+    expect(state.stdout).toContain(name);
+    expect(state.stdout).toContain('dead');
 
     const logs = await cli(['logs', name]);
     expect(logs.code).toBe(0);

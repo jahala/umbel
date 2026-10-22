@@ -145,7 +145,7 @@ describe('waitFor — a death is settled with what was observed', () => {
     expect(entry?.dead?.exitCode).toBe(42);
 
     expect(await cliStdout(['status', name])).toContain('dead (exit 42)');
-    expect(await cliStdout(['ls'])).toContain('dead (exit 42)');
+    expect(await cliStdout(['ls', '--all'])).toContain('dead (exit 42)');
   }, 40_000);
 
   test('a worker killed by a signal is dead by that signal, with no exit status', async () => {
@@ -161,7 +161,7 @@ describe('waitFor — a death is settled with what was observed', () => {
     expect(dead.paneSnapshot).toContain('dying now');
 
     // Nothing to parse into a number, so nothing may print as one.
-    const listed = await cliStdout(['ls']);
+    const listed = await cliStdout(['ls', '--all']);
     expect(listed).toContain('dead');
     expect(listed).not.toContain('NaN');
   }, 40_000);

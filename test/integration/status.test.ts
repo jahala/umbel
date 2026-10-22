@@ -123,6 +123,41 @@ describe('status — listing', () => {
     const entries = await status({ env });
     expect(entries).toEqual([]);
   });
+
+  // A machine that has spawned workers all day holds hundreds of tombstones,
+  // and a caller asking "what is running" wants the live ones (umbel#70).
+  test('leaves a dead session out unless all is set', async () => {
+    const env = await setup();
+
+    const { session: live } = await spawn(makeSpawnOpts(env, '/tmp', { name: sessionName('lv') }));
+    const { session: gone } = await spawn(makeSpawnOpts(env, '/tmp', { name: sessionName('gd') }));
+    CREATED.push(live.name, gone.name);
+    await kill({ name: gone.name, env });
+
+    const listed = (await status({ env })).map((e) => e.name);
+    expect(listed).toContain(live.name);
+    expect(listed).not.toContain(gone.name);
+
+    const every = await status({ env, all: true });
+    expect(every.map((e) => e.name)).toContain(gone.name);
+    expect(every.find((e) => e.name === gone.name)?.alive).toBe(false);
+
+    await kill({ name: gone.name, purge: true, env });
+  });
+
+  // The single-session read is how a caller asks about a worker it killed: the
+  // tombstone still answers (umbel#65).
+  test('a named session is answered even when it is dead', async () => {
+    const env = await setup();
+    const { session: gone } = await spawn(makeSpawnOpts(env, '/tmp', { name: sessionName('dgn') }));
+    CREATED.push(gone.name);
+    await kill({ name: gone.name, env });
+
+    const [entry] = await status({ name: gone.name, env });
+    expect(entry?.alive).toBe(false);
+
+    await kill({ name: gone.name, purge: true, env });
+  });
 });
 
 // ---------------------------------------------------------------------------

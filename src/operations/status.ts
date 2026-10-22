@@ -1,5 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
@@ -50,6 +50,15 @@ export interface StatusEntry extends Session {
 
 export interface StatusOpts {
   name?: string;
+  // Include sessions whose worker is gone. Off by default: a machine that has
+  // spawned workers all day holds hundreds of tombstones, and a caller asking
+  // "what is running" wants the few live ones (umbel#70). A named session is
+  // always answered, dead or not.
+  all?: boolean;
+  // Only sessions of this repository. A path anywhere inside a repository
+  // resolves to that repository's main worktree, so a caller can pass its own
+  // worktree and still meet its siblings (umbel#65).
+  repo?: string;
   env?: Record<string, string | undefined>;
   deps?: Partial<Deps>;
 }
@@ -203,6 +212,12 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
     return [entry];
   }
 
+  // Resolved before the loop so a worktree path matches the main worktree the
+  // spawn recorded. A path git no longer knows is matched as given, which keeps
+  // a session of a deleted repository findable by the path it recorded.
+  const wantedRepo =
+    opts.repo === undefined ? undefined : ((await d.git.repoRoot(opts.repo)) ?? resolve(opts.repo));
+
   const names = await d.fs.listSessionNames(env);
   const entries: StatusEntry[] = [];
 
@@ -214,10 +229,16 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
       // Skip sessions whose meta cannot be read
       continue;
     }
+    // Before enrich: a session of another repository costs no tmux call.
+    if (wantedRepo !== undefined && session.repo !== wantedRepo) continue;
     entries.push(await enrich(session, d, env, processes));
   }
 
+  // Liveness is read per session, so the filter comes after: there is no
+  // cheaper proof that a tombstone's worker is gone.
+  const listed = opts.all === true ? entries : entries.filter((e) => e.alive);
+
   // Sort by createdAt ascending
-  entries.sort((a, b) => a.createdAt - b.createdAt);
-  return entries;
+  listed.sort((a, b) => a.createdAt - b.createdAt);
+  return listed;
 }

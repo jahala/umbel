@@ -32,6 +32,16 @@ export function parseDuration(text: string): number {
 // VerbSchemas — single source of truth for all verbs
 // ---------------------------------------------------------------------------
 
+// The listing filter, shared by status with no name and ls. Off by default: a
+// fleet listing is what a caller asks for, and tombstones are the archive.
+const ListFilterShape = z.object({
+  all: z.boolean().default(false),
+  // Only sessions of this repository. Any path inside it resolves to the
+  // repository's main worktree, so a linked worktree works as the argument
+  // (umbel#65).
+  repo: z.string().optional(),
+});
+
 export const VerbSchemas = {
   spawn: z.object({
     name: z.string().optional(),
@@ -67,8 +77,9 @@ export const VerbSchemas = {
   }),
   status: z.object({
     name: z.string().optional(),
+    ...ListFilterShape.shape,
   }),
-  ls: z.object({}),
+  ls: ListFilterShape,
   kill: z.object({
     name: z.string(),
     purge: z.boolean().default(false),
