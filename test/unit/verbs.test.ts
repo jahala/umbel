@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 import { UmbelUsageError } from '../../src/core/errors.ts';
 import { killRequest, parseDuration, VerbSchemas } from '../../src/faces/verbs.ts';
+import { killMany } from '../../src/operations/kill.ts';
 
 // ---------------------------------------------------------------------------
 // parseDuration
@@ -231,20 +232,17 @@ describe('VerbSchemas.kill', () => {
     expect(result.success).toBe(false);
   });
 
-  test('killRequest refuses names mixed with selectors', () => {
-    expect(() => killRequest({ names: ['a'], prefix: 'pl-', dryRun: false, purge: false })).toThrow(
-      UmbelUsageError,
-    );
+  // killMany is the one place a kill request is refused, for every face.
+  test('killMany refuses names mixed with selectors', async () => {
+    await expect(killMany({ names: ['a'], prefix: 'pl-' })).rejects.toThrow(UmbelUsageError);
   });
 
-  test('killRequest refuses no names and no selector', () => {
-    expect(() => killRequest({ names: [], dryRun: false, purge: false })).toThrow(UmbelUsageError);
+  test('killMany refuses no names and no selector', async () => {
+    await expect(killMany({ names: [] })).rejects.toThrow(UmbelUsageError);
   });
 
-  test('killRequest refuses an empty prefix, which would select every session', () => {
-    expect(() => killRequest({ names: [], prefix: '', dryRun: false, purge: false })).toThrow(
-      UmbelUsageError,
-    );
+  test('the schema refuses an empty prefix, which would select every session', () => {
+    expect(VerbSchemas.kill.safeParse({ prefix: '' }).success).toBe(false);
   });
 
   test('killRequest passes a name list and a selector through unchanged', () => {

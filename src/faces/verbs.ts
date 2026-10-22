@@ -165,11 +165,8 @@ export function waitRequest(args: VerbArgs<'wait'>): WaitRequest {
 // killRequest: who to kill, from the fields a face takes
 // ---------------------------------------------------------------------------
 
-// PURE. Every face turns its kill arguments into one request here, so the CLI
-// and MCP refuse a mixed or empty call the same way. `umbel kill` took a
-// single name, so conductors cleaned up with a loop over `ls`, and that loop
-// killed every prefix match on the machine, including another conductor's live
-// run (umbel#94).
+// PURE. The fields a face takes, as the request killMany checks: a mixed or
+// empty call is refused there, once, for every face (umbel#94).
 export interface KillRequest {
   names: string[];
   prefix?: string;
@@ -179,18 +176,6 @@ export interface KillRequest {
 }
 
 export function killRequest(args: VerbArgs<'kill'>): KillRequest {
-  const selecting = args.prefix !== undefined || args.repo !== undefined;
-  // An empty prefix matches every live session, which is the fleet kill this
-  // verb refuses to offer as --all.
-  if (args.prefix === '') {
-    throw new UmbelUsageError('kill: --prefix cannot be empty.');
-  }
-  if (args.names.length > 0 && selecting) {
-    throw new UmbelUsageError('kill: name the sessions or select them with prefix/repo, not both.');
-  }
-  if (args.names.length === 0 && !selecting) {
-    throw new UmbelUsageError('kill: give a session name, or select with prefix or repo.');
-  }
   return {
     names: args.names,
     ...(args.prefix !== undefined ? { prefix: args.prefix } : {}),
