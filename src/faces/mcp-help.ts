@@ -55,7 +55,10 @@ umbel_wait returns { reason, message?, paneSnapshot?, runningCommands?, usage? }
            to the timeout when a worker needs you. When the pane shows the
            provider's usage-limit dialog, \`message\` is that dialog line, reset
            time included: it is not a question, so re-queue the work for the reset
-           instead of replying.
+           instead of replying. When the provider refused the turn (an exhausted
+           account, for instance) \`message\` is the provider's own error line, as
+           in "API Error: 402 Insufficient Balance (…)", and a limit line wins if
+           both show: fail or recast the work, do not answer.
   idle   → no pane activity for idle_timeout. Pass idle_timeout: "3m" to enable this
            net (off by default — a worker may run a long silent tool call). A model
            request still in flight holds the net, so a slow provider is not idle.

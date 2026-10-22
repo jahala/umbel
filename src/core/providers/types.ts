@@ -220,9 +220,14 @@ export interface AgentProvider {
   subagentTranscriptDir?(transcriptPath: string): string;
 
   // Optional: pane lines that mean the provider failed the turn and is sitting
-  // at its prompt (a 404 model, an overloaded API). wait's idle net settles
-  // 'provider-error' when one shows in the pane's last lines and the pane then
-  // stays still; further output is a retry in progress. Omit when unknown.
+  // at its prompt (a 404 model, an overloaded API, an exhausted account). wait's
+  // idle net settles 'provider-error' when one shows in the pane's last lines
+  // and the pane then stays still; further output is a retry in progress. A
+  // provider that refuses the turn fires no stop, only its needs-input
+  // notification, so wait also reads these lines for its `input` message
+  // (umbel#129). Patterns are matched against one trimmed pane line, so a
+  // provider anchors its own error marker rather than a bare phrase a worker's
+  // reply can quote. Omit when unknown.
   readonly errorMatch?: readonly RegExp[];
 
   // Optional: interactive startup dialogs this provider's TUI shows on first

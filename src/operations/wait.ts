@@ -4,6 +4,7 @@ import { type DeathCause, describeDeath } from '../core/death.ts';
 import {
   formatIdleMessage,
   type IdleSource,
+  inputMessage,
   matchProviderError,
   stillForMs,
 } from '../core/idle.ts';
@@ -466,11 +467,15 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
             // A usage-limit dialog fires the same Notification as an input
             // prompt, but it is not a question: the caller needs the limit and
             // its reset time to schedule a resume instead of quarantining the
-            // worker (umbel#75). The dialog's own line is the message. Read from
-            // the screen alone: a limit hit and resolved earlier stays in
-            // scrollback and must not label a later question.
+            // worker (umbel#75). A provider that refuses the turn fires the same
+            // notification too, with no stop, so its error line labels the input
+            // as well (umbel#129). Read from the screen alone: a limit or error
+            // from earlier stays in scrollback and must not label a later
+            // question.
             let screen = '';
-            if (provider?.limitMatch !== undefined) {
+            const readsScreen =
+              provider?.limitMatch !== undefined || (provider?.errorMatch?.length ?? 0) > 0;
+            if (readsScreen) {
               try {
                 screen = await d.tmux.capturePane(name, 0, env);
               } catch {
@@ -478,8 +483,7 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
               }
               if (settled) return;
             }
-            const limit = matchedLine(screen, provider?.limitMatch);
-            const message = limit ?? cls.message;
+            const message = inputMessage(screen, provider, cls.message);
             settle({
               stopped: false,
               reason: 'input',
