@@ -354,16 +354,23 @@ const codexProvider: AgentProvider = {
     { match: /^\s*›\s*3\. Skip until next version/m, keys: ['Enter'] },
     { match: /^\s*›\s*1\. Yes, continue/m, keys: ['Enter'] },
     { match: /^\s*›\s*2\. No, quit/m, keys: ['Up', 'Enter'] },
-    { match: /^\s*›\s*Review hooks\s*$/m, keys: ['Down', 'Enter'] },
-    { match: /^\s*›\s*Trust all and continue\s*$/m, keys: ['Enter'] },
-    { match: /^\s*›\s*Continue without trusting/m, keys: ['Up', 'Enter'] },
+    // Numbered (`› 1. Review hooks`) when every hook is new, unnumbered when
+    // some changed; both recorded on 0.154.0.
+    { match: /^\s*›\s*(?:\d\.\s*)?Review hooks\s*$/m, keys: ['Down', 'Enter'] },
+    { match: /^\s*›\s*(?:\d\.\s*)?Trust all and continue\s*$/m, keys: ['Enter'] },
+    { match: /^\s*›\s*(?:\d\.\s*)?Continue without trusting/m, keys: ['Up', 'Enter'] },
   ],
   // The idle prompt line (0.154.0: "› Ask Codex to do anything"; older builds:
   // "Implement {feature}"). The banner paints before the model has loaded and
   // before a late trust dialog, so it is not a ready signal
   // (test/fixtures/codex-0.154-startup.txt). The screen keeps re-rendering for
   // seconds after, hence the settle window.
-  readyMatch: /› Ask Codex to do anything|Implement \{/,
+  // Ready is the idle prompt line below a banner that names its model: the
+  // prompt line paints while the model is still loading, and a dialog can open
+  // after it (2026-10-22, "Hooks need review" ~2 s after spawn returned on a
+  // loading banner, and the first prompt went into it).
+  readyMatch:
+    /model:\s+(?!loading)\S[^\n]*\n(?:(?!model:)[\s\S])*?› Ask Codex to do anything|Implement \{/,
   readySettleMs: 1500,
   // 0.154.0 with no credentials opens on its sign-in menu.
   signInMatch: /^\s*or connect an API key for usage-based billing\s*$/m,

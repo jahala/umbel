@@ -62,7 +62,7 @@ describe('dismissStartupDialogs (CodexProvider specs)', () => {
       review,
       trusting,
       trusting,
-      '>_ OpenAI Codex (v0.154.0)\n› Ask Codex to do anything',
+      '>_ OpenAI Codex (v0.154.0)\n│ model:       gpt-6-astra   /model to change │\n› Ask Codex to do anything',
     ]);
 
     await dismissStartupDialogs(
@@ -76,6 +76,31 @@ describe('dismissStartupDialogs (CodexProvider specs)', () => {
     expect(sent.slice(1).flat()).not.toContain('Down');
   });
 
+  // On a CODEX_HOME where every hook is new, 0.154.0 numbers the options;
+  // where some hooks changed, it does not (both recorded 2026-10-22).
+  test('the numbered hooks dialog of a fresh home is answered Trust all', async () => {
+    const numbered = [
+      '  Hooks need review',
+      '  Hooks can run outside the sandbox after you trust them.',
+      '› 1. Review hooks',
+      '  2. Trust all and continue',
+      "  3. Continue without trusting (hooks won't run)",
+    ].join('\n');
+    const { sent, tmux } = makeFakeTmux([
+      numbered,
+      '>_ OpenAI Codex (v0.154.0)\nImplement {feature}',
+    ]);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      CodexProvider.startupDialogs ?? [],
+      CodexProvider.readyMatch,
+    );
+
+    expect(sent).toEqual([['Down', 'Enter']]);
+  });
+
   test('an update dialog whose cursor already left "Update now" is not moved again', async () => {
     const skipHighlighted = [
       '  ✨ Update available! 0.154.0 -> 0.163.0',
@@ -86,7 +111,7 @@ describe('dismissStartupDialogs (CodexProvider specs)', () => {
     ].join('\n');
     const { sent, tmux } = makeFakeTmux([
       skipHighlighted,
-      '>_ OpenAI Codex (v0.154.0)\n› Ask Codex to do anything',
+      '>_ OpenAI Codex (v0.154.0)\n│ model:       gpt-6-astra   /model to change │\n› Ask Codex to do anything',
     ]);
 
     await dismissStartupDialogs(
