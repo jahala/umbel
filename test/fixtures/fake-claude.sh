@@ -61,6 +61,9 @@
 #   FAKE_CLAUDE_IGNORE_FIRST_ENTER optional count of submitted prompts that start
 #                         no turn, as when claude loses the submitting Enter after
 #                         a paste and the text sits in its input box (umbel#121)
+#   FAKE_CLAUDE_USAGE     optional, a JSON usage object recorded on the turn's
+#                         final assistant entry, as real claude records one
+#   FAKE_CLAUDE_MODEL     optional, the model recorded on that entry
 
 set -euo pipefail
 
@@ -101,6 +104,13 @@ IGNORE_FIRST_ENTER="${FAKE_CLAUDE_IGNORE_FIRST_ENTER:-0}"
 LIMIT_FILE="${FAKE_CLAUDE_LIMIT_FILE:-}"
 LIMIT_MS="${FAKE_CLAUDE_LIMIT_MS:-0}"
 NOTIFY_HOOK="${FAKE_CLAUDE_NOTIFY_HOOK:-}"
+USAGE_JSON="${FAKE_CLAUDE_USAGE:-}"
+USAGE_FIELDS=''
+if [[ -n "$USAGE_JSON" ]]; then USAGE_FIELDS=",\"usage\":${USAGE_JSON}"; fi
+MODEL_FIELDS=''
+if [[ -n "${FAKE_CLAUDE_MODEL:-}" ]]; then
+  MODEL_FIELDS=",\"model\":$(jq -n --arg m "$FAKE_CLAUDE_MODEL" '$m')"
+fi
 
 # umbel passes the hook config inline in --settings. This fake stands in for
 # claude itself, so it honours the registered UserPromptSubmit hook exactly as
@@ -296,7 +306,8 @@ write_turn() {
   fi
 
   # Final assistant entry with end_turn
-  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"uuid":"a2-%s","timestamp":"%s"}\n' \
+  printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant"%s%s,"content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"uuid":"a2-%s","timestamp":"%s"}\n' \
+    "$$" "$MODEL_FIELDS" "$USAGE_FIELDS" \
     "$(echo -n "Response to: $prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
     "$$" "$now" >> "$JSONL_FILE"
 

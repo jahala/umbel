@@ -23,6 +23,7 @@ import {
 import { isValidSessionName } from '../core/id.ts';
 import type { RunningCommand } from '../core/procs.ts';
 import { getProvider } from '../core/providers/registry.ts';
+import type { Usage } from '../core/providers/types.ts';
 import type { EnvValue } from '../core/types.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
 import { capture } from '../operations/capture.ts';
@@ -563,6 +564,7 @@ async function verbWait(
       exitCode?: number;
       paneSnapshot?: string;
       runningCommands?: RunningCommand[];
+      usage?: Usage;
     } = {
       reason: result.reason,
     };
@@ -577,6 +579,9 @@ async function verbWait(
     }
     if (result.runningCommands !== undefined) {
       payload.runningCommands = result.runningCommands;
+    }
+    if (result.usage !== undefined) {
+      payload.usage = result.usage;
     }
     // The last screen goes in the JSON, not only on stderr: a caller branching
     // on this object has nothing else to read, and when the worker died it is
@@ -756,6 +761,13 @@ async function verbRead(
     env: cliEnv,
   });
   const text = provider.parseTranscript(content);
+  if (flagBool(flags, 'json')) {
+    const usage = provider.extractUsage?.(content);
+    process.stdout.write(
+      `${JSON.stringify({ text, ...(usage !== undefined ? { usage } : {}) })}\n`,
+    );
+    return 0;
+  }
   process.stdout.write(`${text}\n`);
   return 0;
 }

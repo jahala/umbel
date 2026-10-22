@@ -1,6 +1,15 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './types.ts';
+import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn, Usage } from './types.ts';
+import {
+  addCacheReadTokens,
+  addCacheWriteTokens,
+  addInputTokens,
+  addOutputTokens,
+  emptyUsageTotals,
+  numberField,
+  usageOf,
+} from './usage.ts';
 
 // ---------------------------------------------------------------------------
 // Internal JSONL parsing — Codex rollout format
@@ -224,6 +233,94 @@ export function extractCodexTurnsFromContent(content: string): Turn[] {
 }
 
 // ---------------------------------------------------------------------------
+// Usage extraction (pure)
+// ---------------------------------------------------------------------------
+
+function asObject(value: unknown): JsonObj | null {
+  return value !== null && typeof value === 'object' ? (value as JsonObj) : null;
+}
+
+// Codex counts cached input inside input_tokens, while claude and opencode do
+// not. Subtracting the cache fields here gives `inputTokens` one meaning across
+// providers. A negative result is clamped: the counts come from different API
+// calls and a cache can report more than the input it served.
+function addCodexUsage(totals: ReturnType<typeof emptyUsageTotals>, usage: JsonObj): void {
+  const input = numberField(usage, 'input_tokens');
+  const cached = numberField(usage, 'cached_input_tokens') ?? 0;
+  const cacheWrite = numberField(usage, 'cache_write_input_tokens') ?? 0;
+  if (input !== undefined) addInputTokens(totals, Math.max(0, input - cached - cacheWrite));
+  addCacheReadTokens(totals, numberField(usage, 'cached_input_tokens'));
+  addCacheWriteTokens(totals, numberField(usage, 'cache_write_input_tokens'));
+  addOutputTokens(totals, numberField(usage, 'output_tokens'));
+}
+
+// token_usage_record.turn_token_usage is the turn's share: it resets at each
+// task_started while thread_token_usage runs on, so the newest record inside the
+// completed turn is the whole turn. Older rollouts carry no such record; there
+// token_count.info.last_token_usage is one API call, and summing the calls since
+// task_started gives the same turn total. An open newest turn is ignored.
+export function extractCodexUsageFromContent(content: string): Usage | undefined {
+  let model: string | undefined;
+  let inTurn = false;
+  let turnTotals = emptyUsageTotals();
+  let fromRecord = false;
+  let completed: { totals: ReturnType<typeof emptyUsageTotals>; model?: string } | undefined;
+
+  for (const line of content.split('\n')) {
+    const parsed = parseLine(line);
+    if (parsed === null || typeof parsed !== 'object') continue;
+    const obj = parsed as JsonObj;
+
+    if (obj.type === 'turn_context') {
+      const payload = asObject(obj.payload);
+      if (payload !== null && typeof payload.model === 'string') model = payload.model;
+      continue;
+    }
+
+    if (obj.type === 'token_usage_record') {
+      const payload = asObject(obj.payload);
+      const usage = payload !== null ? asObject(payload.turn_token_usage) : null;
+      if (usage !== null) {
+        turnTotals = emptyUsageTotals();
+        addCodexUsage(turnTotals, usage);
+        fromRecord = true;
+      }
+      continue;
+    }
+
+    if (obj.type !== 'event_msg') continue;
+    const payload = asObject(obj.payload);
+    if (payload === null) continue;
+
+    if (payload.type === 'task_started') {
+      inTurn = true;
+      turnTotals = emptyUsageTotals();
+      fromRecord = false;
+      continue;
+    }
+
+    if (payload.type === 'token_count') {
+      if (!inTurn || fromRecord) continue;
+      const info = asObject(payload.info);
+      const last = info !== null ? asObject(info.last_token_usage) : null;
+      if (last !== null) addCodexUsage(turnTotals, last);
+      continue;
+    }
+
+    if (payload.type === 'task_complete' || payload.type === 'turn_aborted') {
+      if (inTurn && usageOf(turnTotals) !== undefined) {
+        completed = { totals: turnTotals, ...(model !== undefined ? { model } : {}) };
+      }
+      inTurn = false;
+      turnTotals = emptyUsageTotals();
+      fromRecord = false;
+    }
+  }
+
+  return completed === undefined ? undefined : usageOf(completed.totals, completed.model);
+}
+
+// ---------------------------------------------------------------------------
 // CodexProvider
 // ---------------------------------------------------------------------------
 
@@ -393,6 +490,10 @@ const codexProvider: AgentProvider = {
 
   turnEnded(content: string): boolean {
     return turnEndedIn(content);
+  },
+
+  extractUsage(content: string): Usage | undefined {
+    return extractCodexUsageFromContent(content);
   },
 
   extractActions(content: string): ActionManifest {

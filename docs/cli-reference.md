@@ -191,7 +191,7 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit `{"reason": "...", "message": "...?"}` to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `message` is included for `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line). For `input`, `inputReason` says what the worker waits for: `permission`, `idle`, `question`, or `sign-in`. When the pane is showing the provider's usage-limit dialog, `message` is that dialog's own line instead of the hook's text. |
+| `--json` | off | Emit one JSON object to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `reason` is always present. `message` comes with `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line); `inputReason` comes with `input` (`permission`, `idle`, `question`, or `sign-in`); `exitCode` and `paneSnapshot` come with `dead`; `paneSnapshot` comes with `timeout`; `runningCommands` and `usage` come with `stop`. When the pane is showing the provider's usage-limit dialog, an `input` result's `message` is that dialog's own line instead of the hook's text. |
 | `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `umbel send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
@@ -227,6 +227,8 @@ The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `
 With `--json` the exit code is the same; the JSON carries the `reason` and `message`.
 
 A `stop` result also carries `runningCommands`, the commands the worker's CLI still has running in its pane at the stop: `[{pid, command}]`, empty when none. A turn can end while a command it started keeps running and writing into the worktree, so a stop is not a promise the worktree is quiet. Only commands the CLI started through a shell count; its own infrastructure (MCP servers it runs, for instance) and the Stop hook itself do not. A command that detaches from the tree, for example under `setsid`, cannot be seen. The listing is read once, at the stop, bounded at 5 seconds. When it cannot be read the field is absent.
+
+A `stop` result also carries `usage`, the token usage of the turn that just ended, when the provider's transcript records it: `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, and `model`. A caller that pays for the turn can record its cost from this result, without parsing the transcript. Every field except `model` is optional, because a provider reports what its format holds. `inputTokens` counts input the provider did not serve from its cache; cache reads and writes stay separate. A turn that took several API answers around tool calls is summed, and a usage record copied onto several transcript entries counts once. The fields are absent when the transcript could not be read, when the turn recorded no usage, or when the provider has no usage extraction (gemini).
 
 **Examples**
 
@@ -409,7 +411,7 @@ umbel attach reviewer
 Write the last assistant message from the session's JSONL log to stdout. Reads `session.jsonl` at the path stored in `meta.json`. Does not interact with the tmux pane.
 
 ```
-umbel read <name>
+umbel read [--json] <name>
 ```
 
 **Positionals**
@@ -418,17 +420,25 @@ umbel read <name>
 |----------|-------------|
 | `<name>` | Session name. |
 
+**Flags**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | off | Emit one JSON object to stdout instead of the bare text: `{"text": "...", "usage": {...}?}`. `usage` is the same token usage `wait` reports at `stop`, taken from the transcript read the command already performs, and is absent when the provider records none. |
+
 **Notes**
 
 - If the session JSONL has not been discovered yet (too soon after spawn), the command errors with exit code 1.
 - A killed (not purged) session still answers: the tombstone keeps the transcript path and the provider's transcript, so this is the call that reads a dead worker's last answer.
 - The JSONL reader joins consecutive assistant partial entries and only trusts entries carrying `stop_reason` — partial streams without it are not yet the final response.
+- A read taken within 5 seconds of the stop waits for the turn's final message before reading, so `usage` covers the turn that just ended, not the one before it.
 
 **Examples**
 
 ```bash
 umbel read reviewer
 umbel read reviewer > review.md
+umbel read --json reviewer | jq '.usage'
 ```
 
 ---

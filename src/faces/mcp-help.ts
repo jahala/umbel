@@ -42,10 +42,13 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 
 ## Wait outcomes (the \`reason\` field in the result)
 
-umbel_wait returns { reason, message?, paneSnapshot?, runningCommands? }. Branch on reason:
+umbel_wait returns { reason, message?, paneSnapshot?, runningCommands?, usage? }. Branch on reason:
   stop   → turn complete; umbel_read the result. \`runningCommands\` lists any command
            the CLI still has running in its pane (a background command the turn left
            behind): a stop is not a promise the worktree is quiet. Empty when none.
+           \`usage\` is the finished turn's tokens (inputTokens, outputTokens,
+           cacheReadTokens, cacheWriteTokens, model), when the provider reports them;
+           absent for a provider or format that records none.
   input  → the worker is BLOCKED on a prompt (a permission ask, or idle). \`message\`
            is the question — answer it with umbel_send ("1", "yes", or a
            clarification), then umbel_wait again. This is the ping: you do NOT hang
@@ -74,7 +77,7 @@ Pair every umbel_send with a umbel_wait. Sending without waiting causes your nex
 
 ## Reading worker output efficiently
 
-- \`umbel_read\` returns the verbatim final assistant text. Long responses (>~2000 tokens) auto-truncate to head+tail with an elision marker. Override with \`full: true\` to see everything, or \`head\`/\`tail\` (approx token counts) / \`section: "## Heading"\` to control the window.
+- \`umbel_read\` returns the verbatim final assistant text. Long responses (>~2000 tokens) auto-truncate to head+tail with an elision marker. Override with \`full: true\` to see everything, or \`head\`/\`tail\` (approx token counts) / \`section: "## Heading"\` to control the window. The turn's token usage rides beside the text in \`structuredContent.usage\` when the provider reports it.
 - \`umbel_actions\` returns a structured digest (tools used, files touched, errors, final message). The right shape for "what HAPPENED?" — easier to scan than verbatim text and surfaces info umbel_read doesn't (file paths touched, bash commands run, error count). Default reach for orchestration.
 - \`umbel_diff\` returns a unified text diff between two turns of a session. Default: latest vs previous. Indispensable in review→fix loops — you see only what's NEW, not the prefix the reviewer keeps repeating.
 

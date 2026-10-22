@@ -1,4 +1,5 @@
-import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './types.ts';
+import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn, Usage } from './types.ts';
+import { numberField } from './usage.ts';
 
 // ---------------------------------------------------------------------------
 // Internal JSONL parsing: agy's stream-json print mode (umbel#113)
@@ -100,6 +101,41 @@ export function extractAgyTurnsFromContent(content: string): Turn[] {
     idx++;
   }
   return turns;
+}
+
+// Each result's usage is cumulative across the conversation, so one turn's
+// share is the newest result minus the previous result. A turn with no earlier
+// result (the first, or an ERROR result carrying zeroes) subtracts nothing.
+export function extractAgyUsageFromContent(content: string): Usage | undefined {
+  const results: JsonObj[] = [];
+  for (const line of content.split('\n')) {
+    const obj = parseLine(line);
+    if (obj === null) continue;
+    const result = resultOf(obj);
+    if (result !== null) results.push(result);
+  }
+
+  const newest = results.at(-1);
+  if (newest === undefined) return undefined;
+  const current = asObj(newest.usage);
+  if (current === null) return undefined;
+  const previous = asObj(results.at(-2)?.usage);
+
+  const delta = (key: string): number | undefined => {
+    const now = numberField(current, key);
+    if (now === undefined) return undefined;
+    return Math.max(0, now - (previous !== null ? (numberField(previous, key) ?? 0) : 0));
+  };
+
+  const input = delta('input_tokens');
+  const output = delta('output_tokens');
+  const cacheRead = delta('cache_read_tokens');
+  if (input === undefined && output === undefined && cacheRead === undefined) return undefined;
+  return {
+    ...(input !== undefined ? { inputTokens: input } : {}),
+    ...(output !== undefined ? { outputTokens: output } : {}),
+    ...(cacheRead !== undefined ? { cacheReadTokens: cacheRead } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +291,10 @@ const agyProvider: AgentProvider = {
 
   turnEnded(content: string): boolean {
     return agyTurnEnded(content);
+  },
+
+  extractUsage(content: string): Usage | undefined {
+    return extractAgyUsageFromContent(content);
   },
 
   extractActions(content: string): ActionManifest {

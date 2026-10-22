@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { SessionDeadError } from '../core/errors.ts';
 import type { RunningCommand } from '../core/procs.ts';
 import { getProvider } from '../core/providers/registry.ts';
+import type { Usage } from '../core/providers/types.ts';
 import { truncateAssistantText } from '../core/truncate.ts';
 import type { ProviderName } from '../core/types.ts';
 import { actions } from '../operations/actions.ts';
@@ -53,7 +54,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_prune:
     "Sweep tombstones: remove dead sessions' directories and their tmux remains. `olderThan` (e.g. '24h') spares younger records. Never touches a live session.",
   umbel_read:
-    "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after umbel_wait returns.",
+    "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after umbel_wait returns. Token usage of the turn is in structuredContent.",
   umbel_actions:
     'Structured digest of what a worker DID this session (tools used, files touched, errors, final message). Use INSTEAD of umbel_read when you want the summary, not the verbatim response — much smaller payload.',
   umbel_diff:
@@ -80,7 +81,12 @@ export interface McpServerOpts {
 // Tool handler result type (matches MCP SDK expectations)
 // ---------------------------------------------------------------------------
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
+type ToolResult = {
+  content: Array<{ type: 'text'; text: string }>;
+  // Structured copy of additive fields (umbel_read carries token usage here),
+  // leaving content[0].text unchanged for clients that render only text.
+  structuredContent?: Record<string, unknown>;
+};
 
 // ---------------------------------------------------------------------------
 // createMcpTools — returns callable handler functions keyed by tool name.
@@ -211,6 +217,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         exitCode?: number;
         paneSnapshot?: string;
         runningCommands?: RunningCommand[];
+        usage?: Usage;
       } = { reason: result.reason };
       if (result.inputReason !== undefined) payload.inputReason = result.inputReason;
       if (result.message !== undefined) payload.message = result.message;
@@ -218,6 +225,9 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       if (result.paneSnapshot !== undefined) payload.paneSnapshot = result.paneSnapshot;
       if (result.runningCommands !== undefined) {
         payload.runningCommands = result.runningCommands;
+      }
+      if (result.usage !== undefined) {
+        payload.usage = result.usage;
       }
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
@@ -296,7 +306,11 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
         ...(args.section !== undefined ? { section: args.section } : {}),
         ...(args.full !== undefined ? { full: args.full } : {}),
       });
-      return { content: [{ type: 'text' as const, text: truncated }] };
+      const usage = provider.extractUsage?.(content);
+      return {
+        content: [{ type: 'text' as const, text: truncated }],
+        ...(usage !== undefined ? { structuredContent: { usage } } : {}),
+      };
     },
 
     umbel_actions: async (args) => {

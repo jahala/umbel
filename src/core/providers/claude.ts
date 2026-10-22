@@ -1,6 +1,15 @@
 import { basename, dirname, join } from 'node:path';
 import { buildSettingsJson } from '../../adapters/hooks.ts';
-import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './types.ts';
+import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn, Usage } from './types.ts';
+import {
+  addCacheReadTokens,
+  addCacheWriteTokens,
+  addInputTokens,
+  addOutputTokens,
+  emptyUsageTotals,
+  numberField,
+  usageOf,
+} from './usage.ts';
 
 // Re-export buildSettingsJson for backward compatibility during refactor.
 // Delete after operations layer is fully updated.
@@ -328,6 +337,84 @@ export function extractTurnsFromContent(content: string): Turn[] {
 }
 
 // ---------------------------------------------------------------------------
+// Usage extraction (pure)
+// ---------------------------------------------------------------------------
+
+// A user entry carrying a tool result continues the turn; only a user entry
+// with no tool result begins a new one. Without this, a turn's several API
+// answers would be read as separate turns and all but the last dropped.
+function isPromptEntry(entry: unknown): boolean {
+  if (!isRoleEntry(entry, 'user')) return false;
+  return !getContentBlocks(entry).some(
+    (block) =>
+      block !== null && typeof block === 'object' && (block as JsonObj).type === 'tool_result',
+  );
+}
+
+// Claude copies the whole message's usage onto every per-block entry, so a
+// message counted twice would double the turn. The newest completed turn is the
+// last closing text entry and the prompt before it; a turn still being written
+// after that entry is ignored, so its partial usage is never reported.
+export function extractClaudeUsageFromContent(content: string): Usage | undefined {
+  const entries = parseAllEntries(content);
+
+  let closeIdx = -1;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (!isAssistantEntry(entry)) continue;
+    const blocks = getContentBlocks(entry);
+    if (blocks.length === 0 && extractText(entry) === null) continue;
+    const last = blocks[blocks.length - 1];
+    const isText =
+      blocks.length === 0 ||
+      (last !== null && typeof last === 'object' && (last as JsonObj).type === 'text');
+    const stop = getStopReason(entry);
+    if (isText && stop !== undefined && stop !== 'tool_use') {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx === -1) return undefined;
+
+  let startIdx = 0;
+  for (let i = closeIdx; i >= 0; i--) {
+    if (isPromptEntry(entries[i])) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  const totals = emptyUsageTotals();
+  const seen = new Set<string>();
+  let model: string | undefined;
+  let sawUsage = false;
+
+  for (let i = startIdx; i <= closeIdx; i++) {
+    const entry = entries[i];
+    if (!isAssistantEntry(entry)) continue;
+    const msgField = (entry as JsonObj).message;
+    const msg = msgField !== null && typeof msgField === 'object' ? (msgField as JsonObj) : null;
+    if (msg === null) continue;
+    const id = typeof msg.id === 'string' ? msg.id : undefined;
+    if (id !== undefined) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+    }
+    if (typeof msg.model === 'string') model = msg.model;
+    const usage = msg.usage;
+    if (usage === null || typeof usage !== 'object') continue;
+    const u = usage as JsonObj;
+    sawUsage = true;
+    addInputTokens(totals, numberField(u, 'input_tokens'));
+    addOutputTokens(totals, numberField(u, 'output_tokens'));
+    addCacheReadTokens(totals, numberField(u, 'cache_read_input_tokens'));
+    addCacheWriteTokens(totals, numberField(u, 'cache_creation_input_tokens'));
+  }
+
+  return sawUsage ? usageOf(totals, model) : undefined;
+}
+
+// ---------------------------------------------------------------------------
 // ClaudeProvider
 // ---------------------------------------------------------------------------
 
@@ -440,6 +527,10 @@ const claudeProvider: AgentProvider = {
 
   turnEnded(content: string): boolean {
     return turnEndedIn(content);
+  },
+
+  extractUsage(content: string): Usage | undefined {
+    return extractClaudeUsageFromContent(content);
   },
 
   requestInFlight(content: string): string | undefined {
