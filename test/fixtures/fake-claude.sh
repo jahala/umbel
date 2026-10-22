@@ -41,6 +41,11 @@
 #                         someone else (tmux records the same wait status)
 #   FAKE_CLAUDE_SIGN_IN   optional, a file: print it and wait there, as a CLI with no
 #                         credentials opens on its sign-in screen and stays on it
+#   FAKE_CLAUDE_LIMIT_FILE optional, a file: mid-turn the pane prints it and the
+#                         notify hook fires, as claude shows its usage-limit
+#                         dialog and waits there until killed
+#   FAKE_CLAUDE_LIMIT_MS  optional, ms into the turn the limit dialog appears
+#   FAKE_CLAUDE_NOTIFY_HOOK optional, exec this (notify.sh) when the dialog appears
 #   FAKE_CLAUDE_BACKGROUND_CMD optional, a shell command the worker starts once,
 #                         through `<shell> -c`, and leaves running across the turn
 #                         as a background Bash tool call does (e.g. `sleep 30`)
@@ -93,6 +98,9 @@ NESTED_SESSION_ID="${FAKE_CLAUDE_NESTED_SESSION_ID:-nested-session}"
 NESTED_TRANSCRIPT="${FAKE_CLAUDE_NESTED_TRANSCRIPT:-}"
 POST_NESTED_MS="${FAKE_CLAUDE_POST_NESTED_MS:-0}"
 IGNORE_FIRST_ENTER="${FAKE_CLAUDE_IGNORE_FIRST_ENTER:-0}"
+LIMIT_FILE="${FAKE_CLAUDE_LIMIT_FILE:-}"
+LIMIT_MS="${FAKE_CLAUDE_LIMIT_MS:-0}"
+NOTIFY_HOOK="${FAKE_CLAUDE_NOTIFY_HOOK:-}"
 
 # umbel passes the hook config inline in --settings. This fake stands in for
 # claude itself, so it honours the registered UserPromptSubmit hook exactly as
@@ -180,6 +188,20 @@ write_turn() {
     "$$" "$now" >> "$JSONL_FILE"
 
   [[ -n "$ERROR_LINE" ]] && echo "$ERROR_LINE"
+
+  # The account's usage limit: claude prints the dialog and waits there, firing
+  # the Notification hook it uses for any other input wait (umbel#75).
+  if [[ -n "$LIMIT_FILE" ]]; then
+    if [[ "$LIMIT_MS" -gt 0 ]]; then
+      sleep "$(echo "scale=3; $LIMIT_MS / 1000" | bc)"
+    fi
+    cat "$LIMIT_FILE"
+    if [[ -n "$NOTIFY_HOOK" && -x "$NOTIFY_HOOK" ]]; then
+      printf '{"session_id":"%s","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Claude is waiting for your input"}' \
+        "${SESSION_ID}" | bash "$NOTIFY_HOOK"
+    fi
+    exec sleep 600
+  fi
 
   # A request goes out: real claude writes an api-request entry as it sends,
   # then nothing at all until the answer arrives, however long that takes.

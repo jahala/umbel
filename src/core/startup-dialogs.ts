@@ -20,11 +20,12 @@ export interface StartupDialog {
   readonly keys: readonly string[];
 }
 
-// PURE. The line of the provider's sign-in screen on this pane, trimmed of
-// whitespace and box borders, or undefined when the screen is not showing.
-// `match` is a whole-line pattern (`^…$` with the m flag): a worker's own output
-// can hold the same words, in a diff or a reply, but never alone on a line.
-export function signInLine(pane: string, match: RegExp | undefined): string | undefined {
+// PURE. The line of the provider's dialog on this pane, trimmed of whitespace
+// and box borders, or undefined when the dialog is not showing. `match` is a
+// whole-line pattern (`^…$` with the m flag): a worker's own output can hold the
+// same words, in a diff or a reply, but never alone on a line. Used for the
+// sign-in screen and the usage-limit dialog.
+export function matchedLine(pane: string, match: RegExp | undefined): string | undefined {
   if (match === undefined) return undefined;
   const hit = pane.match(match);
   return hit === null ? undefined : hit[0].replace(/^[\s│]+|[\s│]+$/g, '');

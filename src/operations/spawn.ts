@@ -14,7 +14,7 @@ import {
 import { generateSessionName, isValidSessionName } from '../core/id.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { ProviderLaunchSpec } from '../core/providers/types.ts';
-import { nextStartupDialog, type StartupDialog, signInLine } from '../core/startup-dialogs.ts';
+import { matchedLine, nextStartupDialog, type StartupDialog } from '../core/startup-dialogs.ts';
 import type { EnvValue, Session } from '../core/types.ts';
 import { SessionSchema } from '../core/types.ts';
 import { envExports, inheritedEnv } from '../core/worker-env.ts';
@@ -76,7 +76,7 @@ export async function dismissStartupDialogs(
 
     // Checked before readiness: claude's readyMatch includes a box border,
     // which a sign-in screen can draw too.
-    const signIn = signInLine(pane, signInMatch);
+    const signIn = matchedLine(pane, signInMatch);
     if (signIn !== undefined) return signIn;
 
     // The worker died during startup. Its pane is kept (remain-on-exit), so the
