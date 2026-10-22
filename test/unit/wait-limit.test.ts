@@ -57,6 +57,15 @@ const aliveTmux = (pane: string) =>
     capturePane: async () => pane,
   }) as never;
 
+// The screen and the screen with its scrollback, as tmux returns them for
+// capturePane(name, 0) and capturePane(name, n).
+const scrolledTmux = (screen: string, history: string) =>
+  ({
+    paneState: async () => ({ exists: true, dead: false }),
+    capturePane: async (_name: string, lines?: number) =>
+      lines === 0 ? screen : `${history}\n${screen}`,
+  }) as never;
+
 describe('waitFor: a worker on its usage-limit dialog', () => {
   test('settles input with the dialog line and its reset time', async () => {
     const { tmpDir, env, name, notification } = await workerAtLimit();
@@ -89,6 +98,45 @@ describe('waitFor: a worker on its usage-limit dialog', () => {
         env,
         defaultTimeoutMs: 5_000,
         deps: { tmux: aliveTmux('❯ Working on it') },
+      });
+
+      expect(result.reason).toBe('input');
+      expect(result.message).toBe('Claude is waiting for your input');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('a question asked while the used-percent warning shows keeps its own message', async () => {
+    const { tmpDir, env, name, notification } = await workerAtLimit();
+    try {
+      notifySoon(notification);
+      const warned = "  You've used 94% of your session limit · resets 9:20pm\n❯ ";
+
+      const result = await waitFor({
+        name,
+        env,
+        defaultTimeoutMs: 5_000,
+        deps: { tmux: aliveTmux(warned) },
+      });
+
+      expect(result.reason).toBe('input');
+      expect(result.message).toBe('Claude is waiting for your input');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('a limit dialog left in scrollback does not label a later question', async () => {
+    const { tmpDir, env, name, notification } = await workerAtLimit();
+    try {
+      notifySoon(notification);
+
+      const result = await waitFor({
+        name,
+        env,
+        defaultTimeoutMs: 5_000,
+        deps: { tmux: scrolledTmux('❯ Allow this command?', limitPane) },
       });
 
       expect(result.reason).toBe('input');

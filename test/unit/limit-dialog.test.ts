@@ -21,8 +21,10 @@ const USED = "You've used 94% of your session limit · resets 9:20pm";
 describe('limitMatch', () => {
   test('names the limit dialog line a claude pane shows', () => {
     expect(matchedLine(pane('claude-session-limit.txt'), ClaudeProvider.limitMatch)).toBe(HIT);
-    // Each line alone is the dialog, so the used-percent form reads too.
-    expect(matchedLine(`  ${USED}`, ClaudeProvider.limitMatch)).toBe(USED);
+    // The used-percent line is a warning claude shows while the worker keeps
+    // working; status carries it as quota. Only a limit the worker has hit
+    // blocks it, so only that line is the dialog.
+    expect(matchedLine(`  ${USED}`, ClaudeProvider.limitMatch)).toBeUndefined();
   });
 
   // Wordings from real claude panes and transcripts on this machine. The CLI

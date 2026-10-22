@@ -447,8 +447,19 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
             // A usage-limit dialog fires the same Notification as an input
             // prompt, but it is not a question: the caller needs the limit and
             // its reset time to schedule a resume instead of quarantining the
-            // worker (umbel#75). The dialog's own line is the message.
-            const limit = matchedLine(paneSnapshot ?? lastAlivePane ?? '', provider?.limitMatch);
+            // worker (umbel#75). The dialog's own line is the message. Read from
+            // the screen alone: a limit hit and resolved earlier stays in
+            // scrollback and must not label a later question.
+            let screen = '';
+            if (provider?.limitMatch !== undefined) {
+              try {
+                screen = await d.tmux.capturePane(name, 0, env);
+              } catch {
+                // No screen: keep the hook's own message.
+              }
+              if (settled) return;
+            }
+            const limit = matchedLine(screen, provider?.limitMatch);
             const message = limit ?? cls.message;
             settle({
               stopped: false,
