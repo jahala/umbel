@@ -184,6 +184,9 @@ describe('spawn — claude env reconciliation', () => {
   test('keeps an inherited ANTHROPIC_API_KEY when no AUTH_TOKEN is set', async () => {
     const env = await setup();
     const prev = process.env.ANTHROPIC_API_KEY;
+    // The premise is no AUTH_TOKEN; the shell running the suite may export one.
+    const prevToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
     process.env.ANTHROPIC_API_KEY = 'sk-legit-keep';
     try {
       const captured = await captureWorkerEnv(
@@ -193,6 +196,7 @@ describe('spawn — claude env reconciliation', () => {
     } finally {
       if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = prev;
+      if (prevToken !== undefined) process.env.ANTHROPIC_AUTH_TOKEN = prevToken;
     }
   });
 });
