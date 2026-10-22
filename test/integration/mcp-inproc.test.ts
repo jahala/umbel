@@ -535,7 +535,7 @@ describe('umbel_logs', () => {
 // ---------------------------------------------------------------------------
 
 describe('umbel_kill', () => {
-  test('kill existing session returns "killed"', async () => {
+  test('kill by name reports the session as killed', async () => {
     const env = await setup();
     const name = sessionName('killmcp');
 
@@ -557,9 +557,9 @@ describe('umbel_kill', () => {
     await writeMeta(name, session, env);
 
     const tools = createMcpTools(makeToolOpts(env, tmpDir));
-    const result = await tools.umbel_kill({ name, purge: true });
+    const result = await tools.umbel_kill({ names: [name], dryRun: false, purge: true });
 
-    expect(result.content[0]?.text).toBe('killed');
+    expect(JSON.parse(result.content[0]?.text ?? '')).toEqual([{ name, outcome: 'killed' }]);
 
     // Session should be gone from tmux
     const alive = await hasSession(name);

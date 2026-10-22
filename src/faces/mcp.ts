@@ -11,7 +11,7 @@ import { actions } from '../operations/actions.ts';
 import type { Deps } from '../operations/deps.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
-import { kill } from '../operations/kill.ts';
+import { killMany } from '../operations/kill.ts';
 import { prune } from '../operations/prune.ts';
 import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
@@ -19,7 +19,7 @@ import { spawn } from '../operations/spawn.ts';
 import { status } from '../operations/status.ts';
 import { waitFor } from '../operations/wait.ts';
 import { HELP_TOPICS, type HelpTopic, helpForTopic } from './mcp-help.ts';
-import { parseDuration, VerbSchemas, waitRequest } from './verbs.ts';
+import { killRequest, parseDuration, VerbSchemas, waitRequest } from './verbs.ts';
 
 // ---------------------------------------------------------------------------
 // Agent-facing copy. Exported so tests can snapshot the strings.
@@ -50,7 +50,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_ls:
     'List live sessions; all=true includes dead ones, and repo=<a path inside a repository> keeps only that repository. Same as umbel_status with no name.',
   umbel_kill:
-    'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
+    'Kill sessions by name (`names`), or select live sessions with `prefix` and/or `repo` (never mixed with names). `dryRun` lists the targets and kills nothing; `purge` removes each directory. Reports each session as killed, already dead or not found.',
   umbel_prune:
     "Sweep tombstones: remove dead sessions' directories and their tmux remains. `olderThan` (e.g. '24h') spares younger records. Never touches a live session.",
   umbel_read:
@@ -126,7 +126,13 @@ export interface McpToolHandlers {
     repo?: string | undefined;
   }) => Promise<ToolResult>;
   umbel_ls: (args: { all?: boolean | undefined; repo?: string | undefined }) => Promise<ToolResult>;
-  umbel_kill: (args: { name: string; purge: boolean }) => Promise<ToolResult>;
+  umbel_kill: (args: {
+    names: string[];
+    prefix?: string | undefined;
+    repo?: string | undefined;
+    dryRun: boolean;
+    purge: boolean;
+  }) => Promise<ToolResult>;
   umbel_prune: (args: { olderThan?: string | undefined }) => Promise<ToolResult>;
   umbel_read: (args: {
     name: string;
@@ -259,14 +265,13 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     },
 
     umbel_kill: async (args) => {
-      const killOpts = {
-        name: args.name,
-        purge: args.purge,
+      const request = killRequest(args);
+      const results = await killMany({
+        ...request,
         env,
         ...(deps !== undefined ? { deps } : {}),
-      };
-      await kill(killOpts);
-      return { content: [{ type: 'text' as const, text: 'killed' }] };
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(results) }] };
     },
 
     umbel_prune: async (args) => {

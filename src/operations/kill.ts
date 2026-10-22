@@ -1,8 +1,10 @@
 import { unlink } from 'node:fs/promises';
+import { UmbelUsageError } from '../core/errors.ts';
 import type { DeadEvent } from '../core/types.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
+import { status } from './status.ts';
 
 // ---------------------------------------------------------------------------
 // KillOpts
@@ -56,6 +58,108 @@ export async function kill(opts: KillOpts): Promise<void> {
     if (meta !== undefined) await awaitExitRecord(d, opts.name, env);
     await d.fs.rmSession(opts.name, env);
   }
+}
+
+// ---------------------------------------------------------------------------
+// killMany — the same kill, for one or more names or a selector
+// ---------------------------------------------------------------------------
+
+export type KillOutcome = 'killed' | 'already-dead' | 'not-found' | 'failed';
+
+export interface KillResult {
+  name: string;
+  outcome: KillOutcome;
+  // Set for 'failed': what stopped the kill.
+  error?: string;
+}
+
+export interface KillManyOpts {
+  // Names kill exactly those sessions, in the order given.
+  names?: string[];
+  // A selector picks live sessions. With both, a session must match both.
+  prefix?: string;
+  repo?: string;
+  // Report the targets and kill nothing.
+  dryRun?: boolean;
+  purge?: boolean;
+  env?: Record<string, string | undefined>;
+  deps?: Partial<Deps>;
+}
+
+// One failure does not stop the others, so a caller that kills a fleet gets a
+// report per session and the face decides the exit code. A selector is answered
+// by `status`, the one place liveness and a session's repository are decided;
+// every selected session is alive by construction (umbel#94).
+export async function killMany(opts: KillManyOpts): Promise<KillResult[]> {
+  const env = opts.env ?? {};
+  const names = opts.names ?? [];
+  const selecting = opts.prefix !== undefined || opts.repo !== undefined;
+
+  if (names.length > 0 && selecting) {
+    throw new UmbelUsageError('kill: name the sessions or select them with prefix/repo, not both.');
+  }
+  if (names.length === 0 && !selecting) {
+    throw new UmbelUsageError('kill: give a session name, or select with prefix or repo.');
+  }
+
+  const targets =
+    names.length > 0
+      ? [...new Set(names)]
+      : (
+          await status({
+            env,
+            ...(opts.repo !== undefined ? { repo: opts.repo } : {}),
+            ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
+          })
+        )
+          .map((entry) => entry.name)
+          .filter((name) => opts.prefix === undefined || name.startsWith(opts.prefix));
+
+  const results: KillResult[] = [];
+  for (const name of targets) {
+    const state = await inspect(name, env, opts.deps);
+    if (state.outcome === 'not-found' || opts.dryRun === true) {
+      results.push(state);
+      continue;
+    }
+    try {
+      await kill({
+        name,
+        ...(opts.purge !== undefined ? { purge: opts.purge } : {}),
+        env,
+        ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
+      });
+      results.push(state);
+    } catch (err) {
+      results.push({
+        name,
+        outcome: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return results;
+}
+
+// What the kill will find, read before anything is torn down. A live pane is a
+// kill, a tombstone or a paneless directory is already dead, and neither means
+// the name was never a session. A bare tmux session with no state directory is
+// still killable, as it always was.
+async function inspect(
+  name: string,
+  env: Record<string, string | undefined>,
+  deps: Partial<Deps> | undefined,
+): Promise<KillResult> {
+  const d = { ...defaultDeps, ...deps };
+  let meta: Awaited<ReturnType<typeof d.fs.readMeta>> | undefined;
+  try {
+    meta = await d.fs.readMeta(name, env);
+  } catch {
+    // No state directory: a bare tmux session, or nothing at all.
+  }
+  const pane = await d.tmux.paneState(name, env);
+  if (meta === undefined && !pane.exists) return { name, outcome: 'not-found' };
+  return { name, outcome: pane.exists && !pane.dead ? 'killed' : 'already-dead' };
 }
 
 // A worker the wrapper cannot record (SIGKILL, launched before the wrapper)
