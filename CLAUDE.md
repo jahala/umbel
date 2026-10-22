@@ -48,7 +48,7 @@ Adapters are injected into operations. Operations are called by faces. Providers
 ```
 ~/.umbel/                          # default; override via $UMBEL_STATE
 ├─ sessions/<name>/
-│  ├─ meta.json                    # Session struct (includes provider, providerFiles)
+│  ├─ meta.json                    # Session struct (includes provider, providerFiles, repo)
 │  └─ events/
 │     ├─ stop                      # touch'd by stop.sh on each end-of-turn
 │     ├─ transcript-path           # captured from hook payload (jq)

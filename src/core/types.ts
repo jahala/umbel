@@ -34,6 +34,11 @@ export const SessionSchema = z.object({
   anonymous: z.boolean(),
   createdAt: z.number().int().nonnegative(),
   jsonlPath: z.string().nullable(),
+  // The repository the worker runs in, as the top-level of its MAIN working
+  // tree: every linked worktree of one repository records the same path, so a
+  // listing can tell two conductors' sessions apart (umbel#65). null outside a
+  // git repository, and for a session spawned before umbel recorded it.
+  repo: z.string().nullable().default(null),
   // Effective custom Anthropic-compatible endpoint (ANTHROPIC_BASE_URL) the
   // worker was launched with, or null. Non-secret routing info surfaced by
   // status so callers can confirm routing without a printenv round-trip.

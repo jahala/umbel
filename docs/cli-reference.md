@@ -248,10 +248,10 @@ umbel wait reviewer --until pattern --pattern "All tests passed"
 
 ### status
 
-Show the status table for one session, or every live session. Columns: NAME, STATUS (alive/dead), RUNNING (commands the worker still has running), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
+Show the status table for one session, or every live session. Columns: NAME, STATUS (alive/dead), RUNNING (commands the worker still has running), REPO (the repository's folder name, `—` when none), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
 
 ```
-umbel status [name] [--all] [--json]
+umbel status [name] [--all] [--repo PATH] [--json]
 ```
 
 **Positionals**
@@ -265,6 +265,7 @@ umbel status [name] [--all] [--json]
 | Flag | Description |
 |------|-------------|
 | `--all` | List dead sessions too. Off by default: a machine that has spawned workers all day holds hundreds of tombstones, and a fleet listing means live workers. |
+| `--repo PATH` | Keep only the sessions of the repository at `PATH`. Any path inside a repository works, including a linked worktree: spawn records the top-level of the repository's main working tree, so every worktree of one repository matches. Sessions spawned before umbel recorded a repository, and sessions outside git, do not match. |
 | `--json` | Emit the entries as one JSON array instead of the table — for shell/CI watchers that can't call MCP. With no `<name>` it lists live sessions unless `--all` is given. |
 
 Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields. `needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
@@ -287,6 +288,9 @@ umbel status --all
 # Machine-readable, for a fleet watcher
 umbel status --json | jq '.[] | select(.needsInputReason == "permission")'
 
+# Only this repository's sessions
+umbel status --repo ~/src/umbel
+
 # One session
 umbel status reviewer
 ```
@@ -297,11 +301,13 @@ When the provider reports subscription rate-limit usage, entries carry a `quota`
 
 ### ls
 
-List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table. `--all` includes dead sessions (tombstones), which is what a post-mortem reads.
+List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table, REPO included. `--all` includes dead sessions (tombstones), which is what a post-mortem reads. `--repo PATH` keeps only the sessions of one repository.
 
 ```
-umbel ls [--all]
+umbel ls [--all] [--repo PATH]
 ```
+
+A session's REPO is the folder name of the repository's main working tree, recorded at spawn. Every linked worktree of one repository shows the same value, so a listing tells two conductors' sessions apart. `—` means the worker ran outside git, or was spawned before umbel recorded it.
 
 **Examples**
 
@@ -310,13 +316,16 @@ umbel ls
 
 # Tombstones too
 umbel ls --all
+
+# Only this repository's workers
+umbel ls --repo ~/src/umbel
 ```
 
 ---
 
 ### kill
 
-Kill a session's tmux process and leave its state directory in `~/.umbel/sessions/` as a tombstone: `events/dead` (how it ended, with the pane read before the session was torn down), the event log and the transcript path, so a post-mortem needs nothing else. `umbel prune` sweeps tombstones.
+Kill a session's tmux process and leave its state directory in `~/.umbel/sessions/` as a tombstone: `events/dead` (how it ended, with the pane read before the session was torn down), the event log and the transcript path, so a post-mortem needs nothing else. `read`, `actions`, `capture` and `status <name>` keep answering from the tombstone. `umbel prune` sweeps tombstones.
 
 ```
 umbel kill <name> [--purge]
@@ -347,7 +356,7 @@ umbel kill reviewer --purge
 
 ### prune
 
-Sweep tombstones. Removes the state directory and the tmux remains of every dead session — the pane a dead worker leaves standing, and the directory `kill` keeps. A live session is never touched: liveness is read from the pane, because a session whose worker has exited is still a session.
+Sweep tombstones. Removes the state directory and the tmux remains of every dead session — the pane a dead worker leaves standing, and the directory `kill` keeps. A live session is never touched: liveness is read from the pane, because a session whose worker has exited is still a session. After the sweep, nothing answers for that session: `read`, `actions` and `status <name>` are gone with its directory.
 
 ```
 umbel prune [--older-than DURATION]
@@ -412,6 +421,7 @@ umbel read <name>
 **Notes**
 
 - If the session JSONL has not been discovered yet (too soon after spawn), the command errors with exit code 1.
+- A killed (not purged) session still answers: the tombstone keeps the transcript path and the provider's transcript, so this is the call that reads a dead worker's last answer.
 - The JSONL reader joins consecutive assistant partial entries and only trusts entries carrying `stop_reason` — partial streams without it are not yet the final response.
 
 **Examples**

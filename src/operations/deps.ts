@@ -1,6 +1,7 @@
 import * as exec from '../adapters/exec.ts';
 import * as fsState from '../adapters/fs-state.ts';
 import { watch } from '../adapters/fs-watch.ts';
+import * as git from '../adapters/git.ts';
 import * as hooks from '../adapters/hooks.ts';
 import * as jsonl from '../adapters/jsonl.ts';
 import * as procs from '../adapters/procs.ts';
@@ -18,6 +19,7 @@ export const defaultDeps = {
   exec,
   procs,
   watch,
+  git,
 };
 
 export type Deps = typeof defaultDeps;

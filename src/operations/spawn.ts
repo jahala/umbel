@@ -247,6 +247,9 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   const realCwd = await realpath(opts.cwd).catch(() => {
     throw new UmbelUsageError(`--cwd ${opts.cwd} does not exist`);
   });
+  // Recorded now, while the worker's cwd is known: a listing later has only
+  // meta.json, and the repository is what tells two conductors' sessions apart.
+  const repo = await d.git.repoRoot(realCwd);
 
   // Install global stop hook
   const {
@@ -486,6 +489,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     anonymous,
     createdAt: sinceMs,
     jsonlPath: null,
+    repo,
     baseUrl: workerEnvFinal.ANTHROPIC_BASE_URL ?? null,
     turnStartEvent: provider.turnStartEvent,
   });

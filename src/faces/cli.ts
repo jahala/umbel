@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   AllowedToolsUnsupportedError,
   EnvRefUnresolvedError,
@@ -56,7 +56,7 @@ Verbs:
   send    Send a prompt to a session
   wait    Wait for a session to finish
   status  Show session status (live sessions when no name is given)
-  ls      List live sessions (--all includes dead ones)
+  ls      List live sessions (--all includes dead ones, --repo one repository)
   kill    Kill a session (keeps its directory unless --purge)
   prune   Remove dead sessions' directories and tmux remains
   attach  Attach to a session
@@ -170,6 +170,21 @@ function flagBool(flags: Map<string, string | boolean>, ...keys: string[]): bool
   return false;
 }
 
+// The listing filter ls and status with no name share, so the two answer the
+// same way to the same flags.
+function listFilter(flags: Map<string, string | boolean>): { all: boolean; repo?: string } {
+  const repo = flagStr(flags, 'repo');
+  // A bare --repo would otherwise list every repository, which looks like a
+  // filter that found nothing.
+  if (repo === undefined && flags.has('repo')) {
+    throw new UmbelUsageError('--repo needs a path: --repo PATH');
+  }
+  return {
+    all: flagBool(flags, 'all'),
+    ...(repo !== undefined ? { repo } : {}),
+  };
+}
+
 // Parse repeated --env flags into an override map. `KEY=VALUE` sets a literal;
 // a bare `KEY` passes KEY through from umbel's own environment as a {fromEnv}
 // reference, so a secret never has to sit on the spawn's argv (umbel#93). An
@@ -213,6 +228,10 @@ function printStatusTable(entries: StatusEntry[]): void {
     name: e.name,
     status: statusWord(e),
     running: String(e.runningCommands.length),
+    // The folder name, not the path: a row is read at a glance and the full
+    // path of every session would crowd out the columns that matter. A session
+    // spawned before umbel recorded its repository has none.
+    repo: e.repo === null ? '—' : basename(e.repo),
     model: e.model ?? '—',
     cwd: truncateCwd(e.cwd),
     created: formatTimestamp(e.createdAt),
@@ -224,6 +243,7 @@ function printStatusTable(entries: StatusEntry[]): void {
     { key: 'name', header: 'NAME' },
     { key: 'status', header: 'STATUS' },
     { key: 'running', header: 'RUNNING' },
+    { key: 'repo', header: 'REPO' },
     { key: 'model', header: 'MODEL' },
     { key: 'cwd', header: 'CWD' },
     { key: 'created', header: 'CREATED' },
@@ -638,10 +658,11 @@ async function verbStatus(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  const all = flagBool(flags, 'all');
-  const statusOpts =
-    name !== undefined ? { name, all, env: getCliEnv() } : { all, env: getCliEnv() };
-  const entries = await status(statusOpts);
+  const entries = await status({
+    ...(name !== undefined ? { name } : {}),
+    ...listFilter(flags),
+    env: getCliEnv(),
+  });
   // --json: machine-readable for shell/CI watchers (no MCP needed). With no name
   // it lists live sessions; each entry carries needsInput/needsInputReason/pendingTool.
   if (flagBool(flags, 'json')) {
@@ -661,7 +682,7 @@ async function verbStatus(
 // ---------------------------------------------------------------------------
 
 async function verbLs(flags: Map<string, string | boolean>): Promise<number> {
-  const entries = await status({ all: flagBool(flags, 'all'), env: getCliEnv() });
+  const entries = await status({ ...listFilter(flags), env: getCliEnv() });
   if (entries.length === 0) {
     process.stdout.write('No sessions found.\n');
     return 0;

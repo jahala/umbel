@@ -1,5 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
@@ -55,6 +55,10 @@ export interface StatusOpts {
   // "what is running" wants the few live ones (umbel#70). A named session is
   // always answered, dead or not.
   all?: boolean;
+  // Only sessions of this repository. A path anywhere inside a repository
+  // resolves to that repository's main worktree, so a caller can pass its own
+  // worktree and still meet its siblings (umbel#65).
+  repo?: string;
   env?: Record<string, string | undefined>;
   deps?: Partial<Deps>;
 }
@@ -208,6 +212,12 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
     return [entry];
   }
 
+  // Resolved before the loop so a worktree path matches the main worktree the
+  // spawn recorded. A path git no longer knows is matched as given, which keeps
+  // a session of a deleted repository findable by the path it recorded.
+  const wantedRepo =
+    opts.repo === undefined ? undefined : ((await d.git.repoRoot(opts.repo)) ?? resolve(opts.repo));
+
   const names = await d.fs.listSessionNames(env);
   const entries: StatusEntry[] = [];
 
@@ -219,6 +229,8 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
       // Skip sessions whose meta cannot be read
       continue;
     }
+    // Before enrich: a session of another repository costs no tmux call.
+    if (wantedRepo !== undefined && session.repo !== wantedRepo) continue;
     entries.push(await enrich(session, d, env, processes));
   }
 

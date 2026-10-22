@@ -45,8 +45,9 @@ export const TOOL_DESCRIPTIONS = {
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
   umbel_status:
-    'Inspect one session by name, or live sessions if omitted: alive/dead, provider, cwd, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands.',
-  umbel_ls: 'List live sessions; all=true includes dead ones. Same as umbel_status with no name.',
+    'Inspect one session by name, or live sessions if omitted: alive/dead, provider, cwd, repo, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands. all=true adds the dead.',
+  umbel_ls:
+    'List live sessions; all=true includes dead ones, and repo=<a path inside a repository> keeps only that repository. Same as umbel_status with no name.',
   umbel_kill:
     'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
   umbel_prune:
@@ -116,8 +117,9 @@ export interface McpToolHandlers {
   umbel_status: (args: {
     name?: string | undefined;
     all?: boolean | undefined;
+    repo?: string | undefined;
   }) => Promise<ToolResult>;
-  umbel_ls: (args: { all?: boolean | undefined }) => Promise<ToolResult>;
+  umbel_ls: (args: { all?: boolean | undefined; repo?: string | undefined }) => Promise<ToolResult>;
   umbel_kill: (args: { name: string; purge: boolean }) => Promise<ToolResult>;
   umbel_prune: (args: { olderThan?: string | undefined }) => Promise<ToolResult>;
   umbel_read: (args: {
@@ -136,6 +138,18 @@ export interface McpToolHandlers {
   umbel_capture: (args: { name: string; lines: number }) => Promise<ToolResult>;
   umbel_logs: (args: { name: string }) => Promise<ToolResult>;
   umbel_help: (args: { topic?: HelpTopic | undefined }) => Promise<ToolResult>;
+}
+
+// The listing filter ls and status with no name share, so a tool argument and a
+// CLI flag ask for the same listing.
+function listFilter(args: { all?: boolean | undefined; repo?: string | undefined }): {
+  all: boolean;
+  repo?: string;
+} {
+  return {
+    all: args.all === true,
+    ...(args.repo !== undefined ? { repo: args.repo } : {}),
+  };
 }
 
 export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
@@ -213,7 +227,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     umbel_status: async (args) => {
       const statusOpts = {
         env,
-        all: args.all === true,
+        ...listFilter(args),
         ...(args.name !== undefined ? { name: args.name } : {}),
         ...(deps !== undefined ? { deps } : {}),
       };
@@ -226,7 +240,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     umbel_ls: async (args) => {
       const entries = await status({
         env,
-        all: args.all === true,
+        ...listFilter(args),
         ...(deps !== undefined ? { deps } : {}),
       });
       return {

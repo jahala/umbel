@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
@@ -252,6 +252,59 @@ describe('umbel_ls', () => {
     expect(named[0]?.alive).toBe(false);
 
     await kill({ name: gone, purge: true, env });
+  }, 60_000);
+
+  test('repo keeps only the sessions of that repository', async () => {
+    const env = await setup();
+    const fakeBin = join(import.meta.dir, '../fixtures/fake-claude.sh');
+    const { spawn: spawnSession } = await import('../../src/operations/spawn.ts');
+    const { run } = await import('../../src/adapters/exec.ts');
+
+    // A repository with a linked worktree, and a directory outside any.
+    const repo = join(tmpDir, 'repo');
+    const worktree = join(tmpDir, 'repo-wt');
+    const plain = join(tmpDir, 'plain');
+    await mkdir(plain, { recursive: true });
+    await run(['git', 'init', '-q', repo]);
+    await run([
+      'git',
+      '-C',
+      repo,
+      '-c',
+      'user.email=umbel@example.invalid',
+      '-c',
+      'user.name=umbel',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      'init',
+    ]);
+    await run(['git', '-C', repo, 'worktree', 'add', '-q', '--detach', worktree]);
+
+    const spawnOpts = (name: string, cwd: string): Parameters<typeof spawnSession>[0] => ({
+      name,
+      cwd,
+      claudeBin: fakeBin,
+      env: {
+        ...env,
+        FAKE_CLAUDE_JSONL_DIR: join(projectsDir, 'jsonl'),
+        FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+      },
+    });
+    const inRepo = sessionName('rpo');
+    const offGit = sessionName('off');
+    CREATED.push(inRepo, offGit);
+    await spawnSession(spawnOpts(inRepo, repo));
+    await spawnSession(spawnOpts(offGit, plain));
+
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+    const listed = JSON.parse(
+      (await tools.umbel_ls({ repo: worktree })).content[0]?.text ?? '[]',
+    ) as Array<{ name: string; repo: string | null }>;
+    expect(listed.map((e) => e.name)).toEqual([inRepo]);
+    // The filter compares the main worktree, not the worktree the worker runs in.
+    expect(listed[0]?.repo).toBe(await realpath(repo));
   }, 60_000);
 });
 

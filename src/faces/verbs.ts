@@ -36,6 +36,10 @@ export function parseDuration(text: string): number {
 // fleet listing is what a caller asks for, and tombstones are the archive.
 const ListFilterShape = z.object({
   all: z.boolean().default(false),
+  // Only sessions of this repository. Any path inside it resolves to the
+  // repository's main worktree, so a linked worktree works as the argument
+  // (umbel#65).
+  repo: z.string().optional(),
 });
 
 export const VerbSchemas = {
