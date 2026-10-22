@@ -167,7 +167,13 @@ describe('codex-provider — end-to-end turn', () => {
       expect(result.stopped).toBe(true);
       expect(result.reason).toBe('stop');
 
-      const jsonlPath = await resolveJsonlPath({ name, cwd, sinceMs: session.createdAt, env });
+      const jsonlPath = await resolveJsonlPath({
+        name,
+        cwd,
+        sinceMs: session.createdAt,
+        provider: CodexProvider,
+        env,
+      });
       expect(jsonlPath.length).toBeGreaterThan(0);
       expect(existsSync(jsonlPath)).toBe(true);
     } finally {
@@ -188,7 +194,13 @@ describe('codex-provider — end-to-end turn', () => {
       const result = await waitFor({ name, sinceMtime, env, defaultTimeoutMs: 15_000 });
       expect(result.stopped).toBe(true);
 
-      const jsonlPath = await resolveJsonlPath({ name, cwd, sinceMs: session.createdAt, env });
+      const jsonlPath = await resolveJsonlPath({
+        name,
+        cwd,
+        sinceMs: session.createdAt,
+        provider: CodexProvider,
+        env,
+      });
       const content = await readFile(jsonlPath, 'utf8');
 
       const parsed = CodexProvider.parseTranscript(content);

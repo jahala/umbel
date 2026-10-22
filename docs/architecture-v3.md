@@ -10,7 +10,7 @@
 | v2 | v3 | Why |
 |---|---|---|
 | Claude Code only | Provider abstraction with `ClaudeProvider`, `CodexProvider`, `GeminiProvider` | Codex and Gemini have near-identical hook lifecycles to Claude; the four points of provider-specific behavior can be cleanly abstracted (see §4) |
-| Spawn-time JSONL discovery (`discoverSessionJsonl`) | Lazy resolution via `events/transcript-path` written by Stop hook from the payload | Real claude doesn't write the transcript until first message — discovery at spawn-time is impossible. The hook payload contains `transcript_path` for free. |
+| Spawn-time JSONL discovery (`discoverSessionJsonl`) | Lazy resolution: `events/transcript-path` from the Stop payload, else the provider's transcript search | Real claude doesn't write the transcript until first message — discovery at spawn-time is impossible. The hook payload contains `transcript_path` for free. Codex differs: its rollout exists from the first turn start, so a worker with no stop yet is found by scanning `<CODEX_HOME>/sessions` for the cwd in `session_meta` (umbel#68). |
 | Argv parser: short flags consume next non-dash arg | Short flags are ALWAYS boolean | `umbel -p "prompt"` was eating the prompt. Caught by smoke testing; saved by root-cause investigation. |
 | spawn passes full process.env to tmux | Inherit only an allowlist: what any CLI needs to run as its user, plus the configuration variables the provider names (`ANTHROPIC_*` and `CLAUDE_CONFIG_DIR` for claude, and so on). Anything else is passed explicitly with `--env`/`env:`, a secret by name. The environment reaches the worker through a tmux buffer the launch wrapper reads and deletes. | A worker that inherited the caller's whole environment received every key in it, and `new-session -e K=V` put each value on tmux's argv for the server's whole life (umbel#93, `docs/worker-env-93.md`). The shell-init vars that race the first send-keys are outside the allowlist. |
 | `lastAssistantMessage` walks backward stopping at first non-assistant | Finds last assistant index, then walks back from there | Real claude appends `system`/`last-prompt`/`ai-title`/`permission-mode` metadata AFTER the assistant response. |
@@ -126,8 +126,9 @@ A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEn
 - `buildLaunch` → declares a global `$CODEX_HOME/hooks.json` (referencing our stop.sh and bind.sh) in an umbel-managed home (`$UMBEL_STATE/codex-home`); a project `<cwd>/.codex/hooks.json` is ignored inside linked git worktrees (see `docs/codex-worktree-hooks.md`). `SessionStart` is the binding event; verified on 0.154.0 that its payload carries the same `session_id` as `Stop`. The TUI fires it when the first turn starts, not at launch, which still precedes any tool call.
 - `files: [{ path: '<codexHome>/hooks.json', content, shared: true }, { symlinkTo auth.json }, { copyFrom config.toml }]` — `shared` infra, set up idempotently, NOT recorded in `providerFiles` or cleaned on kill
 - `stopEventName: 'Stop'`
-- `parseTranscript`: Codex JSONL envelope (`event_msg` items, last `agent_message` is the response)
-- No equivalent of `--session-id` for transcript filename — hook payload's `transcript_path` is the source of truth (may be `null` per Codex docs; umbel falls back to dir-snapshot)
+- `parseTranscript`: Codex JSONL envelope (`event_msg` items; the turn text is `task_complete.last_agent_message`, an `item_completed` AgentMessage, or `agent_message` in older rollouts)
+- No equivalent of `--session-id` for transcript filename — the hook payload's `transcript_path` is the source of truth (may be `null` per Codex docs). It is not the only source: codex creates `<CODEX_HOME>/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl` when the first turn starts, before `SessionStart`/`Stop`, and not at all when the hooks-review dialog was declined. The provider declares `transcriptSearch` for that tree; the search matches the worker cwd in the rollout's `session_meta` (the resolved path), because one `CODEX_HOME` holds every worker's rollouts (umbel#68).
+- `extractActions`: reads `event_msg/item_completed` (`CommandExecution` = command + status + exit code, `FileChange` = per-file add/update/delete, `McpToolCall` = server/tool + error). Older rollouts are read from `response_item` `function_call`/`custom_tool_call` and `event_msg/patch_apply_end`. The normalized items win when present, so a call is never counted twice. Script-level failures (a patch that does not verify, a thrown script) write no item, so `custom_tool_call_output` is checked for `Script failed`, `Script error:` and `apply_patch verification failed`.
 
 ### GeminiProvider (`src/core/providers/gemini.ts`)
 - `buildLaunch` → writes `<cwd>/.gemini/settings.json` with `AfterAgent` hook
@@ -344,7 +345,7 @@ Strict bottom-up. Each step gates on its tests passing.
 ## 14. Open questions (verify during implementation)
 
 1. **Codex `--config-dir` flag**: does Codex support overriding the hook config directory via a CLI flag? Would eliminate the file-write-and-cleanup path. (TBD during fake-codex research.)
-2. **Codex transcript_path nullability**: their docs say it "may be null". Under what circumstances? Does umbel need a defensive code path that hits `discoverSessionJsonl`?
+2. **Codex transcript_path nullability** (answered, umbel#68): the payload may be `null`, and before the first turn there is no payload at all. `transcriptSearch` finds the rollout under `<CODEX_HOME>/sessions` whether or not a hook ever fires.
 3. **Gemini inline-config flag**: any way to pass settings without a file on disk?
 4. **Per-provider `--session-id` equivalents**: Codex and Gemini transcript filenames. Are they controllable?
 5. **Model enum vs string**: should `meta.model` be a free-form string (current proposal) or a discriminated union per provider? Free-form is simpler; provider-validated is stricter.

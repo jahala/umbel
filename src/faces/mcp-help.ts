@@ -175,7 +175,7 @@ Claude (\`provider: claude\`)
 
 Codex (\`provider: codex\`)
 - Hook config delivered via hooks.json in an umbel-managed CODEX_HOME ($UMBEL_STATE/codex-home); nothing is written into the worker's cwd.
-- stopEventName: "Stop". transcript_path may be null per Codex docs; umbel falls back to dir-snapshot.
+- stopEventName: "Stop". transcript_path may be null per Codex docs; umbel then finds the worker's rollout under <state>/codex-home/sessions/ by the cwd in its session_meta, so read and actions answer before the first stop (umbel#68).
 - The worker's cwd is trusted at launch, so a new worktree opens without codex's trust dialog.
 
 Gemini (\`provider: gemini\`)

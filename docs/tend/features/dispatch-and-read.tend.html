@@ -2514,7 +2514,7 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
   "impact": "The host receives the worker's actual answer — not pane noise — sized for synthesis; diff surfaces what changed across turns; truncation prevents context bloat consuming the host's budget.",
   "fit": "The I/O pair between lifecycle (a worker exists) and completion-detection (the answer is ready): send enqueues work, read retrieves the result — without these two, the scaffold of spawn/wait has no payload.",
   "where": "src/operations/send.ts, src/operations/resolve-transcript.ts, src/operations/resolve-jsonl.ts, src/operations/diff.ts; src/adapters/jsonl.ts; src/core/diff.ts, src/core/truncate.ts.",
-  "how": "send routes via the provider's submitDelayMs quirk using tmux paste-buffer for multi-line; transcript path resolves lazily: cached jsonlPath → events/transcript-path (stop.sh hook payload) → dir-snapshot fallback; lastAssistantMessage walks backward from the last assistant index past trailing metadata entries.",
+  "how": "send routes via the provider's submitDelayMs quirk using tmux paste-buffer for multi-line; transcript path resolves lazily: cached jsonlPath → events/transcript-path (stop.sh hook payload) → the provider's transcript search (claude project dir, codex rollout tree matched by session_meta cwd); lastAssistantMessage walks backward from the last assistant index past trailing metadata entries.",
   "progress": {
     "implementation": 100,
     "verification": 100

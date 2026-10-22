@@ -1,14 +1,16 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SessionDeadError } from '../core/errors.ts';
+import type { AgentProvider } from '../core/providers/types.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
 // Resolves a session's JSONL transcript path. The order of precedence:
 //   1. session.jsonlPath in meta.json (already resolved on a prior call)
 //   2. events/transcript-path (written by stop.sh from the lifecycle hook payload)
-//   3. dir-snapshot discoverSessionJsonl (defensive fallback for fixtures /
-//      older hook payloads that don't carry transcript_path)
+//   3. discovery of what the provider writes before its first hook fires:
+//      the provider's transcriptSearch (codex rollouts), else claude's project
+//      directory
 //
 // Successful resolution is persisted back to meta.json so subsequent calls
 // are O(1).
@@ -18,8 +20,45 @@ export interface ResolveJsonlOpts {
   name: string;
   cwd: string;
   sinceMs: number;
+  provider: AgentProvider;
   env?: Record<string, string | undefined>;
   deps?: Partial<Deps>;
+}
+
+// The discovery step alone, without meta or the hook file. Shared by `read`,
+// `actions`, status and wait's idle net, which each hold the pieces already.
+export async function discoverTranscriptPath(opts: {
+  name: string;
+  cwd: string;
+  sinceMs: number;
+  provider: AgentProvider;
+  env?: Record<string, string | undefined>;
+  deps?: Partial<Deps>;
+  timeoutMs?: number;
+}): Promise<string> {
+  const d = { ...defaultDeps, ...opts.deps };
+  const env = opts.env ?? {};
+  const search = opts.provider.transcriptSearch?.({
+    stateDir: d.fs.stateDir(env),
+    cwd: opts.cwd,
+  });
+
+  if (search !== undefined) {
+    return d.jsonl.discoverTranscript({
+      sessionName: opts.name,
+      cwd: opts.cwd,
+      sinceMs: opts.sinceMs,
+      search,
+      ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+    });
+  }
+
+  return d.jsonl.discoverSessionJsonl({
+    sessionName: opts.name,
+    cwd: opts.cwd,
+    sinceMs: opts.sinceMs,
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+  });
 }
 
 export async function resolveJsonlPath(opts: ResolveJsonlOpts): Promise<string> {
@@ -41,13 +80,16 @@ export async function resolveJsonlPath(opts: ResolveJsonlOpts): Promise<string> 
     // file missing → fall through to discovery
   }
 
-  // 3. dir-snapshot fallback
+  // 3. discovery of the provider's own transcript file
   if (resolved === '') {
     try {
-      resolved = await d.jsonl.discoverSessionJsonl({
-        sessionName: opts.name,
+      resolved = await discoverTranscriptPath({
+        name: opts.name,
         cwd: opts.cwd,
         sinceMs: opts.sinceMs,
+        provider: opts.provider,
+        env,
+        ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
       });
     } catch (err) {
       if (err instanceof SessionDeadError) {

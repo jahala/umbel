@@ -106,100 +106,250 @@ function extractLastAgentMessage(content: string): string {
 // Action extraction (pure, defensive)
 // ---------------------------------------------------------------------------
 //
-// CONFIDENCE LEVEL: medium. We know event_msg/agent_message and
-// event_msg/task_complete shapes (used by parseTranscript + verified by
-// fake-codex.sh). tool_call / tool_result shapes are *inferred* by analogy to
-// agent_message — not verified against a real Codex transcript. Until that
-// verification happens, tool extraction may be partial. Final-message and
-// turn-count remain reliable.
-//
-// TODO(b3-codex): verify tool_call/tool_result event shape against a real
-// Codex rollout file and refine field extraction.
+// codex-cli 0.154.0 records tool activity twice. event_msg/item_completed is
+// the normalized copy: CommandExecution (shell command, status, exit code),
+// FileChange (the applied patch, per file) and McpToolCall (server/tool,
+// error). response_item/function_call and custom_tool_call are the
+// model-facing calls, which is all older rollouts recorded (0.133 and before,
+// with event_msg/patch_apply_end). The normalized copy wins when any tool item
+// is present, so one call is never counted twice. A script-level failure (a
+// patch that does not verify, a thrown script) writes no item_completed at
+// all, so its output is read in either mode.
+
+interface ActionFields {
+  toolsUsed: Record<string, number>;
+  filesRead: string[];
+  filesEdited: string[];
+  filesWritten: string[];
+  bashCommands: string[];
+  errors: string[];
+}
+
+function emptyActionFields(): ActionFields {
+  return {
+    toolsUsed: {},
+    filesRead: [],
+    filesEdited: [],
+    filesWritten: [],
+    bashCommands: [],
+    errors: [],
+  };
+}
 
 function pushUnique(arr: string[], val: string): void {
   if (!arr.includes(val)) arr.push(val);
 }
 
-export function extractCodexActionsFromContent(content: string): ActionManifest {
-  const lines = content.split('\n').filter((l) => l.trim().length > 0);
+function firstLine(text: unknown): string {
+  if (typeof text !== 'string') return '';
+  for (const line of text.split('\n')) {
+    if (line.trim().length > 0) return line.trim();
+  }
+  return '';
+}
 
-  const toolsUsed: Record<string, number> = {};
-  const filesRead: string[] = [];
-  const filesEdited: string[] = [];
-  const filesWritten: string[] = [];
-  const bashCommands: string[] = [];
-  const errors: string[] = [];
+function countTool(fields: ActionFields, name: string): void {
+  fields.toolsUsed[name] = (fields.toolsUsed[name] ?? 0) + 1;
+}
+
+// ["/bin/zsh","-lc","bun test"] → "bun test": the shell wrapper is not what the
+// model chose to run.
+function commandText(command: unknown): string | null {
+  if (typeof command === 'string') return command;
+  if (!Array.isArray(command)) return null;
+  const parts = command.filter((part): part is string => typeof part === 'string');
+  if (parts.length === 0) return null;
+  if (parts.length >= 3 && parts[1]?.startsWith('-') === true) return parts.slice(2).join(' ');
+  return parts.join(' ');
+}
+
+function applyFileChanges(changes: unknown, fields: ActionFields): void {
+  const map = asObject(changes);
+  if (map === null) return;
+  for (const [path, change] of Object.entries(map)) {
+    const c = asObject(change);
+    const kind = c !== null && typeof c.type === 'string' ? c.type : '';
+    if (kind === 'add') {
+      pushUnique(fields.filesWritten, path);
+      continue;
+    }
+    pushUnique(fields.filesEdited, path);
+    if (kind === 'update' && c !== null && typeof c.move_path === 'string') {
+      pushUnique(fields.filesWritten, c.move_path);
+    }
+  }
+}
+
+// apply_patch's model-facing input names its targets in the patch header. Used
+// only for rollouts that recorded no normalized FileChange item.
+function applyPatchTargets(input: string, fields: ActionFields): void {
+  for (const line of input.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('*** Add File:')) {
+      pushUnique(fields.filesWritten, trimmed.slice('*** Add File:'.length).trim());
+    } else if (trimmed.startsWith('*** Update File:') || trimmed.startsWith('*** Delete File:')) {
+      const prefix = trimmed.startsWith('*** Update File:')
+        ? '*** Update File:'
+        : '*** Delete File:';
+      pushUnique(fields.filesEdited, trimmed.slice(prefix.length).trim());
+    } else if (trimmed.startsWith('*** Move to:')) {
+      pushUnique(fields.filesWritten, trimmed.slice('*** Move to:'.length).trim());
+    }
+  }
+}
+
+function outputText(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (!Array.isArray(output)) return '';
+  return output
+    .map((part) => {
+      const p = asObject(part);
+      return p !== null && typeof p.text === 'string' ? p.text : '';
+    })
+    .join('');
+}
+
+// The text a failed command printed, below its output header. Falls back to the
+// exit code when the command printed nothing (a bare `false`).
+function failedOutputDetail(text: string, exitCode: string): string {
+  const header = '\nOutput:\n';
+  const at = text.indexOf(header);
+  const body = at === -1 ? text : text.slice(at + header.length);
+  return firstLine(body) || `exit code ${exitCode}`;
+}
+
+const SCRIPT_FAILURE = /^(Script failed\b|Script error:|apply_patch verification failed)/;
+
+function applyCompletedItem(item: JsonObj, fields: ActionFields): boolean {
+  const kind = typeof item.type === 'string' ? item.type : '';
+  const status = typeof item.status === 'string' ? item.status : '';
+  switch (kind) {
+    case 'CommandExecution': {
+      countTool(fields, 'exec_command');
+      const command = commandText(item.command);
+      if (command !== null) fields.bashCommands.push(command);
+      const exitCode = typeof item.exit_code === 'number' ? item.exit_code : undefined;
+      if (status === 'failed' || (exitCode !== undefined && exitCode !== 0)) {
+        fields.errors.push(
+          firstLine(item.stderr) ||
+            firstLine(item.stdout) ||
+            (exitCode !== undefined ? `exit code ${exitCode}` : 'command failed'),
+        );
+      }
+      return true;
+    }
+    case 'FileChange': {
+      countTool(fields, 'apply_patch');
+      applyFileChanges(item.changes, fields);
+      if (status === 'failed') {
+        fields.errors.push(
+          firstLine(item.stderr) || firstLine(item.stdout) || 'file change failed',
+        );
+      }
+      return true;
+    }
+    case 'McpToolCall': {
+      const server = typeof item.server === 'string' ? item.server : '';
+      const tool = typeof item.tool === 'string' ? item.tool : '';
+      const name = server !== '' && tool !== '' ? `${server}/${tool}` : tool || server || 'mcp';
+      countTool(fields, name);
+      const error = asObject(item.error);
+      const message = error !== null && typeof error.message === 'string' ? error.message : '';
+      if (status === 'failed' || message !== '') {
+        fields.errors.push(firstLine(message) || `${name} failed`);
+      }
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+function applyLegacyItem(payload: JsonObj, fields: ActionFields): void {
+  if (payload.type === 'function_call') {
+    const name = typeof payload.name === 'string' ? payload.name : undefined;
+    if (name === undefined) return;
+    countTool(fields, name);
+    if (name === 'exec_command' && typeof payload.arguments === 'string') {
+      const args = asObject(parseLine(payload.arguments));
+      if (args !== null && typeof args.cmd === 'string') fields.bashCommands.push(args.cmd);
+    }
+    return;
+  }
+  if (payload.type === 'custom_tool_call') {
+    const name = typeof payload.name === 'string' ? payload.name : undefined;
+    if (name === undefined) return;
+    countTool(fields, name);
+    if (name === 'apply_patch' && typeof payload.input === 'string') {
+      applyPatchTargets(payload.input, fields);
+    }
+    return;
+  }
+  if (payload.type === 'function_call_output') {
+    const text = outputText(payload.output);
+    const match = /(?:Process exited with code|Exit code:) (\d+)/m.exec(text);
+    const exitCode = match?.[1];
+    if (exitCode !== undefined && exitCode !== '0') {
+      fields.errors.push(failedOutputDetail(text, exitCode));
+    }
+  }
+}
+
+export function extractCodexActionsFromContent(content: string): ActionManifest {
+  const normalized = emptyActionFields();
+  const legacy = emptyActionFields();
+  const scriptErrors: string[] = [];
+  let sawNormalizedTool = false;
   let turnCount = 0;
 
-  for (const line of lines) {
+  for (const line of content.split('\n')) {
     const parsed = parseLine(line);
     if (parsed === null || typeof parsed !== 'object') continue;
     const obj = parsed as JsonObj;
 
-    if (obj.type !== 'event_msg') continue;
-    const payload = obj.payload;
-    if (payload === null || typeof payload !== 'object') continue;
-    const p = payload as JsonObj;
-
-    if (p.type === 'task_complete') {
-      turnCount++;
+    if (obj.type === 'event_msg') {
+      const payload = asObject(obj.payload);
+      if (payload === null) continue;
+      if (payload.type === 'task_complete') {
+        turnCount++;
+        continue;
+      }
+      if (payload.type === 'item_completed') {
+        const item = asObject(payload.item);
+        if (item !== null && applyCompletedItem(item, normalized)) sawNormalizedTool = true;
+        continue;
+      }
+      if (payload.type === 'patch_apply_end') {
+        applyFileChanges(payload.changes, legacy);
+        if (payload.success === false) {
+          legacy.errors.push(
+            firstLine(payload.stderr) || firstLine(payload.stdout) || 'patch failed',
+          );
+        }
+      }
       continue;
     }
 
-    // Defensive tool_call extraction. Codex docs don't pin a shape yet, so
-    // accept either { tool_name } or { name } and { arguments } or { input }.
-    if (p.type === 'tool_call') {
-      const toolName =
-        typeof p.tool_name === 'string'
-          ? p.tool_name
-          : typeof p.name === 'string'
-            ? p.name
-            : undefined;
-      if (toolName !== undefined) {
-        toolsUsed[toolName] = (toolsUsed[toolName] ?? 0) + 1;
-
-        const argsField =
-          p.arguments !== undefined && typeof p.arguments === 'object'
-            ? (p.arguments as JsonObj)
-            : p.input !== undefined && typeof p.input === 'object'
-              ? (p.input as JsonObj)
-              : null;
-
-        if (argsField !== null) {
-          const filePath =
-            typeof argsField.file_path === 'string' ? argsField.file_path : undefined;
-          const command = typeof argsField.command === 'string' ? argsField.command : undefined;
-          if (toolName === 'Read' && filePath !== undefined) pushUnique(filesRead, filePath);
-          else if ((toolName === 'Edit' || toolName === 'MultiEdit') && filePath !== undefined)
-            pushUnique(filesEdited, filePath);
-          else if (toolName === 'Write' && filePath !== undefined)
-            pushUnique(filesWritten, filePath);
-          else if (toolName === 'Bash' && command !== undefined) bashCommands.push(command);
-        }
+    if (obj.type === 'response_item') {
+      const payload = asObject(obj.payload);
+      if (payload === null) continue;
+      if (payload.type === 'custom_tool_call_output') {
+        const text = outputText(payload.output);
+        if (SCRIPT_FAILURE.test(text)) scriptErrors.push(firstLine(text));
+        continue;
       }
-    }
-
-    // Defensive tool_result error extraction.
-    if (p.type === 'tool_result' && p.is_error === true) {
-      const msg =
-        typeof p.output === 'string'
-          ? p.output
-          : typeof p.content === 'string'
-            ? p.content
-            : typeof p.message === 'string'
-              ? p.message
-              : '';
-      if (msg.length > 0) errors.push(msg);
+      applyLegacyItem(payload, legacy);
     }
   }
 
+  const chosen = sawNormalizedTool ? normalized : legacy;
   return {
-    toolsUsed,
-    filesRead,
-    filesEdited,
-    filesWritten,
-    bashCommands,
-    errors,
+    toolsUsed: chosen.toolsUsed,
+    filesRead: chosen.filesRead,
+    filesEdited: chosen.filesEdited,
+    filesWritten: chosen.filesWritten,
+    bashCommands: chosen.bashCommands,
+    errors: [...chosen.errors, ...scriptErrors],
     finalMessage: extractLastAgentMessage(content),
     turnCount,
   };
@@ -486,6 +636,24 @@ const codexProvider: AgentProvider = {
           shared: true,
         },
       ],
+    };
+  },
+
+  // codex creates the rollout when the first turn starts, before any hook has
+  // fired (and, when the hooks dialog was declined, before any ever will). The
+  // shared CODEX_HOME holds every worker's rollouts, so the cwd in session_meta
+  // is what tells this worker's file apart. codex records the resolved path.
+  transcriptSearch({ stateDir }) {
+    return {
+      dirs: [join(stateDir, 'codex-home', 'sessions')],
+      depth: 3,
+      prefix: 'rollout-',
+      suffix: '.jsonl',
+      belongs(firstLine: string, realCwd: string): boolean {
+        const record = asObject(parseLine(firstLine));
+        const payload = record === null ? null : asObject(record.payload);
+        return payload !== null && payload.cwd === realCwd;
+      },
     };
   },
 

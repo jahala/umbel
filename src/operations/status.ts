@@ -3,11 +3,13 @@ import { join, resolve } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
+import type { AgentProvider } from '../core/providers/types.ts';
 import { parseQuota, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
+import { discoverTranscriptPath } from './resolve-jsonl.ts';
 
 // ---------------------------------------------------------------------------
 // StatusEntry / StatusOpts
@@ -156,6 +158,7 @@ async function readFileSafe(path: string): Promise<string> {
 // simply has no request in flight.
 async function transcriptPath(
   session: Session,
+  provider: AgentProvider,
   d: Deps,
   env: Record<string, string | undefined>,
 ): Promise<string | undefined> {
@@ -165,10 +168,13 @@ async function transcriptPath(
   ).trim();
   if (hooked !== '') return hooked;
   try {
-    return await d.jsonl.discoverSessionJsonl({
-      sessionName: session.name,
+    return await discoverTranscriptPath({
+      name: session.name,
       cwd: session.cwd,
       sinceMs: session.createdAt,
+      provider,
+      env,
+      deps: d,
       timeoutMs: 0,
     });
   } catch {
@@ -187,7 +193,7 @@ async function awaitingProviderSince(
 ): Promise<string | undefined> {
   const provider = PROVIDERS[session.provider];
   if (provider?.requestInFlight === undefined) return undefined;
-  const path = await transcriptPath(session, d, env);
+  const path = await transcriptPath(session, provider, d, env);
   if (path === undefined) return undefined;
   const content = await readFileSafe(path);
   return provider.requestInFlight(content);

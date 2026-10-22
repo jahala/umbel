@@ -107,6 +107,28 @@ export interface Usage {
   model?: string;
 }
 
+// ---------------------------------------------------------------------------
+// TranscriptSearch — where a provider writes transcripts, and how to tell its
+// own file from another worker's
+// ---------------------------------------------------------------------------
+//
+// Declared by providers whose transcript exists before the first lifecycle hook
+// names it. The adapter walks `dirs` and reads each candidate's first line;
+// the provider stays pure. `belongs` is total: an unreadable line is not a
+// match, never a throw.
+
+export interface TranscriptSearch {
+  readonly dirs: readonly string[];
+  // Directory levels below each dir that can hold a transcript. 0 = the dirs
+  // themselves. Default 0.
+  readonly depth?: number;
+  readonly prefix?: string;
+  readonly suffix?: string;
+  // Does the file's first line name this worker? `realCwd` is the worker's
+  // resolved cwd: CLIs record the realpath (`/private/tmp/x` for `/tmp/x`).
+  belongs?(firstLine: string, realCwd: string): boolean;
+}
+
 export interface AgentProvider {
   readonly name: string;
 
@@ -212,6 +234,13 @@ export interface AgentProvider {
   // the command; the operations layer executes it. Mutually exclusive with the
   // file-based path (meta.jsonlPath / events/transcript-path).
   exportTranscript?(sessionId: string): readonly string[];
+
+  // Optional: where this provider writes transcripts before a hook names one
+  // (codex: <stateDir>/codex-home/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl).
+  // The operations layer scans it when neither meta.jsonlPath nor the hook's
+  // transcript-path is set, so `actions`/`read` answer mid-turn (umbel#68).
+  // PURE. Omit when only a hook can name the transcript.
+  transcriptSearch?(opts: { stateDir: string; cwd: string }): TranscriptSearch;
 
   // Optional: the directory beside the transcript where this provider writes
   // its subagents' transcripts. PURE. A subagent can work for minutes while the
