@@ -469,7 +469,9 @@ umbel read --json reviewer | jq '.usage'
 
 ### actions
 
-Write a structured digest of what a worker DID this session — tools used (with counts), files read/edited/written, bash commands, errors, and the final message — to stdout. Reads the transcript via the same resolution chain as `read`. Often the right shape for "what happened?" when you don't need the verbatim response.
+Write a structured digest of what a worker DID this session — tools used (with counts), files read/edited/written, bash commands, errors, and the final message — to stdout. Reads the transcript via the same resolution chain as `read`, including a worker whose first Stop hook has not fired yet: for codex, umbel finds the worker's rollout under `<UMBEL_STATE>/codex-home/sessions/` by the cwd its `session_meta` records, so the digest answers mid-turn. Often the right shape for "what happened?" when you don't need the verbatim response.
+
+Provider coverage: claude and gemini report their tool calls; codex reports each `CommandExecution` as a bash command, each `FileChange` as an edited file, `McpToolCall`s by `server/tool`, and a failed command or a script-level failure (a patch that did not verify, a thrown script) as an error; opencode and agy read their recorded transcripts.
 
 ```
 umbel actions [--json] <name>

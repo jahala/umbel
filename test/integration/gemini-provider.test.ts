@@ -176,7 +176,7 @@ describe('gemini provider — transcript resolution and parsing', () => {
     const stopPath = join(tmpDir, 'sessions', name, 'events', 'stop');
     await waitForFile(stopPath);
 
-    const jsonlPath = await resolveJsonlPath({ name, cwd, sinceMs, env });
+    const jsonlPath = await resolveJsonlPath({ name, cwd, sinceMs, provider: GeminiProvider, env });
     expect(jsonlPath).toBeTruthy();
     expect(jsonlPath).toMatch(/\.jsonl$/);
     expect(existsSync(jsonlPath)).toBe(true);
@@ -195,7 +195,7 @@ describe('gemini provider — transcript resolution and parsing', () => {
     const stopPath = join(tmpDir, 'sessions', name, 'events', 'stop');
     await waitForFile(stopPath);
 
-    const jsonlPath = await resolveJsonlPath({ name, cwd, sinceMs, env });
+    const jsonlPath = await resolveJsonlPath({ name, cwd, sinceMs, provider: GeminiProvider, env });
     const content = await readFile(jsonlPath, 'utf8');
 
     const result = GeminiProvider.parseTranscript(content);

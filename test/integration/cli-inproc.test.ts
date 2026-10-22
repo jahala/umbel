@@ -424,7 +424,7 @@ describe('cli — read', () => {
       },
       deps: {
         jsonl: {
-          encodeCwd: jsonlAdapter.encodeCwd,
+          ...jsonlAdapter,
           discoverSessionJsonl: (opts) =>
             jsonlAdapter.discoverSessionJsonl({ ...opts, projectsRoot: projectsDir }),
         },

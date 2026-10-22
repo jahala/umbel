@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -303,6 +304,80 @@ describe('actions operation', () => {
     expect(out).not.toContain('(no transcript yet)');
     expect(out).toContain('## Worker actions (1 turn)');
     expect(out).toContain('Hello from fallback path.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression (umbel#68): a codex worker has no transcript-path before its
+// first Stop hook fires. Its rollout is created when the first turn starts,
+// under $CODEX_HOME/sessions/<yyyy>/<mm>/<dd>/, and discovery must find it.
+// ---------------------------------------------------------------------------
+
+describe('actions operation — codex rollout discovery', () => {
+  test('finds the rollout of a codex session with no stop yet', async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'umbel-actions-codex-'));
+    const env = { UMBEL_STATE: tmpDir };
+    const name = 'mid-turn';
+    const cwd = join(tmpDir, 'work');
+    await mkdir(cwd, { recursive: true });
+
+    const sessionDir = join(tmpDir, 'sessions', name);
+    await mkdir(join(sessionDir, 'events'), { recursive: true });
+    const meta = SessionSchema.parse({
+      name,
+      cwd,
+      provider: 'codex',
+      anonymous: false,
+      createdAt: Date.now() - 60_000,
+      jsonlPath: null,
+    });
+    await writeFile(join(sessionDir, 'meta.json'), JSON.stringify(meta), 'utf8');
+
+    // codex keys the rollout to the resolved cwd, not the path umbel was given.
+    const realCwd = realpathSync(cwd);
+    const rolloutDir = join(tmpDir, 'codex-home', 'sessions', '2026', '10', '22');
+    await mkdir(rolloutDir, { recursive: true });
+    const rollout = [
+      JSON.stringify({
+        timestamp: '2026-10-22T10:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'r1', cwd: realCwd, originator: 'codex-tui', cli_version: '0.154.0' },
+      }),
+      JSON.stringify({
+        timestamp: '2026-10-22T10:00:01.000Z',
+        type: 'event_msg',
+        payload: { type: 'task_started', turn_id: 't1' },
+      }),
+      JSON.stringify({
+        timestamp: '2026-10-22T10:00:02.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          turn_id: 't1',
+          item: {
+            type: 'CommandExecution',
+            command: ['/bin/zsh', '-lc', 'bun test'],
+            status: 'completed',
+            exit_code: 0,
+            stdout: 'ok\n',
+            stderr: '',
+          },
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-10-22T10:00:03.000Z',
+        type: 'event_msg',
+        payload: { type: 'task_complete', turn_id: 't1', last_agent_message: 'tests pass' },
+      }),
+    ].join('\n');
+    await writeFile(join(rolloutDir, 'rollout-2026-10-22T10-00-00-r1.jsonl'), rollout, 'utf8');
+
+    const out = await actions({ name, env });
+
+    expect(out).toContain('## Worker actions (1 turn)');
+    expect(out).toContain('exec_command×1');
+    expect(out).toContain('bun test');
+    expect(out).toContain('tests pass');
   });
 });
 

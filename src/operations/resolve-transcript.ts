@@ -52,6 +52,7 @@ async function readOnce(opts: ResolveTranscriptOpts): Promise<string> {
     name: opts.name,
     cwd: opts.cwd,
     sinceMs: opts.sinceMs,
+    provider: opts.provider,
     env,
     ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
   });

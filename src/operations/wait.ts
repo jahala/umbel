@@ -20,6 +20,7 @@ import { applyDefaultTimeout, compile, deadlineOf } from '../core/wait.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
+import { discoverTranscriptPath } from './resolve-jsonl.ts';
 import { readTranscriptAtStop, TURN_END_SETTLE_MS } from './resolve-transcript.ts';
 
 // Re-export WaitCondition for convenience at call sites
@@ -727,12 +728,16 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
         }
         if (discoveredTranscript !== undefined) return discoveredTranscript;
         if (poll % TRANSCRIPT_DISCOVERY_EVERY_POLLS !== 0) return undefined;
-        if (PROVIDERS[meta.provider]?.exportTranscript !== undefined) return undefined;
+        const provider = PROVIDERS[meta.provider];
+        if (provider === undefined || provider.exportTranscript !== undefined) return undefined;
         try {
-          discoveredTranscript = await d.jsonl.discoverSessionJsonl({
-            sessionName: name,
+          discoveredTranscript = await discoverTranscriptPath({
+            name,
             cwd: meta.cwd,
             sinceMs: meta.createdAt,
+            provider,
+            env,
+            deps: d,
             timeoutMs: 0,
           });
         } catch {
