@@ -55,8 +55,8 @@ Verbs:
   spawn   Create a new session
   send    Send a prompt to a session
   wait    Wait for a session to finish
-  status  Show session status
-  ls      List all sessions
+  status  Show session status (live sessions when no name is given)
+  ls      List live sessions (--all includes dead ones)
   kill    Kill a session (keeps its directory unless --purge)
   prune   Remove dead sessions' directories and tmux remains
   attach  Attach to a session
@@ -94,7 +94,16 @@ interface ParsedArgs {
 // Flags that never take a value. Without this the `--flag value` form would
 // greedily consume the following positional (e.g. `send --json <name>` eating
 // the session name as --json's value).
-const BOOLEAN_FLAGS = new Set(['help', 'h', 'version', 'json', 'follow', 'purge', 'unattended']);
+const BOOLEAN_FLAGS = new Set([
+  'help',
+  'h',
+  'version',
+  'json',
+  'follow',
+  'purge',
+  'unattended',
+  'all',
+]);
 
 function parseArgv(argv: readonly string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
@@ -313,7 +322,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       case 'status':
         return await verbStatus(flags, rest);
       case 'ls':
-        return await verbLs();
+        return await verbLs(flags);
       case 'kill':
         return await verbKill(flags, rest);
       case 'prune':
@@ -629,10 +638,12 @@ async function verbStatus(
   positionals: string[],
 ): Promise<number> {
   const name = flagStr(flags, 'name') ?? positionals[0];
-  const statusOpts = name !== undefined ? { name, env: getCliEnv() } : { env: getCliEnv() };
+  const all = flagBool(flags, 'all');
+  const statusOpts =
+    name !== undefined ? { name, all, env: getCliEnv() } : { all, env: getCliEnv() };
   const entries = await status(statusOpts);
   // --json: machine-readable for shell/CI watchers (no MCP needed). With no name
-  // it lists every session; each entry carries needsInput/needsInputReason/pendingTool.
+  // it lists live sessions; each entry carries needsInput/needsInputReason/pendingTool.
   if (flagBool(flags, 'json')) {
     process.stdout.write(`${JSON.stringify(entries)}\n`);
     return 0;
@@ -649,8 +660,8 @@ async function verbStatus(
 // ls
 // ---------------------------------------------------------------------------
 
-async function verbLs(): Promise<number> {
-  const entries = await status({ env: getCliEnv() });
+async function verbLs(flags: Map<string, string | boolean>): Promise<number> {
+  const entries = await status({ all: flagBool(flags, 'all'), env: getCliEnv() });
   if (entries.length === 0) {
     process.stdout.write('No sessions found.\n');
     return 0;

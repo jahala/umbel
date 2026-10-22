@@ -17,6 +17,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
 - kill: tears down the tmux session and leaves its directory as a tombstone (events/dead, logs, transcript). Pass purge=true to remove it.
+- ls: lists live sessions; pass all=true to include the dead ones (tombstones), which umbel_read and umbel_actions still answer for.
 
 ## Anonymous vs named
 

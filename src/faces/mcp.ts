@@ -45,8 +45,8 @@ export const TOOL_DESCRIPTIONS = {
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
   umbel_status:
-    'Inspect one session by name, or all if omitted: alive/dead, provider, cwd, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands (commands a stopped worker left running).',
-  umbel_ls: 'List all sessions. Same as umbel_status with no name.',
+    'Inspect one session by name, or live sessions if omitted: alive/dead, provider, cwd, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands.',
+  umbel_ls: 'List live sessions; all=true includes dead ones. Same as umbel_status with no name.',
   umbel_kill:
     'Kill a session and its tmux process. Keeps its directory as a tombstone (events/dead, logs, transcript) for a post-mortem; pass `purge=true` to remove it.',
   umbel_prune:
@@ -113,8 +113,11 @@ export interface McpToolHandlers {
     idleTimeout?: string | undefined;
     sinceMtime?: number | undefined;
   }) => Promise<ToolResult>;
-  umbel_status: (args: { name?: string | undefined }) => Promise<ToolResult>;
-  umbel_ls: (args: Record<string, never>) => Promise<ToolResult>;
+  umbel_status: (args: {
+    name?: string | undefined;
+    all?: boolean | undefined;
+  }) => Promise<ToolResult>;
+  umbel_ls: (args: { all?: boolean | undefined }) => Promise<ToolResult>;
   umbel_kill: (args: { name: string; purge: boolean }) => Promise<ToolResult>;
   umbel_prune: (args: { olderThan?: string | undefined }) => Promise<ToolResult>;
   umbel_read: (args: {
@@ -210,6 +213,7 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
     umbel_status: async (args) => {
       const statusOpts = {
         env,
+        all: args.all === true,
         ...(args.name !== undefined ? { name: args.name } : {}),
         ...(deps !== undefined ? { deps } : {}),
       };
@@ -219,8 +223,12 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
       };
     },
 
-    umbel_ls: async (_args) => {
-      const entries = await status({ env, ...(deps !== undefined ? { deps } : {}) });
+    umbel_ls: async (args) => {
+      const entries = await status({
+        env,
+        all: args.all === true,
+        ...(deps !== undefined ? { deps } : {}),
+      });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(entries) }],
       };

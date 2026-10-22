@@ -197,11 +197,16 @@ describe('cli', () => {
     const killResult = await runCli(['kill', name], baseEnv);
     expect(killResult.code).toBe(0);
 
-    // ls again — still listed, now dead
+    // ls again — a tombstone is not live, so it is left out by default...
     const lsResult2 = await runCli(['ls'], baseEnv);
     expect(lsResult2.code).toBe(0);
-    expect(lsResult2.stdout).toContain(name);
-    expect(lsResult2.stdout).toContain('dead');
+    expect(lsResult2.stdout).not.toContain(name);
+
+    // ...and named with --all, where its status says it is dead
+    const lsAllResult = await runCli(['ls', '--all'], baseEnv);
+    expect(lsAllResult.code).toBe(0);
+    expect(lsAllResult.stdout).toContain(name);
+    expect(lsAllResult.stdout).toContain('dead');
 
     // purge — now there is nothing left to list
     const purgeResult = await runCli(['kill', name, '--purge'], baseEnv);

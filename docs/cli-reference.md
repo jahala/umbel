@@ -248,23 +248,24 @@ umbel wait reviewer --until pattern --pattern "All tests passed"
 
 ### status
 
-Show the status table for one or all sessions. Columns: NAME, STATUS (alive/dead), RUNNING (commands the worker still has running), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
+Show the status table for one session, or every live session. Columns: NAME, STATUS (alive/dead), RUNNING (commands the worker still has running), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
 
 ```
-umbel status [name] [--json]
+umbel status [name] [--all] [--json]
 ```
 
 **Positionals**
 
 | Position | Description |
 |----------|-------------|
-| `<name>` | Optional. Omit to show all sessions. |
+| `<name>` | Optional. Omit to list live sessions. A named session is answered whether it is alive or a tombstone. |
 
 **Flags**
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Emit the entries as one JSON array instead of the table — for shell/CI watchers that can't call MCP. With no `<name>` it lists every session. |
+| `--all` | List dead sessions too. Off by default: a machine that has spawned workers all day holds hundreds of tombstones, and a fleet listing means live workers. |
+| `--json` | Emit the entries as one JSON array instead of the table — for shell/CI watchers that can't call MCP. With no `<name>` it lists live sessions unless `--all` is given. |
 
 Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields. `needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
 
@@ -277,8 +278,11 @@ A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInput
 **Examples**
 
 ```bash
-# All sessions
+# Live sessions
 umbel status
+
+# Every session, tombstones included
+umbel status --all
 
 # Machine-readable, for a fleet watcher
 umbel status --json | jq '.[] | select(.needsInputReason == "permission")'
@@ -293,16 +297,19 @@ When the provider reports subscription rate-limit usage, entries carry a `quota`
 
 ### ls
 
-List all active sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table.
+List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table. `--all` includes dead sessions (tombstones), which is what a post-mortem reads.
 
 ```
-umbel ls
+umbel ls [--all]
 ```
 
 **Examples**
 
 ```bash
 umbel ls
+
+# Tombstones too
+umbel ls --all
 ```
 
 ---

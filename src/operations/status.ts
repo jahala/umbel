@@ -50,6 +50,11 @@ export interface StatusEntry extends Session {
 
 export interface StatusOpts {
   name?: string;
+  // Include sessions whose worker is gone. Off by default: a machine that has
+  // spawned workers all day holds hundreds of tombstones, and a caller asking
+  // "what is running" wants the few live ones (umbel#70). A named session is
+  // always answered, dead or not.
+  all?: boolean;
   env?: Record<string, string | undefined>;
   deps?: Partial<Deps>;
 }
@@ -217,7 +222,11 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
     entries.push(await enrich(session, d, env, processes));
   }
 
+  // Liveness is read per session, so the filter comes after: there is no
+  // cheaper proof that a tombstone's worker is gone.
+  const listed = opts.all === true ? entries : entries.filter((e) => e.alive);
+
   // Sort by createdAt ascending
-  entries.sort((a, b) => a.createdAt - b.createdAt);
-  return entries;
+  listed.sort((a, b) => a.createdAt - b.createdAt);
+  return listed;
 }

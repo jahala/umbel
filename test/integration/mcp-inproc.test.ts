@@ -196,6 +196,63 @@ describe('umbel_ls', () => {
     const entries = JSON.parse(result.content[0]?.text ?? 'null');
     expect(Array.isArray(entries)).toBe(true);
   });
+
+  // The MCP face is where the fleet listing broke: 278 tombstones in one
+  // 130,325-character result, over the client's limit (umbel#70).
+  test('live sessions only by default, every session with all', async () => {
+    const env = await setup();
+    const fakeBin = join(import.meta.dir, '../fixtures/fake-claude.sh');
+    const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
+    const jsonlDir = join(projectsDir, encodedCwd);
+    const { spawn: spawnSession } = await import('../../src/operations/spawn.ts');
+    const { kill } = await import('../../src/operations/kill.ts');
+
+    const spawnOpts = (name: string): Parameters<typeof spawnSession>[0] => ({
+      name,
+      cwd: tmpDir,
+      claudeBin: fakeBin,
+      env: {
+        ...env,
+        FAKE_CLAUDE_JSONL_DIR: jsonlDir,
+        FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+      },
+    });
+    const live = sessionName('lvm');
+    const gone = sessionName('gnm');
+    CREATED.push(live, gone);
+    await spawnSession(spawnOpts(live));
+    await spawnSession(spawnOpts(gone));
+    await kill({ name: gone, env });
+
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+
+    const listed = JSON.parse(
+      (await tools.umbel_ls({} as never)).content[0]?.text ?? '[]',
+    ) as Array<{ name: string }>;
+    const listedNames = listed.map((e) => e.name);
+    expect(listedNames).toContain(live);
+    expect(listedNames).not.toContain(gone);
+
+    const every = JSON.parse(
+      (await tools.umbel_ls({ all: true } as never)).content[0]?.text ?? '[]',
+    ) as Array<{ name: string; alive: boolean }>;
+    expect(every.map((e) => e.name)).toContain(gone);
+    expect(every.find((e) => e.name === gone)?.alive).toBe(false);
+
+    // status with no name lists the same set; a named status still answers.
+    const statusAll = JSON.parse((await tools.umbel_status({})).content[0]?.text ?? '[]') as Array<{
+      name: string;
+    }>;
+    expect(statusAll.map((e) => e.name)).not.toContain(gone);
+
+    const named = JSON.parse(
+      (await tools.umbel_status({ name: gone })).content[0]?.text ?? '[]',
+    ) as Array<{ name: string; alive: boolean }>;
+    expect(named[0]?.name).toBe(gone);
+    expect(named[0]?.alive).toBe(false);
+
+    await kill({ name: gone, purge: true, env });
+  }, 60_000);
 });
 
 // ---------------------------------------------------------------------------
