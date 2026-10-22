@@ -7,7 +7,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { UmbelUsageError } from '../../src/core/errors.ts';
-import { parseDuration, VerbSchemas } from '../../src/faces/verbs.ts';
+import { killRequest, parseDuration, VerbSchemas } from '../../src/faces/verbs.ts';
+import { killMany } from '../../src/operations/kill.ts';
 
 // ---------------------------------------------------------------------------
 // parseDuration
@@ -197,29 +198,65 @@ describe('VerbSchemas.ls', () => {
 });
 
 describe('VerbSchemas.kill', () => {
-  test('parses with required name, purge defaults to false', () => {
-    const result = VerbSchemas.kill.safeParse({ name: 'foo' });
+  test('parses names, with dryRun and purge defaulting to false', () => {
+    const result = VerbSchemas.kill.safeParse({ names: ['a', 'b'] });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.name).toBe('foo');
+      expect(result.data.names).toEqual(['a', 'b']);
+      expect(result.data.dryRun).toBe(false);
       expect(result.data.purge).toBe(false);
     }
   });
 
-  test('parses with purge=true', () => {
-    const result = VerbSchemas.kill.safeParse({ name: 'foo', purge: true });
+  test('defaults names to an empty list when a selector is used', () => {
+    const result = VerbSchemas.kill.safeParse({ prefix: 'pl-' });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.purge).toBe(true);
+      expect(result.data.names).toEqual([]);
+      expect(result.data.prefix).toBe('pl-');
     }
   });
 
-  test('rejects missing name', () => {
-    const result = VerbSchemas.kill.safeParse({});
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.path).toContain('name');
+  test('parses a repo selector with purge and dryRun', () => {
+    const result = VerbSchemas.kill.safeParse({ repo: '/repo', purge: true, dryRun: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.repo).toBe('/repo');
+      expect(result.data.purge).toBe(true);
+      expect(result.data.dryRun).toBe(true);
     }
+  });
+
+  test('rejects an empty name', () => {
+    const result = VerbSchemas.kill.safeParse({ names: [''] });
+    expect(result.success).toBe(false);
+  });
+
+  // killMany is the one place a kill request is refused, for every face.
+  test('killMany refuses names mixed with selectors', async () => {
+    await expect(killMany({ names: ['a'], prefix: 'pl-' })).rejects.toThrow(UmbelUsageError);
+  });
+
+  test('killMany refuses no names and no selector', async () => {
+    await expect(killMany({ names: [] })).rejects.toThrow(UmbelUsageError);
+  });
+
+  test('the schema refuses an empty prefix, which would select every session', () => {
+    expect(VerbSchemas.kill.safeParse({ prefix: '' }).success).toBe(false);
+  });
+
+  test('killRequest passes a name list and a selector through unchanged', () => {
+    expect(killRequest({ names: ['a', 'b'], dryRun: true, purge: false })).toEqual({
+      names: ['a', 'b'],
+      dryRun: true,
+      purge: false,
+    });
+    expect(killRequest({ names: [], repo: '/repo', dryRun: false, purge: true })).toEqual({
+      names: [],
+      repo: '/repo',
+      dryRun: false,
+      purge: true,
+    });
   });
 });
 

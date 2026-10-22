@@ -81,7 +81,15 @@ export const VerbSchemas = {
   }),
   ls: ListFilterShape,
   kill: z.object({
-    name: z.string(),
+    // Names kill exactly those sessions. A selector picks live sessions
+    // instead, and the two forms cannot be mixed.
+    names: z.array(z.string().min(1)).default([]),
+    // Live sessions whose name starts with this.
+    prefix: z.string().min(1).optional(),
+    // Live sessions of this repository (umbel#65 resolves the main worktree).
+    repo: z.string().min(1).optional(),
+    // Print the targets and kill nothing.
+    dryRun: z.boolean().default(false),
     purge: z.boolean().default(false),
   }),
   prune: z.object({
@@ -153,6 +161,28 @@ export function waitRequest(args: VerbArgs<'wait'>): WaitRequest {
   if (args.sinceMtime !== undefined) out.sinceMtime = args.sinceMtime;
   return out;
 }
+// ---------------------------------------------------------------------------
+// killRequest: who to kill, from the fields a face takes
+// ---------------------------------------------------------------------------
 
+// PURE. The fields a face takes, as the request killMany checks: a mixed or
+// empty call is refused there, once, for every face (umbel#94).
+export interface KillRequest {
+  names: string[];
+  prefix?: string;
+  repo?: string;
+  dryRun: boolean;
+  purge: boolean;
+}
+
+export function killRequest(args: VerbArgs<'kill'>): KillRequest {
+  return {
+    names: args.names,
+    ...(args.prefix !== undefined ? { prefix: args.prefix } : {}),
+    ...(args.repo !== undefined ? { repo: args.repo } : {}),
+    dryRun: args.dryRun,
+    purge: args.purge,
+  };
+}
 export type VerbName = keyof typeof VerbSchemas;
 export type VerbArgs<V extends VerbName> = z.infer<(typeof VerbSchemas)[V]>;

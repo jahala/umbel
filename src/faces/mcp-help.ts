@@ -16,7 +16,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 - send: types the prompt via tmux paste-buffer and confirms a turn started (opencode and claude: up to 10s on events/turn-start, error if it never does). Does NOT wait for the turn to finish. Returns { sinceMtime }: the mtime (ms) of events/stop immediately before the prompt was typed. Pass it to umbel_wait for race-free stop detection. 0 is valid: it means no turn has ended yet, so every stop after this send is newer than the baseline.
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
-- kill: tears down the tmux session and leaves its directory as a tombstone (events/dead, logs, transcript). Pass purge=true to remove it.
+- kill: tears down one or more sessions and leaves each directory as a tombstone (events/dead, logs, transcript); purge=true removes it. Pass names=[a, b, c], or select live sessions with prefix and/or repo (never both forms). dryRun=true lists the targets and kills nothing. The result reports each session as killed, already dead or not found; one failure does not stop the others. There is no "all": killing every session on a shared machine is the accident this guards against.
 - ls: lists live sessions; pass all=true to include the dead ones (tombstones), which umbel_read and umbel_actions still answer for. Each session records the repository it runs in; repo=<a path inside a repository> keeps only that repository.
 
 ## Anonymous vs named
@@ -33,7 +33,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
   await tools.umbel_wait({ name, until: "stop", sinceMtime, timeout: "10m" });
   const { content: r } = await tools.umbel_read({ name });
   // r[0].text contains the assistant's response
-  await tools.umbel_kill({ name });
+  await tools.umbel_kill({ names: [name] });
 
 ## Wait kinds (umbel_wait \`until\` field)
 

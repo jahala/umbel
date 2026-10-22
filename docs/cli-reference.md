@@ -303,10 +303,10 @@ When the provider reports subscription rate-limit usage, entries carry a `quota`
 
 ### ls
 
-List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table, REPO included. `--all` includes dead sessions (tombstones), which is what a post-mortem reads. `--repo PATH` keeps only the sessions of one repository.
+List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table, REPO included. `--all` includes dead sessions (tombstones), which is what a post-mortem reads. `--repo PATH` keeps only the sessions of one repository. `--json` prints the same array `status --json` prints, so a selector reads a field instead of a column.
 
 ```
-umbel ls [--all] [--repo PATH]
+umbel ls [--all] [--repo PATH] [--json]
 ```
 
 A session's REPO is the folder name of the repository's main working tree, recorded at spawn. Every linked worktree of one repository shows the same value, so a listing tells two conductors' sessions apart. `—` means the worker ran outside git, or was spawned before umbel recorded it.
@@ -321,29 +321,46 @@ umbel ls --all
 
 # Only this repository's workers
 umbel ls --repo ~/src/umbel
+
+# Names only, for a scripted selector
+umbel ls --json | jq -r '.[].name'
 ```
 
 ---
 
 ### kill
 
-Kill a session's tmux process and leave its state directory in `~/.umbel/sessions/` as a tombstone: `events/dead` (how it ended, with the pane read before the session was torn down), the event log and the transcript path, so a post-mortem needs nothing else. `read`, `actions`, `capture` and `status <name>` keep answering from the tombstone. `umbel prune` sweeps tombstones.
+Kill one or more sessions. Each session's tmux process goes; its state directory stays in `~/.umbel/sessions/` as a tombstone: `events/dead` (how it ended, with the pane read before the session was torn down), the event log and the transcript path, so a post-mortem needs nothing else. `read`, `actions`, `capture` and `status <name>` keep answering from the tombstone. `umbel prune` sweeps tombstones.
 
 ```
-umbel kill <name> [--purge]
+umbel kill <name>... [--purge] [--dry-run]
+umbel kill --prefix PREFIX [--repo PATH] [--purge] [--dry-run]
 ```
+
+**Names and selectors**
+
+Name the sessions, or select live sessions with `--prefix` and/or `--repo`. The two forms cannot be mixed. A session must match every selector given, so `--prefix pl- --repo ~/src/umbel` kills only that repository's `pl-` sessions. A selector reads the same live listing `umbel ls` prints; with no match it kills nothing and says so. A name kills exactly that session, whether it is alive or already a tombstone.
+
+There is no `--all`: killing every session on a machine is the accident `--prefix` guards against; a fleet cleanup says which fleet.
+
+**Report and exit code**
+
+Each session prints one line: `killed`, `already dead`, `not found`, or `failed` with the reason. One bad name does not stop the others. Exit code 0 means every session was killed or was already dead; 1 means some name was not found or some kill failed; 2 is a usage error (no names and no selector, or names mixed with a selector).
 
 **Positionals**
 
 | Position | Description |
 |----------|-------------|
-| `<name>` | Session name. |
+| `<name>...` | One or more session names. |
 
 **Flags**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--purge` | false | Remove `~/.umbel/sessions/<name>/` too, leaving no record of the session. |
+| Flag | Description |
+|------|-------------|
+| `--prefix PREFIX` | Kill live sessions whose name starts with `PREFIX`. |
+| `--repo PATH` | Keep only the sessions of the repository at `PATH`, using the same resolution as `status --repo`. Combine with `--prefix` to narrow the fleet. |
+| `--dry-run` | Print the sessions that would be killed and kill nothing. |
+| `--purge` | Remove each selected session's directory too, leaving no record. |
 
 **Examples**
 
@@ -352,6 +369,13 @@ umbel kill reviewer
 
 # Kill and leave nothing behind
 umbel kill reviewer --purge
+
+# See what a fleet cleanup would take, then take it
+umbel kill --prefix pl- --dry-run
+umbel kill --prefix pl- --repo ~/src/umbel --purge
+
+# Several names in one call
+umbel kill a b c
 ```
 
 ---

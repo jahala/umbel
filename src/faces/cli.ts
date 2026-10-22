@@ -29,7 +29,7 @@ import { actions, actionsManifest } from '../operations/actions.ts';
 import { capture } from '../operations/capture.ts';
 import { defaultDeps } from '../operations/deps.ts';
 import { diff } from '../operations/diff.ts';
-import { kill } from '../operations/kill.ts';
+import { type KillResult, killMany } from '../operations/kill.ts';
 import { prune } from '../operations/prune.ts';
 import { resolveTranscriptContent } from '../operations/resolve-transcript.ts';
 import { send } from '../operations/send.ts';
@@ -38,7 +38,7 @@ import { status } from '../operations/status.ts';
 import { waitFor } from '../operations/wait.ts';
 import { runMcpServer } from './mcp.ts';
 import { runP } from './p.ts';
-import { parseDuration, waitRequest } from './verbs.ts';
+import { type KillRequest, killRequest, parseDuration, waitRequest } from './verbs.ts';
 import { runWorkflow } from './workflow.ts';
 
 const VERSION = '0.0.1';
@@ -58,7 +58,7 @@ Verbs:
   wait    Wait for a session to finish
   status  Show session status (live sessions when no name is given)
   ls      List live sessions (--all includes dead ones, --repo one repository)
-  kill    Kill a session (keeps its directory unless --purge)
+  kill    Kill sessions by name, or live ones by --prefix / --repo (--dry-run lists)
   prune   Remove dead sessions' directories and tmux remains
   attach  Attach to a session
   read    Read last assistant message
@@ -102,6 +102,7 @@ const BOOLEAN_FLAGS = new Set([
   'json',
   'follow',
   'purge',
+  'dry-run',
   'unattended',
   'all',
 ]);
@@ -688,6 +689,10 @@ async function verbStatus(
 
 async function verbLs(flags: Map<string, string | boolean>): Promise<number> {
   const entries = await status({ ...listFilter(flags), env: getCliEnv() });
+  if (flagBool(flags, 'json')) {
+    process.stdout.write(`${JSON.stringify(entries)}\n`);
+    return 0;
+  }
   if (entries.length === 0) {
     process.stdout.write('No sessions found.\n');
     return 0;
@@ -704,10 +709,52 @@ async function verbKill(
   flags: Map<string, string | boolean>,
   positionals: string[],
 ): Promise<number> {
-  const name = flagStr(flags, 'name') ?? positionals[0];
-  if (name === undefined) throw new UmbelUsageError('kill: <name> is required');
-  await kill({ name, purge: flagBool(flags, 'purge'), env: getCliEnv() });
-  return 0;
+  const prefix = flagStr(flags, 'prefix');
+  const repo = flagStr(flags, 'repo');
+  // A bare --prefix or --repo parses as a boolean. Say what it needs instead of
+  // treating it as absent and falling through to "no selector".
+  if (prefix === undefined && flags.has('prefix')) {
+    throw new UmbelUsageError('--prefix needs a value: --prefix NAME-PREFIX');
+  }
+  if (repo === undefined && flags.has('repo')) {
+    throw new UmbelUsageError('--repo needs a path: --repo PATH');
+  }
+  const request = killRequest({
+    names: positionals,
+    ...(prefix !== undefined ? { prefix } : {}),
+    ...(repo !== undefined ? { repo } : {}),
+    dryRun: flagBool(flags, 'dry-run'),
+    purge: flagBool(flags, 'purge'),
+  });
+  const results = await killMany({ ...request, env: getCliEnv() });
+  if (results.length === 0) {
+    process.stdout.write(`no live sessions matched ${selectorLabel(request)}\n`);
+    return 0;
+  }
+  for (const result of results) process.stdout.write(`${resultLine(result, request.dryRun)}\n`);
+  // A name that was never a session is as much a miss as one that failed: the
+  // caller asked for a fleet and did not get all of it.
+  return results.some((r) => r.outcome === 'not-found' || r.outcome === 'failed') ? 1 : 0;
+}
+
+function resultLine(result: KillResult, dryRun: boolean): string {
+  switch (result.outcome) {
+    case 'killed':
+      return dryRun ? `would kill ${result.name}` : `killed ${result.name}`;
+    case 'already-dead':
+      return dryRun ? `would skip ${result.name} (already dead)` : `already dead ${result.name}`;
+    case 'not-found':
+      return `not found ${result.name}`;
+    case 'failed':
+      return `failed ${result.name}: ${result.error ?? 'unknown error'}`;
+  }
+}
+
+function selectorLabel(request: KillRequest): string {
+  return [
+    ...(request.prefix !== undefined ? [`--prefix ${request.prefix}`] : []),
+    ...(request.repo !== undefined ? [`--repo ${request.repo}`] : []),
+  ].join(' ');
 }
 
 // ---------------------------------------------------------------------------
