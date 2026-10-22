@@ -33,10 +33,76 @@ function makeFakeTmux(panes: string[]) {
 }
 
 describe('dismissStartupDialogs (CodexProvider specs)', () => {
+  // codex 0.154.0, recorded on the real binary 2026-10-22: after Down+Enter
+  // reaches "Trust all and continue", codex prints "Trusting hooks..." and keeps
+  // the dialog on screen while it writes the trust. A second Down+Enter there
+  // moved the cursor to "Continue without trusting" and confirmed it, so no
+  // umbel hook loaded and the worker never reported a stop.
+  test('a hooks dialog still on screen while trusting gets no second Down', async () => {
+    const review = [
+      '  Hooks need review',
+      '  1 hook is new or changed.',
+      '  Hooks can run outside the sandbox after you trust them.',
+      '›    Review hooks',
+      '     Trust all and continue',
+      "     Continue without trusting (hooks won't run)",
+      '  Press enter to confirm or esc to go back',
+    ].join('\n');
+    const trusting = [
+      '  Hooks need review',
+      '  1 hook is new or changed.',
+      '  Hooks can run outside the sandbox after you trust them.',
+      '  Trusting hooks...',
+      '     Review hooks',
+      '›    Trust all and continue',
+      "     Continue without trusting (hooks won't run)",
+      '  Press enter to confirm or esc to go back',
+    ].join('\n');
+    const { sent, tmux } = makeFakeTmux([
+      review,
+      trusting,
+      trusting,
+      '>_ OpenAI Codex (v0.154.0)\n› Ask Codex to do anything',
+    ]);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      CodexProvider.startupDialogs ?? [],
+      CodexProvider.readyMatch,
+    );
+
+    expect(sent[0]).toEqual(['Down', 'Enter']);
+    expect(sent.slice(1).flat()).not.toContain('Down');
+  });
+
+  test('an update dialog whose cursor already left "Update now" is not moved again', async () => {
+    const skipHighlighted = [
+      '  ✨ Update available! 0.154.0 -> 0.163.0',
+      '  1. Update now (runs `npm install -g @openai/codex`)',
+      '› 2. Skip',
+      '  3. Skip until next version',
+      '  Press enter to continue',
+    ].join('\n');
+    const { sent, tmux } = makeFakeTmux([
+      skipHighlighted,
+      '>_ OpenAI Codex (v0.154.0)\n› Ask Codex to do anything',
+    ]);
+
+    await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      CodexProvider.startupDialogs ?? [],
+      CodexProvider.readyMatch,
+    );
+
+    expect(sent).toEqual([['Enter']]);
+  });
+
   test('dismisses both codex dialogs with Enter then Down+Enter', async () => {
     const { sent, tmux } = makeFakeTmux([
-      'Do you trust the contents of this directory?\n1. Yes, continue\n2. No, quit',
-      'Hooks need review\n1. Review hooks\n2. Trust all and continue\n3. Continue without trusting',
+      'Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit',
+      'Hooks need review\n›    Review hooks\n     Trust all and continue\n     Continue without trusting',
       '>_ OpenAI Codex (v0.133.0)\ndirectory: /tmp/x\nImplement {feature}',
     ]);
 
@@ -52,9 +118,9 @@ describe('dismissStartupDialogs (CodexProvider specs)', () => {
 
   test('full 3-dialog sequence (update → trust → hooks) → Skip, Enter, Trust-all', async () => {
     const { sent, tmux } = makeFakeTmux([
-      'Update available! 0.133.0 -> 0.135.0\n1. Update now\n2. Skip\n3. Skip until next version',
-      'Do you trust the contents of this directory?\n1. Yes, continue\n2. No, quit',
-      'Hooks need review\n1. Review hooks\n2. Trust all and continue\n3. Continue without trusting',
+      'Update available! 0.133.0 -> 0.135.0\n› 1. Update now\n  2. Skip\n  3. Skip until next version',
+      'Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit',
+      'Hooks need review\n›    Review hooks\n     Trust all and continue\n     Continue without trusting',
       '>_ OpenAI Codex (v0.133.0)\nImplement {feature}',
     ]);
 
@@ -89,7 +155,7 @@ describe('dismissStartupDialogs (CodexProvider specs)', () => {
   test('only the first dialog appears (second never shown) → only Enter sent', async () => {
     // Dir-trust dialog, then straight to main UI (e.g. no hooks configured).
     const { sent, tmux } = makeFakeTmux([
-      'Do you trust the contents of this directory?\n1. Yes, continue',
+      'Do you trust the contents of this directory?\n› 1. Yes, continue',
       '>_ OpenAI Codex\nImplement {feature}',
     ]);
 
