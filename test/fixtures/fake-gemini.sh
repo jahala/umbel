@@ -3,6 +3,12 @@
 # Env: UMBEL_SESSION_ID, FAKE_GEMINI_DELAY (ms), FAKE_GEMINI_TRANSCRIPT_DIR, FAKE_GEMINI_HOOK
 set -euo pipefail
 
+# JSON-encode one string for a transcript line. jq ships with what umbel
+# already requires; an interpreter is not, and may be missing (umbel#81).
+json_str() {
+  printf '%s' "$1" | jq -Rs .
+}
+
 DELAY="${FAKE_GEMINI_DELAY:-0}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-gemini-session}"
 
@@ -50,13 +56,13 @@ write_turn() {
   # User turn
   printf '{"type":"user","id":"u-%s","content":[{"text":%s}]}\n' \
     "$$" \
-    "$(echo -n "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "$(json_str "$prompt")" \
     >> "$JSONL_FILE"
 
   # Gemini turn
   printf '{"type":"gemini","id":"g-%s","content":[{"text":%s}]}\n' \
     "$$" \
-    "$(echo -n "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "$(json_str "$response")" \
     >> "$JSONL_FILE"
 
   # Token update (mirrors Gemini's message_update record)
