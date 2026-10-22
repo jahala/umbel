@@ -70,6 +70,11 @@ function extractText(entry: unknown): string | null {
 function isRoleEntry(entry: unknown, role: 'assistant' | 'user'): boolean {
   if (entry === null || typeof entry !== 'object') return false;
   const obj = entry as JsonObj;
+  // Claude Code 2.1.306 records each request it sends: api-request, and
+  // api-request-blob entries that copy the request's messages, role and all. A
+  // copy is not a message: read as a prompt, one split a turn and dropped its
+  // first answer's usage (umbel#78).
+  if (typeof obj.type === 'string' && obj.type.startsWith('api-request')) return false;
 
   // Shape A: message.role
   const msg = obj.message;

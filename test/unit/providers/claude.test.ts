@@ -599,3 +599,82 @@ describe('ClaudeProvider.extractUsage', () => {
     expect(claudeUsage(content)).toEqual({ inputTokens: 9, model: 'claude-test' });
   });
 });
+
+// Claude Code 2.1.306 writes api-request-blob entries: copies of the request it
+// sends, with message.role "user" and plain text content, between a tool result
+// and the next answer. Shape taken from a real DeepSeek Flash turn that ran one
+// tool: a copy read as a new prompt split the turn and dropped the first
+// answer's tokens.
+describe('claude transcript with api-request-blob copies', () => {
+  const turn = [
+    { type: 'user', message: { role: 'user', content: 'Run date, then reply done.' } },
+    {
+      type: 'assistant',
+      message: {
+        id: 'answer-1',
+        role: 'assistant',
+        model: 'deepseek-flash',
+        content: [{ type: 'thinking', thinking: '' }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 25431, output_tokens: 58, cache_read_input_tokens: 0 },
+      },
+    },
+    {
+      type: 'assistant',
+      message: {
+        id: 'answer-1',
+        role: 'assistant',
+        model: 'deepseek-flash',
+        content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'date' } }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 25431, output_tokens: 58, cache_read_input_tokens: 0 },
+      },
+    },
+    {
+      type: 'api-request-blob',
+      message: { role: 'user', content: [{ type: 'text', text: 'Run date, then reply done.' }] },
+    },
+    {
+      type: 'api-request-blob',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Wed' }],
+      },
+    },
+    { type: 'api-request', timestamp: '2026-10-22T16:00:00.000Z' },
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Wed' }],
+      },
+    },
+    {
+      type: 'assistant',
+      message: {
+        id: 'answer-2',
+        role: 'assistant',
+        model: 'deepseek-flash',
+        content: [{ type: 'text', text: 'done' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 376, output_tokens: 2, cache_read_input_tokens: 25472 },
+      },
+    },
+  ]
+    .map((e) => JSON.stringify(e))
+    .join('\n');
+
+  test('a turn is summed across both answers', () => {
+    expect(ClaudeProvider.extractUsage?.(turn)).toEqual({
+      inputTokens: 25807,
+      outputTokens: 60,
+      cacheReadTokens: 25472,
+      model: 'deepseek-flash',
+    });
+  });
+
+  test('the copies are not turns of their own', () => {
+    expect(ClaudeProvider.extractTurns?.(turn).length).toBe(1);
+    expect(ClaudeProvider.parseTranscript(turn)).toBe('done');
+  });
+});
