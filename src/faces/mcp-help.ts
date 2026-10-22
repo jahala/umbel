@@ -176,8 +176,8 @@ Gemini (\`provider: gemini\`)
 - Hazard: umbel OVERWRITES any pre-existing <cwd>/.gemini/settings.json.
 
 OpenCode (\`provider: opencode\`)
-- Hook delivered via a bundled JS plugin installed ONCE into the user's global opencode config ($XDG_CONFIG_HOME/opencode/opencode.jsonc, default ~/.config/opencode/). NOT per-cwd, NOT per-session — no worktree mutation. Inert unless UMBEL_SESSION_ID is set.
-- opencode.jsonc is read as JSONC and edited in place: umbel inserts only its plugin entry and preserves every other byte, comments included. A file that already has the entry is not written.
+- Hook delivered via a bundled JS plugin installed ONCE into opencode's global plugin directory ($XDG_CONFIG_HOME/opencode/plugin/opencode-stop.ts, default ~/.config/opencode/plugin/). opencode 1.18.18 loads every plugin file there at launch, so one copy serves every umbel state root. NOT per-cwd, NOT per-session — no worktree mutation. Inert unless UMBEL_SESSION_ID is set.
+- Entries an older umbel registered in opencode.jsonc (…/hooks/opencode-stop.ts) are removed on the next spawn. The file is read as JSONC and edited in place: comments and trailing commas are fine, every other byte is preserved, and a file with nothing to remove is not written.
 - An unparsable opencode.jsonc refuses the spawn (exit 1) naming file, line and column, and the file is left untouched.
 - No JSONL transcript (SQLite only). Output read via \`opencode export <sessionID>\`.
 - stopEventName: "session.status" idle (plugin-based). The plugin also touches events/turn-start on session.status busy, so send proves the prompt started a turn.

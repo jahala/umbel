@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { OpencodeConfigUnparsableError } from '../core/errors.ts';
-import { mergeOpencodePluginConfig } from '../core/providers/opencode.ts';
+import { removeUmbelPluginEntries } from '../core/providers/opencode.ts';
 import { stateDir } from './fs-state.ts';
 
 // ---------------------------------------------------------------------------
@@ -395,38 +395,49 @@ export async function ensureGlobalHooks(env: Record<string, string | undefined> 
 }
 
 // ---------------------------------------------------------------------------
-// installGlobalPlugin — write a provider's JS plugin and register it in the
-// provider's global config. Idempotent. Side effects at the edge.
+// installGlobalPlugin — write a provider's JS plugin into opencode's global
+// plugin directory, which opencode scans on every launch, and drop the
+// per-state-root entries an older umbel registered in opencode.jsonc.
+// Idempotent. Side effects at the edge.
 // ---------------------------------------------------------------------------
 
 export async function installGlobalPlugin(
   spec: { fileName: string; content: string },
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
-  const hooksDir = join(stateDir(env), 'hooks');
-  await mkdir(hooksDir, { recursive: true });
-
-  const pluginAbsPath = join(hooksDir, spec.fileName);
-  await writeFile(pluginAbsPath, spec.content, { encoding: 'utf8' });
-
   // Resolve the opencode global config path, respecting XDG_CONFIG_HOME.
   const xdgCfgHome =
     env.XDG_CONFIG_HOME ??
     process.env.XDG_CONFIG_HOME ??
     join(env.HOME ?? process.env.HOME ?? homedir(), '.config');
-  const cfgPath = join(xdgCfgHome, 'opencode', 'opencode.jsonc');
-  await mkdir(join(xdgCfgHome, 'opencode'), { recursive: true });
+  const opencodeDir = join(xdgCfgHome, 'opencode');
 
+  // Migrate first: a config umbel cannot read refuses the spawn and leaves the
+  // plugin directory untouched.
+  const cfgPath = join(opencodeDir, 'opencode.jsonc');
   let existing: string | null = null;
   try {
     existing = await readFile(cfgPath, 'utf8');
   } catch {
-    // file doesn't exist yet — mergeOpencodePluginConfig handles null
+    // no config yet: nothing to migrate
   }
 
-  const merged = mergeOpencodePluginConfig(existing, pluginAbsPath);
-  if (merged.kind === 'unparsable') {
-    throw new OpencodeConfigUnparsableError(cfgPath, merged.line, merged.column, merged.reason);
+  const migrated = removeUmbelPluginEntries(existing);
+  if (migrated.kind === 'unparsable') {
+    throw new OpencodeConfigUnparsableError(
+      cfgPath,
+      migrated.line,
+      migrated.column,
+      migrated.reason,
+    );
   }
-  if (merged.kind === 'write') await writeFile(cfgPath, merged.content, { encoding: 'utf8' });
+  if (migrated.kind === 'write') await writeFile(cfgPath, migrated.content, { encoding: 'utf8' });
+
+  // One plugin file for every state root. opencode 1.18.18 loads each
+  // {plugin,plugins}/*.{ts,js} under its global config dir, so no entry is
+  // needed in opencode.jsonc (umbel#124). Rewriting it every spawn replaces an
+  // older umbel's copy.
+  const pluginDir = join(opencodeDir, 'plugin');
+  await mkdir(pluginDir, { recursive: true });
+  await writeFile(join(pluginDir, spec.fileName), spec.content, { encoding: 'utf8' });
 }

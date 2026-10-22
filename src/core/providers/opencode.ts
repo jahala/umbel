@@ -1,7 +1,6 @@
 import {
   findNodeAtLocation,
   getNodeValue,
-  type Node as JsonNode,
   type ParseError,
   parseTree,
   printParseErrorCode,
@@ -420,30 +419,30 @@ export function opencodePluginShouldFireNotification(
 }
 
 // ---------------------------------------------------------------------------
-// mergeOpencodePluginConfig — pure + total: idempotently add pluginAbsPath to
-// the "plugin" array of the user's opencode.jsonc. The text is edited by a
-// single insertion, so comments, trailing commas and layout survive; a file
-// that is not JSONC (or not the expected shape) is reported, never replaced.
-// jsonc-parser's `modify` is not used: its formatter reflows the whole touched
-// line, rewriting bytes the user owns (e.g. an inline plugin array).
+// removeUmbelPluginEntries — pure + total: drop the plugin entries an older
+// umbel registered in the user's opencode.jsonc. They point at
+// <UMBEL_STATE>/hooks/opencode-stop.ts, so each state root added one
+// (umbel#124); the plugin now auto-loads from the config dir instead. Only the
+// legacy entries and their separators are cut, so comments, trailing commas
+// and layout survive. A file that is not JSONC is reported, never replaced.
 // ---------------------------------------------------------------------------
 
-export type OpencodePluginConfigMerge =
+export type OpencodePluginConfigMigration =
   | { kind: 'unchanged' }
   | { kind: 'write'; content: string }
   | { kind: 'unparsable'; line: number; column: number; reason: string };
 
-export function mergeOpencodePluginConfig(
-  existing: string | null,
-  pluginAbsPath: string,
-): OpencodePluginConfigMerge {
-  const entry = JSON.stringify(pluginAbsPath);
-  // opencode rewrites a config it loads without "$schema" to add it, so a
-  // created file carries it to stay untouched by the worker it launches.
-  if (existing === null || existing.trim().length === 0) {
-    const created = { $schema: 'https://opencode.ai/config.json', plugin: [pluginAbsPath] };
-    return { kind: 'write', content: JSON.stringify(created, null, 2) };
-  }
+const PLUGIN_FILE_NAME = 'opencode-stop.ts';
+const LEGACY_PLUGIN_ENTRY = `hooks/${PLUGIN_FILE_NAME}`;
+
+function isLegacyUmbelPluginEntry(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const normalized = value.replaceAll('\\', '/');
+  return normalized === LEGACY_PLUGIN_ENTRY || normalized.endsWith(`/${LEGACY_PLUGIN_ENTRY}`);
+}
+
+export function removeUmbelPluginEntries(existing: string | null): OpencodePluginConfigMigration {
+  if (existing === null || existing.trim().length === 0) return { kind: 'unchanged' };
 
   const errors: ParseError[] = [];
   const root = parseTree(existing, errors, { allowTrailingComma: true });
@@ -456,33 +455,77 @@ export function mergeOpencodePluginConfig(
   }
 
   const plugins = findNodeAtLocation(root, ['plugin']);
-  if (!plugins) {
-    return { kind: 'write', content: insertAfterLast(existing, root, `"plugin": [${entry}]`) };
-  }
-  if (plugins.type !== 'array') {
+  if (!plugins) return { kind: 'unchanged' };
+  if (plugins.type !== 'array')
     return unparsable(existing, plugins.offset, '"plugin" is not an array');
-  }
-  if ((plugins.children ?? []).some((p) => getNodeValue(p) === pluginAbsPath)) {
-    return { kind: 'unchanged' };
-  }
-  return { kind: 'write', content: insertAfterLast(existing, plugins, entry) };
+
+  const stale = (plugins.children ?? [])
+    .map((node, index) => ({ index, value: getNodeValue(node) }))
+    .filter(({ value }) => isLegacyUmbelPluginEntry(value))
+    .map(({ index }) => index);
+  if (stale.length === 0) return { kind: 'unchanged' };
+
+  let content = existing;
+  // Descending order keeps the lower indices valid as each removal shortens
+  // the array.
+  for (const index of stale.reverse()) content = removeArrayElement(content, index);
+  return { kind: 'write', content };
 }
 
-// Inserts `item` as the last member of an object or array node, separated from
-// its predecessor the way the predecessor is separated from what precedes it.
-function insertAfterLast(text: string, container: JsonNode, item: string): string {
-  const last = container.children?.at(-1);
-  if (!last) {
-    const at = container.offset + 1;
-    return `${text.slice(0, at)}${item}${text.slice(at)}`;
+// Cuts one element of the root "plugin" array together with the separator that
+// would otherwise dangle. When the element owns its line, the whole line goes,
+// so the closing bracket keeps its own line.
+function removeArrayElement(text: string, index: number): string {
+  const root = parseTree(text, [], { allowTrailingComma: true });
+  const array = root ? findNodeAtLocation(root, ['plugin']) : undefined;
+  const children = array?.children ?? [];
+  const node = children[index];
+  if (node === undefined) return text;
+
+  const start = node.offset;
+  const end = node.offset + node.length;
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = text.indexOf('\n', end);
+  const lineStop = lineEnd === -1 ? text.length : lineEnd + 1;
+  const ownLine = /^[ \t]*$/.test(text.slice(lineStart, start));
+  const rest = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
+
+  // The element owns its line: drop the whole line, separator included. The
+  // last element's separator is the comma after its predecessor.
+  if (ownLine && /^[ \t]*,?[ \t\r]*$/.test(rest)) {
+    let withoutLine = text.slice(0, lineStart) + text.slice(lineStop);
+    if (children[index + 1] === undefined) {
+      const commaAt = previousComma(withoutLine, lineStart - 1);
+      if (commaAt >= 0) {
+        withoutLine = withoutLine.slice(0, commaAt) + withoutLine.slice(commaAt + 1);
+      }
+    }
+    return withoutLine;
   }
-  const at = last.offset + last.length;
-  const leading = /\s*$/.exec(text.slice(0, last.offset))?.[0] ?? '';
-  const separator = leading.includes('\n') ? leading.slice(leading.lastIndexOf('\n')) : leading;
-  return `${text.slice(0, at)},${separator}${item}${text.slice(at)}`;
+
+  // Inline, or a comment shares the line: drop the element and one adjacent
+  // comma.
+  if (children[index + 1] !== undefined) {
+    let stop = end;
+    while (text[stop] === ' ' || text[stop] === '\t') stop++;
+    if (text[stop] === ',') {
+      stop++;
+      while (text[stop] === ' ' || text[stop] === '\t') stop++;
+    }
+    return text.slice(0, start) + text.slice(stop);
+  }
+  const commaAt = previousComma(text, start - 1);
+  const from = commaAt === -1 ? start : commaAt;
+  return text.slice(0, from) + text.slice(end);
 }
 
-function unparsable(text: string, offset: number, reason: string): OpencodePluginConfigMerge {
+function previousComma(text: string, from: number): number {
+  let at = from;
+  while (at >= 0 && /\s/.test(text[at] ?? '')) at--;
+  return text[at] === ',' ? at : -1;
+}
+
+function unparsable(text: string, offset: number, reason: string): OpencodePluginConfigMigration {
   const before = text.slice(0, offset);
   return {
     kind: 'unparsable',
@@ -556,11 +599,11 @@ const opencodeProvider: AgentProvider = {
   },
 
   // The bundled plugin: installed once as infrastructure alongside stop.sh.
-  // installGlobalPlugin (hooks adapter) writes PLUGIN_SOURCE to
-  // hooksDir/opencode-stop.ts and merges that path into the user's global
-  // opencode config so opencode loads it on every launch.
+  // installGlobalPlugin (hooks adapter) writes PLUGIN_SOURCE into the user's
+  // global opencode plugin directory, which opencode scans on every launch, and
+  // removes the per-state-root entries an older umbel registered (umbel#124).
   globalPlugin: {
-    fileName: 'opencode-stop.ts',
+    fileName: PLUGIN_FILE_NAME,
     content: PLUGIN_SOURCE,
   },
 } as const;
