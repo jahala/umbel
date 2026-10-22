@@ -421,3 +421,260 @@ describe('ClaudeProvider.requestInFlight', () => {
     expect(inFlight([])).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ClaudeProvider.extractUsage — the newest completed turn's token usage
+//
+// Claude writes one entry per content block and copies the whole message's
+// usage onto every one of them, so a message id must count once. A turn spans
+// several API answers around tool calls, so those sum. input_tokens excludes
+// cached input; cache_creation_input_tokens is the write side.
+// ---------------------------------------------------------------------------
+
+interface ClaudeUsageFields {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+function makeUsageAssistantLine(opts: {
+  id: string;
+  text?: string;
+  blockType?: 'text' | 'tool_use';
+  stopReason: string | null;
+  usage?: ClaudeUsageFields;
+  model?: string;
+}): string {
+  const block =
+    opts.blockType === 'tool_use'
+      ? { type: 'tool_use', id: 't1', name: 'Read', input: {} }
+      : { type: 'text', text: opts.text ?? '' };
+  return JSON.stringify({
+    type: 'assistant',
+    message: {
+      id: opts.id,
+      role: 'assistant',
+      model: opts.model ?? 'claude-test',
+      content: [block],
+      ...(opts.stopReason !== null ? { stop_reason: opts.stopReason } : {}),
+      ...(opts.usage !== undefined ? { usage: opts.usage } : {}),
+    },
+  });
+}
+
+function makeToolResultLine(): string {
+  return JSON.stringify({
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }],
+    },
+  });
+}
+
+function claudeUsage(content: string) {
+  if (ClaudeProvider.extractUsage === undefined) {
+    throw new Error('claude has no extractUsage');
+  }
+  return ClaudeProvider.extractUsage(content);
+}
+
+describe('ClaudeProvider.extractUsage', () => {
+  test('counts a message copied onto several block entries once', () => {
+    const usage = {
+      input_tokens: 100,
+      output_tokens: 10,
+      cache_read_input_tokens: 1000,
+      cache_creation_input_tokens: 50,
+    };
+    const content = lines(
+      makeUserLine('q'),
+      makeUsageAssistantLine({ id: 'm1', text: '', stopReason: 'end_turn', usage }),
+      makeUsageAssistantLine({ id: 'm1', text: 'answer', stopReason: 'end_turn', usage }),
+    );
+    expect(claudeUsage(content)).toEqual({
+      inputTokens: 100,
+      outputTokens: 10,
+      cacheReadTokens: 1000,
+      cacheWriteTokens: 50,
+      model: 'claude-test',
+    });
+  });
+
+  test('sums every API answer in a multi-answer turn, skipping tool results', () => {
+    const content = lines(
+      makeUserLine('q'),
+      makeUsageAssistantLine({
+        id: 'm1',
+        blockType: 'tool_use',
+        stopReason: 'tool_use',
+        usage: { input_tokens: 5, output_tokens: 2 },
+      }),
+      makeToolResultLine(),
+      makeUsageAssistantLine({
+        id: 'm2',
+        text: 'done',
+        stopReason: 'end_turn',
+        usage: { input_tokens: 7, output_tokens: 3 },
+      }),
+    );
+    expect(claudeUsage(content)).toEqual({
+      inputTokens: 12,
+      outputTokens: 5,
+      model: 'claude-test',
+    });
+  });
+
+  test('returns the newest completed turn only', () => {
+    const content = lines(
+      makeUserLine('first'),
+      makeUsageAssistantLine({
+        id: 'm1',
+        text: 'first answer',
+        stopReason: 'end_turn',
+        usage: { input_tokens: 100, output_tokens: 10 },
+      }),
+      makeUserLine('second'),
+      makeUsageAssistantLine({
+        id: 'm2',
+        text: 'second answer',
+        stopReason: 'end_turn',
+        usage: { input_tokens: 7, output_tokens: 3 },
+      }),
+    );
+    expect(claudeUsage(content)).toEqual({
+      inputTokens: 7,
+      outputTokens: 3,
+      model: 'claude-test',
+    });
+  });
+
+  test('an open turn does not borrow its own usage; the previous completed turn wins', () => {
+    const content = lines(
+      makeUserLine('first'),
+      makeUsageAssistantLine({
+        id: 'm1',
+        text: 'first answer',
+        stopReason: 'end_turn',
+        usage: { input_tokens: 100, output_tokens: 10 },
+      }),
+      makeUserLine('second'),
+      makeUsageAssistantLine({
+        id: 'm2',
+        text: 'still writing',
+        stopReason: null,
+        usage: { input_tokens: 5, output_tokens: 1 },
+      }),
+    );
+    expect(claudeUsage(content)).toEqual({
+      inputTokens: 100,
+      outputTokens: 10,
+      model: 'claude-test',
+    });
+  });
+
+  test('returns undefined when the completed turn recorded no usage', () => {
+    const content = lines(makeUserLine('q'), makeAssistantLine('answer', 'end_turn'));
+    expect(claudeUsage(content)).toBeUndefined();
+  });
+
+  test('returns undefined when no turn has completed', () => {
+    const content = lines(makeUserLine('q'), makeAssistantLine('partial', null));
+    expect(claudeUsage(content)).toBeUndefined();
+  });
+
+  test('malformed lines are skipped, not fatal', () => {
+    const content = [
+      'not json',
+      makeUserLine('q'),
+      '{partial',
+      makeUsageAssistantLine({
+        id: 'm1',
+        text: 'answer',
+        stopReason: 'end_turn',
+        usage: { input_tokens: 9 },
+      }),
+    ].join('\n');
+    expect(claudeUsage(content)).toEqual({ inputTokens: 9, model: 'claude-test' });
+  });
+});
+
+// Claude Code 2.1.306 writes api-request-blob entries: copies of the request it
+// sends, with message.role "user" and plain text content, between a tool result
+// and the next answer. Shape taken from a real DeepSeek Flash turn that ran one
+// tool: a copy read as a new prompt split the turn and dropped the first
+// answer's tokens.
+describe('claude transcript with api-request-blob copies', () => {
+  const turn = [
+    { type: 'user', message: { role: 'user', content: 'Run date, then reply done.' } },
+    {
+      type: 'assistant',
+      message: {
+        id: 'answer-1',
+        role: 'assistant',
+        model: 'deepseek-flash',
+        content: [{ type: 'thinking', thinking: '' }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 25431, output_tokens: 58, cache_read_input_tokens: 0 },
+      },
+    },
+    {
+      type: 'assistant',
+      message: {
+        id: 'answer-1',
+        role: 'assistant',
+        model: 'deepseek-flash',
+        content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'date' } }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 25431, output_tokens: 58, cache_read_input_tokens: 0 },
+      },
+    },
+    {
+      type: 'api-request-blob',
+      message: { role: 'user', content: [{ type: 'text', text: 'Run date, then reply done.' }] },
+    },
+    {
+      type: 'api-request-blob',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Wed' }],
+      },
+    },
+    { type: 'api-request', timestamp: '2026-10-22T16:00:00.000Z' },
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Wed' }],
+      },
+    },
+    {
+      type: 'assistant',
+      message: {
+        id: 'answer-2',
+        role: 'assistant',
+        model: 'deepseek-flash',
+        content: [{ type: 'text', text: 'done' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 376, output_tokens: 2, cache_read_input_tokens: 25472 },
+      },
+    },
+  ]
+    .map((e) => JSON.stringify(e))
+    .join('\n');
+
+  test('a turn is summed across both answers', () => {
+    expect(ClaudeProvider.extractUsage?.(turn)).toEqual({
+      inputTokens: 25807,
+      outputTokens: 60,
+      cacheReadTokens: 25472,
+      model: 'deepseek-flash',
+    });
+  });
+
+  test('the copies are not turns of their own', () => {
+    expect(ClaudeProvider.extractTurns?.(turn).length).toBe(1);
+    expect(ClaudeProvider.parseTranscript(turn)).toBe('done');
+  });
+});

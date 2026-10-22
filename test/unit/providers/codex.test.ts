@@ -409,3 +409,193 @@ describe('getProvider', () => {
     expect(provider).toBe(CodexProvider);
   });
 });
+
+// ---------------------------------------------------------------------------
+// CodexProvider.extractUsage — the newest completed turn's token usage
+//
+// token_usage_record.turn_token_usage is the turn's share: it resets at each
+// task_started while thread_token_usage runs on. input_tokens includes cached
+// input, so the normalized inputTokens subtracts the cache fields.
+// ---------------------------------------------------------------------------
+
+function makeTurnContext(model: string, turnId = 'turn-1'): string {
+  return JSON.stringify({ type: 'turn_context', payload: { turn_id: turnId, model } });
+}
+
+function makeTaskStarted(turnId = 'turn-1'): string {
+  return JSON.stringify({ type: 'event_msg', payload: { type: 'task_started', turn_id: turnId } });
+}
+
+function makeTaskCompleteEvent(turnId = 'turn-1'): string {
+  return JSON.stringify({
+    type: 'event_msg',
+    payload: { type: 'task_complete', turn_id: turnId, last_agent_message: 'done' },
+  });
+}
+
+function makeTokenUsageRecord(
+  turnId: string,
+  turnUsage: Record<string, number>,
+  threadUsage: Record<string, number> = turnUsage,
+): string {
+  return JSON.stringify({
+    type: 'token_usage_record',
+    payload: {
+      turn_id: turnId,
+      turn_token_usage: turnUsage,
+      thread_token_usage: threadUsage,
+    },
+  });
+}
+
+function makeTokenCount(last: Record<string, number>, total = last): string {
+  return JSON.stringify({
+    type: 'event_msg',
+    payload: {
+      type: 'token_count',
+      info: { last_token_usage: last, total_token_usage: total },
+    },
+  });
+}
+
+function codexUsage(content: string) {
+  if (CodexProvider.extractUsage === undefined) {
+    throw new Error('codex has no extractUsage');
+  }
+  return CodexProvider.extractUsage(content);
+}
+
+describe('CodexProvider.extractUsage', () => {
+  test('reads the newest completed turn from a real 0.154.0 rollout', () => {
+    expect(codexUsage(ROLLOUT_0154)).toEqual({
+      inputTokens: 27171 - 24832 - 0,
+      outputTokens: 41,
+      cacheReadTokens: 24832,
+      cacheWriteTokens: 0,
+      model: 'gpt-5.6-sol',
+    });
+  });
+
+  test('a second turn reports its own share, not the thread total', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeTurnContext('model-1', 'turn-1'),
+      makeTaskStarted('turn-1'),
+      makeTokenUsageRecord('turn-1', {
+        input_tokens: 1000,
+        cached_input_tokens: 500,
+        cache_write_input_tokens: 0,
+        output_tokens: 10,
+      }),
+      makeTaskCompleteEvent('turn-1'),
+      makeTurnContext('model-2', 'turn-2'),
+      makeTaskStarted('turn-2'),
+      makeTokenUsageRecord(
+        'turn-2',
+        {
+          input_tokens: 2000,
+          cached_input_tokens: 1500,
+          cache_write_input_tokens: 0,
+          output_tokens: 20,
+        },
+        { input_tokens: 3000, cached_input_tokens: 2000, output_tokens: 30 },
+      ),
+      makeTaskCompleteEvent('turn-2'),
+    );
+    expect(codexUsage(content)).toEqual({
+      inputTokens: 500,
+      outputTokens: 20,
+      cacheReadTokens: 1500,
+      cacheWriteTokens: 0,
+      model: 'model-2',
+    });
+  });
+
+  test('an open newest turn is ignored; the previous completed turn wins', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeTurnContext('model-1', 'turn-1'),
+      makeTaskStarted('turn-1'),
+      makeTokenUsageRecord('turn-1', {
+        input_tokens: 100,
+        cached_input_tokens: 0,
+        cache_write_input_tokens: 0,
+        output_tokens: 10,
+      }),
+      makeTaskCompleteEvent('turn-1'),
+      makeTurnContext('model-2', 'turn-2'),
+      makeTaskStarted('turn-2'),
+      makeTokenUsageRecord('turn-2', {
+        input_tokens: 500,
+        cached_input_tokens: 0,
+        cache_write_input_tokens: 0,
+        output_tokens: 50,
+      }),
+    );
+    expect(codexUsage(content)).toEqual({
+      inputTokens: 100,
+      outputTokens: 10,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      model: 'model-1',
+    });
+  });
+
+  test('returns undefined when no turn has completed', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeTaskStarted('turn-1'),
+      makeTokenUsageRecord('turn-1', { input_tokens: 100, output_tokens: 10 }),
+    );
+    expect(codexUsage(content)).toBeUndefined();
+  });
+
+  test('falls back to summing per-call token_count usage inside the turn', () => {
+    const content = lines(
+      makeSessionMeta('s'),
+      makeTurnContext('model-1', 'turn-1'),
+      makeTaskStarted('turn-1'),
+      makeTokenCount({
+        input_tokens: 100,
+        cached_input_tokens: 50,
+        cache_write_input_tokens: 0,
+        output_tokens: 5,
+      }),
+      makeTokenCount({
+        input_tokens: 200,
+        cached_input_tokens: 100,
+        cache_write_input_tokens: 0,
+        output_tokens: 7,
+      }),
+      makeTaskCompleteEvent('turn-1'),
+    );
+    expect(codexUsage(content)).toEqual({
+      inputTokens: 150,
+      outputTokens: 12,
+      cacheReadTokens: 150,
+      cacheWriteTokens: 0,
+      model: 'model-1',
+    });
+  });
+
+  test('malformed lines are skipped, not fatal', () => {
+    const content = [
+      'not json',
+      '{partial',
+      makeSessionMeta('s'),
+      makeTurnContext('model-1', 'turn-1'),
+      makeTaskStarted('turn-1'),
+      makeTokenUsageRecord('turn-1', { input_tokens: 100, output_tokens: 10 }),
+      makeTaskCompleteEvent('turn-1'),
+    ].join('\n');
+    expect(codexUsage(content)).toEqual({
+      inputTokens: 100,
+      outputTokens: 10,
+      model: 'model-1',
+    });
+  });
+
+  test('an empty transcript has no usage', () => {
+    expect(codexUsage('')).toBeUndefined();
+  });
+});

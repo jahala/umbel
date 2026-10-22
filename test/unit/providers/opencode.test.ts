@@ -446,3 +446,116 @@ describe('PLUGIN_SOURCE identity binding', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// OpenCodeProvider.extractUsage — an export carries one assistant message per
+// API call, each with info.tokens and info.modelID. The newest turn is every
+// assistant message after the last user message.
+// ---------------------------------------------------------------------------
+
+type OcTokens = {
+  total?: number;
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cache?: { write?: number; read?: number };
+};
+
+function makeExportWithUsage(
+  messages: Array<{ role: string; tokens?: OcTokens; modelID?: string }>,
+): string {
+  return JSON.stringify({
+    info: {
+      id: 'ses_abc123',
+      slug: 'test-session',
+      projectID: 'global',
+      directory: '/tmp/test',
+      title: 'Test session',
+      model: { id: 'big-pickle', providerID: 'opencode', variant: 'default' },
+      version: '1.15.12',
+    },
+    messages: messages.map((m) => ({
+      info: {
+        role: m.role,
+        ...(m.modelID !== undefined ? { modelID: m.modelID } : {}),
+        ...(m.tokens !== undefined ? { tokens: m.tokens } : {}),
+      },
+      parts: [{ type: 'text', text: m.role }],
+    })),
+  });
+}
+
+function opencodeUsage(content: string) {
+  if (OpenCodeProvider.extractUsage === undefined) {
+    throw new Error('opencode has no extractUsage');
+  }
+  return OpenCodeProvider.extractUsage(content);
+}
+
+describe('OpenCodeProvider.extractUsage', () => {
+  test('reads tokens and model from the newest assistant message', () => {
+    const content = makeExportWithUsage([
+      { role: 'user' },
+      {
+        role: 'assistant',
+        modelID: 'big-pickle',
+        tokens: {
+          total: 100,
+          input: 80,
+          output: 10,
+          reasoning: 0,
+          cache: { write: 3, read: 10 },
+        },
+      },
+    ]);
+    expect(opencodeUsage(content)).toEqual({
+      inputTokens: 80,
+      outputTokens: 10,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 3,
+      model: 'big-pickle',
+    });
+  });
+
+  test('sums every assistant message after the last user message', () => {
+    const content = makeExportWithUsage([
+      { role: 'user' },
+      {
+        role: 'assistant',
+        modelID: 'old-model',
+        tokens: { input: 1000, output: 100, cache: { write: 0, read: 500 } },
+      },
+      { role: 'user' },
+      {
+        role: 'assistant',
+        modelID: 'big-pickle',
+        tokens: { input: 200, output: 20, cache: { write: 0, read: 50 } },
+      },
+      {
+        role: 'assistant',
+        modelID: 'big-pickle',
+        tokens: { input: 300, output: 30, cache: { write: 5, read: 70 } },
+      },
+    ]);
+    expect(opencodeUsage(content)).toEqual({
+      inputTokens: 500,
+      outputTokens: 50,
+      cacheReadTokens: 120,
+      cacheWriteTokens: 5,
+      model: 'big-pickle',
+    });
+  });
+
+  test('an assistant message without tokens contributes nothing', () => {
+    const content = makeExportWithUsage([
+      { role: 'user' },
+      { role: 'assistant', modelID: 'big-pickle' },
+    ]);
+    expect(opencodeUsage(content)).toBeUndefined();
+  });
+
+  test('malformed input yields undefined', () => {
+    expect(opencodeUsage('not json')).toBeUndefined();
+    expect(opencodeUsage('')).toBeUndefined();
+  });
+});

@@ -440,3 +440,61 @@ describe('extractAgyActionsFromContent', () => {
     expect(AgyProvider.extractActions?.(TOOLS)).toEqual(extractAgyActionsFromContent(TOOLS));
   });
 });
+
+// ---------------------------------------------------------------------------
+// AgyProvider.extractUsage — each result's usage is cumulative across the
+// conversation, so a turn's share is the newest result minus the previous one.
+// ---------------------------------------------------------------------------
+
+function agyUsage(content: string) {
+  if (AgyProvider.extractUsage === undefined) {
+    throw new Error('agy has no extractUsage');
+  }
+  return AgyProvider.extractUsage(content);
+}
+
+describe('AgyProvider.extractUsage', () => {
+  test('the second turn is the delta between its result and the first', () => {
+    expect(agyUsage(TWO_TURNS)).toEqual({
+      inputTokens: 23743 - 11820,
+      outputTokens: 54 - 30,
+      cacheReadTokens: 0,
+    });
+  });
+
+  test('a single-turn transcript reports its result as the turn', () => {
+    expect(agyUsage(TOOLS)).toEqual({
+      inputTokens: 49738,
+      outputTokens: 632,
+      cacheReadTokens: 0,
+    });
+  });
+
+  test('a denied-action turn still reports the usage it recorded', () => {
+    expect(agyUsage(DENIED)).toEqual({
+      inputTokens: 11831,
+      outputTokens: 335,
+      cacheReadTokens: 0,
+    });
+  });
+
+  test('a result without usage yields undefined', () => {
+    const content = JSON.stringify({
+      event: 'result',
+      result: { status: 'SUCCESS', response: 'ok' },
+    });
+    expect(agyUsage(`${content}\n`)).toBeUndefined();
+  });
+
+  test('malformed lines are skipped, not fatal', () => {
+    expect(agyUsage(['not json', '{partial', TWO_TURNS].join('\n'))).toEqual({
+      inputTokens: 23743 - 11820,
+      outputTokens: 54 - 30,
+      cacheReadTokens: 0,
+    });
+  });
+
+  test('an empty transcript has no usage', () => {
+    expect(agyUsage('')).toBeUndefined();
+  });
+});

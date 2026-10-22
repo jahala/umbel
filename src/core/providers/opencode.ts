@@ -5,7 +5,16 @@ import {
   parseTree,
   printParseErrorCode,
 } from 'jsonc-parser';
-import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn } from './types.ts';
+import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn, Usage } from './types.ts';
+import {
+  addCacheReadTokens,
+  addCacheWriteTokens,
+  addInputTokens,
+  addOutputTokens,
+  emptyUsageTotals,
+  numberField,
+  usageOf,
+} from './usage.ts';
 
 // ---------------------------------------------------------------------------
 // PLUGIN_SOURCE — bundled opencode JS plugin written verbatim to disk.
@@ -341,6 +350,58 @@ export function extractOpencodeActionsFromContent(content: string): ActionManife
 }
 
 // ---------------------------------------------------------------------------
+// extractOpencodeUsageFromContent — pure, total. An export carries one
+// assistant message per API call, each with info.tokens and info.modelID. The
+// newest turn is every assistant message after the last user message; older
+// turns are excluded. input excludes cache, so it is already the normalized
+// uncached count. Never throws; returns undefined for malformed input or no
+// token records.
+// ---------------------------------------------------------------------------
+
+export function extractOpencodeUsageFromContent(content: string): Usage | undefined {
+  const root = parseRoot(content);
+  if (root === null) return undefined;
+  const messages = root.messages;
+  if (!Array.isArray(messages)) return undefined;
+
+  let start = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg === null || typeof msg !== 'object') continue;
+    const info = (msg as JsonObj).info;
+    if (info !== null && typeof info === 'object' && (info as JsonObj).role === 'user') {
+      start = i + 1;
+      break;
+    }
+  }
+
+  const totals = emptyUsageTotals();
+  let model: string | undefined;
+
+  for (let i = start; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg === null || typeof msg !== 'object') continue;
+    const info = (msg as JsonObj).info;
+    if (info === null || typeof info !== 'object') continue;
+    const inf = info as JsonObj;
+    if (inf.role !== 'assistant') continue;
+    if (typeof inf.modelID === 'string') model = inf.modelID;
+    const tokens = inf.tokens;
+    if (tokens === null || typeof tokens !== 'object') continue;
+    const t = tokens as JsonObj;
+    addInputTokens(totals, numberField(t, 'input'));
+    addOutputTokens(totals, numberField(t, 'output'));
+    const cache = t.cache !== null && typeof t.cache === 'object' ? (t.cache as JsonObj) : null;
+    if (cache !== null) {
+      addCacheReadTokens(totals, numberField(cache, 'read'));
+      addCacheWriteTokens(totals, numberField(cache, 'write'));
+    }
+  }
+
+  return usageOf(totals, model);
+}
+
+// ---------------------------------------------------------------------------
 // opencodePluginShouldFire — pure gating predicates mirrored in the plugin.
 // An event acts only for the session bound at startup (umbel#118, the plugin's
 // forOwnSession). With nothing bound, today's behaviour stands. Never throws.
@@ -596,6 +657,10 @@ const opencodeProvider: AgentProvider = {
 
   extractTurns(content: string): Turn[] {
     return extractOpencodeTurnsFromContent(content);
+  },
+
+  extractUsage(content: string): Usage | undefined {
+    return extractOpencodeUsageFromContent(content);
   },
 
   // The bundled plugin: installed once as infrastructure alongside stop.sh.

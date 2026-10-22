@@ -438,6 +438,63 @@ describe('umbel_read — with jsonl', () => {
 });
 
 // ---------------------------------------------------------------------------
+// umbel_read — token usage rides beside the text, additively
+// ---------------------------------------------------------------------------
+
+describe('umbel_read — usage', () => {
+  test('structuredContent carries the turn usage and the text is unchanged', async () => {
+    const env = await setup();
+    const name = sessionName('readusage');
+
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+
+    await ensureSessionDir(name, env);
+
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const encodedCwd = tmpDir.replace(/[^a-zA-Z0-9]/g, '-');
+    const jsonlDir = join(projectsDir, encodedCwd);
+    await mkdir(jsonlDir, { recursive: true });
+
+    const jsonlPath = join(jsonlDir, `${name}.jsonl`);
+    const prompt = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+    });
+    const answer = JSON.stringify({
+      type: 'assistant',
+      message: {
+        id: 'm-usage',
+        role: 'assistant',
+        model: 'fake-model',
+        content: [{ type: 'text', text: 'Token usage answer.' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 11, output_tokens: 3 },
+      },
+    });
+    await writeFile(jsonlPath, `${prompt}\n${answer}\n`, 'utf8');
+
+    const session = SessionSchema.parse({
+      name,
+      cwd: '/tmp',
+      provider: 'claude',
+      anonymous: false,
+      createdAt: Date.now(),
+      jsonlPath,
+    });
+    await writeMeta(name, session, env);
+
+    const tools = createMcpTools(makeToolOpts(env, tmpDir));
+    const result = await tools.umbel_read({ name });
+
+    expect(result.content[0]?.text).toBe('Token usage answer.');
+    expect(result.structuredContent).toEqual({
+      usage: { inputTokens: 11, outputTokens: 3, model: 'fake-model' },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // umbel_capture
 // ---------------------------------------------------------------------------
 

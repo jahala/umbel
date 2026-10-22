@@ -10,7 +10,7 @@ import {
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
-import type { AgentProvider } from '../core/providers/types.ts';
+import type { AgentProvider, Usage } from '../core/providers/types.ts';
 import { matchedLine } from '../core/startup-dialogs.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
@@ -74,6 +74,10 @@ export interface WaitResult {
   // its pane — work it started and left behind when the turn ended. Empty when
   // none. Absent when the process listing could not be read.
   runningCommands?: RunningCommand[];
+  // When reason is 'stop', the token usage of the turn that just ended, when
+  // the provider reports it. The same transcript read that settles the handback
+  // supplies it, so recording cost needs no second parse.
+  usage?: Usage;
   // On timeout (and 'input'), a best-effort snapshot of the tmux pane at the
   // moment the wait settled — so a stuck worker's cause (e.g. an unexpected
   // provider dialog) is visible. Absent for clean reasons and when capture fails.
@@ -333,20 +337,29 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
     // stop seen here can precede the handback by a few hundred ms (umbel#86).
     // 'stop' is reported once the handback is readable; if the window closes
     // first, the message says a read may return an earlier message.
-    // handbackGap must never reject: once stopHeld is set, 'stop' outranks the
+    // handback must never reject: once stopHeld is set, 'stop' outranks the
     // deadline, so a rejection would leave the wait holding forever.
     let stopHeld = false;
-    async function handbackGap(): Promise<string | undefined> {
+    interface Handback {
+      message?: string;
+      usage?: Usage;
+    }
+
+    // A stop is not a promise the transcript holds the turn yet (umbel#86), and
+    // providers disagree on whether they mark a turn's end, so the handback reads
+    // when either fact matters. The usage comes from this same read: a provider
+    // that reports tokens but no end marker (opencode) still gets its stop usage.
+    async function handback(): Promise<Handback> {
       let meta: Session;
       try {
         meta = await d.fs.readMeta(name, env);
       } catch {
-        return undefined;
+        return {};
       }
       const provider = PROVIDERS[meta.provider];
-      if (provider?.turnEnded === undefined) return undefined;
+      if (provider?.turnEnded === undefined && provider?.extractUsage === undefined) return {};
       try {
-        const { ended } = await readTranscriptAtStop({
+        const { content, ended } = await readTranscriptAtStop({
           name,
           cwd: meta.cwd,
           sinceMs: meta.createdAt,
@@ -354,11 +367,17 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
           env,
           ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
         });
-        if (ended) return undefined;
+        if (ended) {
+          const usage = provider.extractUsage?.(content);
+          return usage !== undefined ? { usage } : {};
+        }
       } catch {
         // Unreadable transcript: report the stop and say why the handback may lag.
       }
-      return `the worker stopped, but its final message was not in the transcript within ${TURN_END_SETTLE_MS / 1000}s; read may return an earlier message`;
+      if (provider.turnEnded === undefined) return {};
+      return {
+        message: `the worker stopped, but its final message was not in the transcript within ${TURN_END_SETTLE_MS / 1000}s; read may return an earlier message`,
+      };
     }
 
     // What the worker left running, read from the pane's process tree at the
@@ -588,14 +607,15 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       } else if (reason === 'stop') {
         if (stopHeld) return;
         stopHeld = true;
-        const message = await handbackGap();
+        const handbackResult = await handback();
         if (settled) return;
         const left = await commandsLeftRunning();
         if (settled) return;
         settle({
           stopped: true,
           reason,
-          ...(message !== undefined ? { message } : {}),
+          ...(handbackResult.message !== undefined ? { message: handbackResult.message } : {}),
+          ...(handbackResult.usage !== undefined ? { usage: handbackResult.usage } : {}),
           ...(left !== undefined ? { runningCommands: left } : {}),
         });
       } else {

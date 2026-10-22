@@ -89,6 +89,24 @@ export interface Turn {
   text: string;
 }
 
+// ---------------------------------------------------------------------------
+// Usage — token usage of one provider turn
+// ---------------------------------------------------------------------------
+//
+// Returned by AgentProvider.extractUsage. Every field is optional: a provider
+// reports what its transcript holds and omits what it does not. `inputTokens`
+// counts input the provider did not serve from its cache, so the number means
+// the same thing across providers; cache reads and writes stay separate.
+// `model` is the model that answered.
+
+export interface Usage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  model?: string;
+}
+
 export interface AgentProvider {
   readonly name: string;
 
@@ -160,6 +178,12 @@ export interface AgentProvider {
   // still open; an unrecognised shape must answer true, or every read stalls.
   // Omit when the provider's format carries no such marker.
   turnEnded?(content: string): boolean;
+
+  // Optional: token usage of the newest COMPLETED turn. PURE and total. An open
+  // turn, an unreadable transcript, or a format with no usage answers undefined
+  // rather than a guess. `wait`'s stop result and `read --json` carry it when
+  // present, so a caller that records cost need not parse the transcript again.
+  extractUsage?(content: string): Usage | undefined;
 
   // Optional: the timestamp of a model request this provider has sent and not
   // yet answered, or undefined when none is in flight. PURE and total. While a
