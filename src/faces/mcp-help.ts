@@ -13,7 +13,7 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 ## spawn → send → wait → read → kill
 
 - spawn: starts a tmux session running the provider TUI; returns the session name.
-- send: types the prompt via tmux paste-buffer and confirms a turn started (opencode and claude: up to 10s on events/turn-start, error if it never does). Does NOT wait for the turn to finish.
+- send: types the prompt via tmux paste-buffer and confirms a turn started (opencode and claude: up to 10s on events/turn-start, error if it never does). Does NOT wait for the turn to finish. Returns { sinceMtime }: the mtime (ms) of events/stop immediately before the prompt was typed. Pass it to umbel_wait for race-free stop detection. 0 is valid: it means no turn has ended yet, so every stop after this send is newer than the baseline.
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
 - kill: tears down the tmux session and leaves its directory as a tombstone (events/dead, logs, transcript). Pass purge=true to remove it.
@@ -28,8 +28,9 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 
   const { content } = await tools.umbel_spawn({ cwd: "/repo", name: "rev", provider: "claude" });
   const { name } = JSON.parse(content[0].text);
-  await tools.umbel_send({ name, prompt: "Review PR #42" });
-  await tools.umbel_wait({ name, until: "stop", timeout: "10m" });
+  const sent = await tools.umbel_send({ name, prompt: "Review PR #42" });
+  const { sinceMtime } = JSON.parse(sent.content[0].text);
+  await tools.umbel_wait({ name, until: "stop", sinceMtime, timeout: "10m" });
   const { content: r } = await tools.umbel_read({ name });
   // r[0].text contains the assistant's response
   await tools.umbel_kill({ name });

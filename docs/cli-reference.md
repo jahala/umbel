@@ -142,7 +142,7 @@ umbel send [--json] <name> <prompt>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit `{"sinceMtime": N}` to stdout — the mtime snapshot of `events/stop` taken immediately before the keys were sent. Pass this value to `umbel wait --since N` to make stop-detection race-free when send and wait run in separate processes. **`0` is a valid value, not a failure:** `events/stop` does not exist until a worker's first turn ends, so the first send to a fresh worker always reports 0, meaning "no turn has ended yet — any stop counts". A conductor that spawns a worker per node and sends one prompt will therefore see 0 every time, correctly. |
+| `--json` | off | Emit `{"sinceMtime": N}` to stdout: the mtime of `events/stop`, in milliseconds since the epoch, read immediately before the keys were sent. Pass this value to `umbel wait --since N` to make stop-detection race-free when send and wait run in separate processes. **`0` is a valid value, not a failure:** `events/stop` does not exist until a worker's first turn ends, so a send to a fresh worker reports 0, meaning "any stop is newer than this baseline". A conductor that spawns a worker per node and sends one prompt will therefore see 0 every time, correctly. After a turn has ended, the next send reports that stop's mtime, a positive number. |
 
 Multi-line prompts are handled automatically via `tmux load-buffer` + `paste-buffer` (see `src/adapters/tmux.ts`).
 
@@ -192,7 +192,7 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--json` | off | Emit one JSON object to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `reason` is always present. `message` comes with `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line); `inputReason` comes with `input` (`permission`, `idle`, `question`, or `sign-in`); `exitCode` and `paneSnapshot` come with `dead`; `paneSnapshot` comes with `timeout`; `runningCommands` and `usage` come with `stop`. When the pane is showing the provider's usage-limit dialog, an `input` result's `message` is that dialog's own line instead of the hook's text. |
-| `--since N` | 0 | Stop-mtime baseline (nanosecond timestamp from `umbel send --json`). Makes the stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. |
+| `--since N` | 0 | Stop-mtime baseline in milliseconds (the `sinceMtime` value from `umbel send --json`). Makes stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. 0 means no stop has been recorded yet, so any stop after the send resolves the wait. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
 | `--pattern REGEX` | — | Required when `--until=pattern`. Regex matched against tmux pane output. |
