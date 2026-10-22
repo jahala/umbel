@@ -50,6 +50,24 @@ describe('providerErrorLine', () => {
     expect(providerErrorLine('+⏺ API Error: 402 Insufficient Balance\n', patterns)).toBeUndefined();
   });
 
+  // A turn that failed and was then retried by hand leaves its error on the
+  // screen while the worker carries on. Only an error with nothing the CLI
+  // printed after it describes the prompt the worker is waiting on now.
+  test('an error the CLI has printed past is not the current state', () => {
+    const later = [
+      '⏺ API Error: 529 Overloaded',
+      '',
+      '❯ try again',
+      '',
+      '⏺ Bash(ls)',
+      '  ⎿  Running…',
+      '',
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+    ].join('\n');
+    expect(providerErrorLine(later, ClaudeProvider.errorMatch ?? [])).toBeUndefined();
+  });
+
   test('undefined without a match or without patterns', () => {
     expect(providerErrorLine('❯ Working on it\n', ClaudeProvider.errorMatch ?? [])).toBeUndefined();
     expect(providerErrorLine(API_ERROR, [])).toBeUndefined();

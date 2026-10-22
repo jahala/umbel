@@ -63,6 +63,9 @@ export function providerErrorLine(pane: string, patterns: readonly RegExp[]): st
     if (patterns.some((p) => p.test(line))) at = i;
   }
   if (at === -1) return undefined;
+  // Anything the CLI printed after the error (its message marker, ⏺) means the
+  // worker carried on: the error is history, not why it waits now.
+  if (lines.slice(at + 1).some((l) => ends(l).startsWith('⏺'))) return undefined;
   const parts = [ends(lines[at] ?? '').replace(/^⏺\s*/, '')];
   for (let i = at + 1; i < lines.length && parts.length - 1 < ERROR_CONTINUATION_ROWS; i++) {
     const row = lines[i] ?? '';
