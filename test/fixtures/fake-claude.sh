@@ -73,6 +73,12 @@
 
 set -euo pipefail
 
+# JSON-encode one string for a transcript line. jq ships with what umbel
+# already requires; an interpreter is not, and may be missing (umbel#81).
+json_str() {
+  printf '%s' "$1" | jq -Rs .
+}
+
 # Dies before the main UI, like a real binary refused by its own startup (bad
 # flag, missing auth). Nothing is printed and nothing is written, so the pane
 # holds only what tmux puts there.
@@ -170,7 +176,7 @@ fire_hook() {
   if [[ -n "${FAKE_CLAUDE_HOOK:-}" && -x "${FAKE_CLAUDE_HOOK}" ]]; then
     # Mirror real claude's hook contract: payload with session_id, transcript_path,
     # cwd, hook_event_name on stdin. The stop.sh script extracts transcript_path
-    # via jq. Use printf directly (no python dependency) — values here are
+    # via jq. Use printf directly (no interpreter dependency) — values here are
     # internal and contain no characters that need JSON escaping.
     local cwd_now
     cwd_now="$(pwd)"
@@ -205,7 +211,7 @@ write_turn() {
 
   # User message line
   printf '{"type":"human","message":{"role":"user","content":[{"type":"text","text":%s}]},"uuid":"u-%s","timestamp":"%s"}\n' \
-    "$(echo -n "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "$(json_str "$prompt")" \
     "$$" "$now" >> "$JSONL_FILE"
 
   # A failed request: claude prints the provider's error line and, when the
@@ -298,7 +304,7 @@ write_turn() {
     printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"thinking","thinking":"done"}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
       "$$" "$now" >> "$JSONL_FILE"
     printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
-      "$$" "$(echo -n "Response to: $prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" "$now" >> "$JSONL_FILE"
+      "$$" "$(json_str "Response to: $prompt")" "$now" >> "$JSONL_FILE"
     return
   fi
 
@@ -314,7 +320,7 @@ write_turn() {
     printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"thinking","thinking":"done"}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
       "$$" "$now" >> "$JSONL_FILE"
     printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant","content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"timestamp":"%s"}\n' \
-      "$$" "$(echo -n "Response to: $prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" "$now" >> "$JSONL_FILE"
+      "$$" "$(json_str "Response to: $prompt")" "$now" >> "$JSONL_FILE"
     return
   fi
 
@@ -335,7 +341,7 @@ write_turn() {
   # Final assistant entry with end_turn
   printf '{"type":"assistant","message":{"id":"m-final-%s","role":"assistant"%s%s,"content":[{"type":"text","text":%s}],"stop_reason":"end_turn"},"uuid":"a2-%s","timestamp":"%s"}\n' \
     "$$" "$MODEL_FIELDS" "$USAGE_FIELDS" \
-    "$(echo -n "Response to: $prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "$(json_str "Response to: $prompt")" \
     "$$" "$now" >> "$JSONL_FILE"
 
   fire_hook

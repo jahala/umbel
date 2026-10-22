@@ -20,6 +20,12 @@
 
 set -euo pipefail
 
+# JSON-encode one string for a transcript line. jq ships with what umbel
+# already requires; an interpreter is not, and may be missing (umbel#81).
+json_str() {
+  printf '%s' "$1" | jq -Rs .
+}
+
 DELAY="${FAKE_CODEX_DELAY:-0}"
 ERROR_LINE="${FAKE_CODEX_ERROR:-}"
 ERROR_THEN_CONTINUE="${FAKE_CODEX_ERROR_THEN_CONTINUE:-0}"
@@ -69,17 +75,17 @@ write_turn() {
 
   # response_item: model-visible user message (OpenAI Responses API envelope).
   printf '{"timestamp":"%s","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":%s}]}}\n' \
-    "${now}" "$(printf '%s' "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "${now}" "$(json_str "$prompt")" \
     >> "${JSONL_FILE}"
 
   # event_msg/user_message: human-readable copy of the user turn.
   printf '{"timestamp":"%s","type":"event_msg","payload":{"type":"user_message","message":%s}}\n' \
-    "${now}" "$(printf '%s' "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "${now}" "$(json_str "$prompt")" \
     >> "${JSONL_FILE}"
 
   # event_msg/agent_message: the assistant response (what parseTranscript reads).
   printf '{"timestamp":"%s","type":"event_msg","payload":{"type":"agent_message","message":%s}}\n' \
-    "${now}" "$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    "${now}" "$(json_str "$response")" \
     >> "${JSONL_FILE}"
 
   # event_msg/task_complete: wire name for EventMsg::TurnComplete.
