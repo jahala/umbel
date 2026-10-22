@@ -98,6 +98,11 @@ describe('opencode.jsonc that does not parse', () => {
       expect(refused.column).toBe(broken.column);
       expect(refused.message).toContain(`${cfgPath}:${broken.line}:${broken.column}`);
       expect((await readFile(cfgPath)).equals(before)).toBe(true);
+      // Migration runs before the plugin is written: a refused config leaves no
+      // plugin behind either.
+      expect(await exists(join(tmpDir, 'xdg', 'opencode', 'plugin', 'opencode-stop.ts'))).toBe(
+        false,
+      );
     });
 
     test(`spawn refuses ${broken.label} before any tmux session or session dir exists`, async () => {
