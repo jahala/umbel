@@ -449,9 +449,15 @@ const claudeProvider: AgentProvider = {
   // fires at once even for a prompt queued onto a turn already running.
   turnStartEvent: 'turn-start',
 
-  // Claude Code prints "API Error: <status> ..." when a request fails
-  // (jahala/umbel#67); it retries on its own, so only a still pane settles.
-  errorMatch: [/API Error/],
+  // Claude Code prints "⏺ API Error: <status> ..." when a request fails
+  // (jahala/umbel#67); it retries on its own, so only a still pane settles. A
+  // provider that refuses the turn outright (out of credit: "⏺ API Error: 402
+  // Insufficient Balance", seen on a DeepSeek-backed worker on 2026-10-22) fires
+  // no Stop, only the idle notification, so `wait` also reads this line for its
+  // `input` message (umbel#129). Anchored to the marker: a worker's own reply or
+  // diff can carry the same words, but not behind the CLI's message marker on
+  // its own line.
+  errorMatch: [/^⏺\s*API Error:/m],
 
   // Matched on the HIGHLIGHTED line (❯) rather than the dialog's prose, because
   // the right keys depend on where the cursor actually sits. Claude Code 2.1.261

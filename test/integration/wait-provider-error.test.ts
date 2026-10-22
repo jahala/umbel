@@ -20,7 +20,9 @@ const SETTLE_WITHIN_MS = 10_000;
 const CODEX_404 =
   'unexpected status 404 Not Found: The model gpt-5.5 does not exist or you do not have access to it';
 const CODEX_NO_ACCESS = 'The model gpt-5.5 does not exist or you do not have access to it.';
-const CLAUDE_529 = 'API Error: 529 overloaded';
+// As the CLI renders it: its message marker, then the error. matchProviderError
+// keeps the marker on the line it reports.
+const CLAUDE_529 = '⏺ API Error: 529 overloaded';
 
 const DIRS: string[] = [];
 const CREATED: string[] = [];

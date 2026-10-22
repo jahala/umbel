@@ -14,6 +14,12 @@
 #                         nothing until the answer lands
 #   FAKE_CLAUDE_PANE_MS   optional, ms to print a progress line to the pane every 500 ms
 #   FAKE_CLAUDE_ERROR     optional, print this line to the pane at the start of a turn
+#   FAKE_CLAUDE_ERROR_FILE optional, a file: print its contents as the error line,
+#                         wrapped rows and all
+#   FAKE_CLAUDE_ERROR_MS  optional, ms into the turn the error line appears
+#   FAKE_CLAUDE_ERROR_IDLE optional, with an error line: fire the notify hook and
+#                         wait there, as claude does when the provider refuses the
+#                         turn: no stop for it, only the idle notification
 #   FAKE_CLAUDE_EXIT_AT_START optional, exit with this status before printing or
 #                         writing anything — a binary that dies during startup
 #   FAKE_CLAUDE_DIE_MS    optional, ms into a turn the worker dies: it sleeps that
@@ -80,6 +86,11 @@ if [[ -n "${FAKE_CLAUDE_SIGN_IN:-}" ]]; then
 fi
 
 ERROR_LINE="${FAKE_CLAUDE_ERROR:-}"
+if [[ -n "${FAKE_CLAUDE_ERROR_FILE:-}" ]]; then
+  ERROR_LINE="$(cat "$FAKE_CLAUDE_ERROR_FILE")"
+fi
+ERROR_MS="${FAKE_CLAUDE_ERROR_MS:-0}"
+ERROR_IDLE="${FAKE_CLAUDE_ERROR_IDLE:-}"
 
 DELAY="${FAKE_CLAUDE_DELAY:-0}"
 SUBAGENT_MS="${FAKE_CLAUDE_SUBAGENT_MS:-0}"
@@ -197,7 +208,23 @@ write_turn() {
     "$(echo -n "$prompt" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
     "$$" "$now" >> "$JSONL_FILE"
 
-  [[ -n "$ERROR_LINE" ]] && echo "$ERROR_LINE"
+  # A failed request: claude prints the provider's error line and, when the
+  # provider refuses the turn outright (out of credit), fires only the idle
+  # notification and waits there. No stop follows, so the turn looks like an
+  # idle worker unless the pane is read (umbel#129).
+  if [[ -n "$ERROR_LINE" ]]; then
+    if [[ "$ERROR_MS" -gt 0 ]]; then
+      sleep "$(echo "scale=3; $ERROR_MS / 1000" | bc)"
+    fi
+    echo "$ERROR_LINE"
+    if [[ -n "$ERROR_IDLE" ]]; then
+      if [[ -n "$NOTIFY_HOOK" && -x "$NOTIFY_HOOK" ]]; then
+        printf '{"session_id":"%s","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Claude is waiting for your input"}' \
+          "${SESSION_ID}" | bash "$NOTIFY_HOOK"
+      fi
+      exec sleep 600
+    fi
+  fi
 
   # The account's usage limit: claude prints the dialog and waits there, firing
   # the Notification hook it uses for any other input wait (umbel#75).
