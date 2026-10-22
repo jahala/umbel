@@ -130,7 +130,12 @@ describe('codex readiness (0.154.0 recorded startup)', () => {
     const { bannerOnly, loading } = recording1Frames();
     const ready = CodexProvider.readyMatch ?? /$^/;
     expect(ready.test(bannerOnly)).toBe(false);
-    expect(ready.test(loading)).toBe(true);
+    // The idle prompt line paints while the model is still loading, and a
+    // dialog can still open after it (2026-10-22: "Hooks need review" opened
+    // about 2 s after spawn returned on a loading banner, and the first prompt
+    // went into it). Ready waits for the newest banner to name its model.
+    expect(ready.test(loading)).toBe(false);
+    expect(ready.test(recording2Frames()[0] ?? '')).toBe(true);
     expect(ready.test('Implement {feature}')).toBe(true);
   });
 

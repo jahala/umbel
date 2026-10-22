@@ -218,7 +218,9 @@ EOF
   printf '\033[7A\033[J'
 fi
 
-# The idle prompt line codex's readyMatch waits for.
+# The loaded banner's model line, then the idle prompt line: codex's readyMatch
+# waits for the prompt line below a banner that names its model.
+echo "│ model:       fake-model   /model to change │"
 echo "› Ask Codex to do anything"
 
 # Read prompts from stdin in a loop; write a turn per line; exit on /exit or EOF.
