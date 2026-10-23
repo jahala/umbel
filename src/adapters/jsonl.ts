@@ -139,6 +139,23 @@ async function firstLineOf(path: string): Promise<string> {
   }
 }
 
+// The newest bytes of a transcript. status asks every live worker which model
+// it runs and whether a request is in flight, and a codex rollout can run to
+// hundreds of megabytes; both answers are written at the end of a turn, so the
+// tail is enough. A partial first line parses to nothing and is skipped by the
+// providers' line readers (umbel#69).
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+
+export async function readTranscriptTail(
+  path: string,
+  maxBytes = TRANSCRIPT_TAIL_BYTES,
+): Promise<string> {
+  const file = Bun.file(path);
+  const size = file.size;
+  if (size <= maxBytes) return file.text();
+  return file.slice(size - maxBytes, size).text();
+}
+
 export async function discoverTranscript(opts: {
   sessionName: string;
   cwd: string;
