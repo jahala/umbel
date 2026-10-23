@@ -15,8 +15,19 @@ import { discoverTranscriptPath, knownTranscriptPath } from './resolve-jsonl.ts'
 // StatusEntry / StatusOpts
 // ---------------------------------------------------------------------------
 
+// What a worker is doing, in one word, for the table's STATUS column and the
+// same field in JSON (umbel#71). `alive` is the honest answer when the provider
+// offers no signal that says a turn began, so busy and idle are never guessed.
+export type WorkerState = 'busy' | 'idle' | 'input' | 'dead' | 'alive';
+
 export interface StatusEntry extends Session {
   alive: boolean;
+  // busy: a turn is open (its start is newer than the last stop); idle: no turn
+  // is open; input: the worker is waiting on a person; dead: gone. alive: no
+  // turn-start signal, so only liveness can be told.
+  state: WorkerState;
+  // Newest of the events log (hook fires) and the worker's transcript, so a
+  // long turn shows activity while no hook fires (umbel#71).
   lastActivityAt?: number;
   // True when the worker is awaiting the user — the latest notification (newer
   // than the last turn-end) classifies as a real awaiting event, not an
@@ -66,7 +77,7 @@ export interface StatusOpts {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: enrich a session with alive + lastActivityAt
+// Internal: enrich a session with liveness, state and activity
 // ---------------------------------------------------------------------------
 
 async function fileMtime(path: string): Promise<number> {
@@ -84,12 +95,13 @@ async function enrich(
   processList: () => Promise<string>,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
-  const [pane, dead, logMtime, notifMtime, stopMtime] = await Promise.all([
+  const [pane, dead, logMtime, notifMtime, stopMtime, turnStartMtime] = await Promise.all([
     d.tmux.paneState(session.name, env),
     d.fs.readDead(session.name, env),
     fileMtime(join(eventsDir, 'log')),
     fileMtime(join(eventsDir, 'notification')),
     fileMtime(join(eventsDir, 'stop')),
+    session.turnStartEvent === undefined ? 0 : fileMtime(join(eventsDir, session.turnStartEvent)),
   ]);
 
   // Alive is the pane, not the session: remain-on-exit keeps a dead worker's
@@ -97,14 +109,14 @@ async function enrich(
   const entry: StatusEntry = {
     ...session,
     alive: pane.exists && !pane.dead,
+    // Replaced below, once the notification has been classified: input outranks
+    // whatever the turn signal says.
+    state: 'alive',
     needsInput: false,
     runningCommands: [],
   };
   if (pane.pid !== undefined) {
     entry.runningCommands = runningCommands(await processList(), pane.pid);
-  }
-  if (logMtime > 0) {
-    entry.lastActivityAt = logMtime;
   }
 
   // How it went: the record written when the death was found, or — for a worker
@@ -136,12 +148,53 @@ async function enrich(
   const quota = parseQuota(await readFileSafe(join(eventsDir, 'quota')));
   if (quota !== null) entry.quota = quota;
 
-  if (entry.alive) {
-    const awaiting = await awaitingProviderSince(session, d, env);
+  const provider = PROVIDERS[session.provider];
+  // The transcript answers LAST and an in-flight request, so its path is
+  // resolved once. Only a live worker's transcript is discovered: a listing of
+  // tombstones reads paths somebody recorded and never guesses.
+  const transcript = await transcriptPath(session, provider, d, env, entry.alive);
+
+  // A hook fires only at a turn's boundaries, so the events log leaves a long
+  // turn still; the transcript grows as the worker writes (umbel#71).
+  const transcriptMtime = transcript === undefined ? 0 : await fileMtime(transcript);
+  const lastActivityAt = Math.max(logMtime, transcriptMtime);
+  if (lastActivityAt > 0) entry.lastActivityAt = lastActivityAt;
+
+  // A model request in flight is a worker with nothing to write until the
+  // answer arrives, however long that takes (umbel#117). Absent when nothing is
+  // in flight: a caller can tell a slow provider from a wedged worker without a
+  // wait of its own.
+  if (entry.alive && provider?.requestInFlight !== undefined && transcript !== undefined) {
+    const awaiting = provider.requestInFlight(await readFileSafe(transcript));
     if (awaiting !== undefined) entry.awaitingProviderSince = awaiting;
   }
 
+  entry.state = workerState(
+    entry.alive,
+    entry.needsInput,
+    session.turnStartEvent !== undefined,
+    turnStartMtime,
+    stopMtime,
+  );
   return entry;
+}
+
+// Precedence: a gone worker is dead whatever its files say; a worker waiting on
+// a person is input even mid-turn. Only a provider that signals turn starts can
+// tell a turn in progress from an idle prompt, so the rest answer `alive`.
+// A stop landing in the same millisecond as its turn start wins the tie: the
+// turn has ended.
+function workerState(
+  alive: boolean,
+  needsInput: boolean,
+  hasTurnSignal: boolean,
+  turnStartAt: number,
+  stoppedAt: number,
+): WorkerState {
+  if (!alive) return 'dead';
+  if (needsInput) return 'input';
+  if (!hasTurnSignal) return 'alive';
+  return turnStartAt > stoppedAt ? 'busy' : 'idle';
 }
 
 async function readFileSafe(path: string): Promise<string> {
@@ -155,15 +208,21 @@ async function readFileSafe(path: string): Promise<string> {
 // The transcript status reads is resolved the cheap way: the path the newest
 // stop hook captured, then the one meta already holds, then a single discovery
 // scan. No waiting: a status call must answer now, and a session with no
-// transcript yet simply has no request in flight.
+// transcript yet simply has no request in flight. Discovery is for a live worker
+// only, and only where a scan can name the worker's own file: codex's rollout
+// search, or claude's project directory. Every other provider's transcript is
+// unnamed or export-only, and a guess would read another worker's.
 async function transcriptPath(
   session: Session,
-  provider: AgentProvider,
+  provider: AgentProvider | undefined,
   d: Deps,
   env: Record<string, string | undefined>,
+  discover: boolean,
 ): Promise<string | undefined> {
   const known = await knownTranscriptPath(session.name, session.jsonlPath, env, d);
   if (known !== '') return known;
+  if (!discover || provider === undefined) return undefined;
+  if (provider.transcriptSearch === undefined && provider.name !== 'claude') return undefined;
   try {
     return await discoverTranscriptPath({
       name: session.name,
@@ -177,23 +236,6 @@ async function transcriptPath(
   } catch {
     return undefined;
   }
-}
-
-// A model request in flight is a worker with nothing to write until the answer
-// arrives, however long that takes (umbel#117). One field, absent when nothing
-// is in flight: a caller can tell a slow provider from a wedged worker without
-// a wait of its own.
-async function awaitingProviderSince(
-  session: Session,
-  d: Deps,
-  env: Record<string, string | undefined>,
-): Promise<string | undefined> {
-  const provider = PROVIDERS[session.provider];
-  if (provider?.requestInFlight === undefined) return undefined;
-  const path = await transcriptPath(session, provider, d, env);
-  if (path === undefined) return undefined;
-  const content = await readFileSafe(path);
-  return provider.requestInFlight(content);
 }
 
 // ---------------------------------------------------------------------------

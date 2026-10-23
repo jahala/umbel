@@ -212,11 +212,12 @@ function truncateCwd(cwd: string, max = 30): string {
 
 type StatusEntry = Awaited<ReturnType<typeof status>>[0];
 
-// A dead worker's STATUS names what it died of, when tmux recorded a status, so
-// the post-mortem starts at the table. A death by signal recorded none; the
-// pane snapshot in events/dead names it.
+// A live worker's STATUS is what it is doing (busy/idle/input/alive, umbel#71).
+// A dead worker's names what it died of, when tmux recorded a status, so the
+// post-mortem starts at the table. A death by signal recorded none; the pane
+// snapshot in events/dead names it.
 function statusWord(e: StatusEntry): string {
-  if (e.alive) return 'alive';
+  if (e.alive) return e.state;
   const exitCode = e.dead?.exitCode;
   return exitCode === undefined ? 'dead' : `dead (exit ${exitCode})`;
 }
