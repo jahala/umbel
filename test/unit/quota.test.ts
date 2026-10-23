@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { buildSettingsJson } from '../../src/adapters/hooks.ts';
-import { parseQuota } from '../../src/core/quota.ts';
+import { parseQuota, parseStatuslineModel } from '../../src/core/quota.ts';
 
 describe('parseQuota', () => {
   test('reads both windows and reports the sooner reset', () => {
@@ -49,6 +49,37 @@ describe('parseQuota', () => {
     expect(
       parseQuota(JSON.stringify({ rate_limits: { seven_day: { used_percentage: 12 } } })),
     ).toEqual({ sevenDayPct: 12 });
+  });
+});
+
+describe('parseStatuslineModel', () => {
+  // claude's statusLine payload carries the model from launch, before any
+  // transcript entry exists (umbel#69).
+  test('reads the full id, which tells two versions apart', () => {
+    expect(
+      parseStatuslineModel(
+        JSON.stringify({ model: { id: 'claude-opus-5-5', display_name: 'Opus' } }),
+      ),
+    ).toBe('claude-opus-5-5');
+  });
+
+  test('falls back to display_name when no id is reported', () => {
+    expect(parseStatuslineModel(JSON.stringify({ model: { display_name: 'Opus' } }))).toBe('Opus');
+  });
+
+  test('is total: no model, an empty id, or malformed input yields undefined', () => {
+    for (const bad of [
+      '',
+      'not json',
+      'null',
+      '[]',
+      '{"rate_limits":{}}',
+      '{"model":null}',
+      '{"model":{}}',
+      '{"model":{"id":""}}',
+    ]) {
+      expect(parseStatuslineModel(bad)).toBeUndefined();
+    }
   });
 });
 
