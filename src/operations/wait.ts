@@ -20,7 +20,7 @@ import { applyDefaultTimeout, compile, deadlineOf } from '../core/wait.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
-import { discoverTranscriptPath } from './resolve-jsonl.ts';
+import { discoverTranscriptPath, knownTranscriptPath } from './resolve-jsonl.ts';
 import { readTranscriptAtStop, TURN_END_SETTLE_MS } from './resolve-transcript.ts';
 
 // Re-export WaitCondition for convenience at call sites
@@ -713,19 +713,14 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
       let discoveredTranscript: string | undefined;
       const eventsDir = d.fs.eventsDir(name, env);
 
-      // Cheap sources first (meta, the hook-captured path); discovery only every
-      // few polls, and never for providers whose transcript is not a file.
+      // Cheap sources first (the hook-captured path, then meta); discovery only
+      // every few polls, and never for providers whose transcript is not a file.
       const resolveTranscript = async (
         meta: Session,
         poll: number,
       ): Promise<string | undefined> => {
-        if (meta.jsonlPath !== null && meta.jsonlPath !== '') return meta.jsonlPath;
-        try {
-          const hooked = (await readFile(join(eventsDir, 'transcript-path'), 'utf8')).trim();
-          if (hooked !== '') return hooked;
-        } catch {
-          // No hook has fired yet — fall through to discovery.
-        }
+        const known = await knownTranscriptPath(name, meta.jsonlPath, env, d);
+        if (known !== '') return known;
         if (discoveredTranscript !== undefined) return discoveredTranscript;
         if (poll % TRANSCRIPT_DISCOVERY_EVERY_POLLS !== 0) return undefined;
         const provider = PROVIDERS[meta.provider];

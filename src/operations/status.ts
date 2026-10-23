@@ -9,7 +9,7 @@ import type { Session } from '../core/types.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
-import { discoverTranscriptPath } from './resolve-jsonl.ts';
+import { discoverTranscriptPath, knownTranscriptPath } from './resolve-jsonl.ts';
 
 // ---------------------------------------------------------------------------
 // StatusEntry / StatusOpts
@@ -152,21 +152,18 @@ async function readFileSafe(path: string): Promise<string> {
   }
 }
 
-// The transcript status reads is resolved the cheap way: the path meta already
-// holds, then the one the stop hook captured, then a single discovery scan. No
-// waiting: a status call must answer now, and a session with no transcript yet
-// simply has no request in flight.
+// The transcript status reads is resolved the cheap way: the path the newest
+// stop hook captured, then the one meta already holds, then a single discovery
+// scan. No waiting: a status call must answer now, and a session with no
+// transcript yet simply has no request in flight.
 async function transcriptPath(
   session: Session,
   provider: AgentProvider,
   d: Deps,
   env: Record<string, string | undefined>,
 ): Promise<string | undefined> {
-  if (session.jsonlPath !== null && session.jsonlPath !== '') return session.jsonlPath;
-  const hooked = (
-    await readFileSafe(join(d.fs.eventsDir(session.name, env), 'transcript-path'))
-  ).trim();
-  if (hooked !== '') return hooked;
+  const known = await knownTranscriptPath(session.name, session.jsonlPath, env, d);
+  if (known !== '') return known;
   try {
     return await discoverTranscriptPath({
       name: session.name,

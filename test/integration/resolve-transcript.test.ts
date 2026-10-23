@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionDeadError } from '../../src/core/errors.ts';
@@ -215,5 +215,35 @@ describe('resolveTranscriptContent — file branch', () => {
     });
 
     expect(result).toBe(content);
+  });
+
+  // A /clear or /new continues the worker in a new transcript, and its Stop
+  // hook records that path. The file it replaces was cached in meta.json by an
+  // earlier read, which must not outrank the newer record (umbel#141).
+  test('the path a later Stop hook recorded outranks the one meta cached', async () => {
+    const env = await makeEnv();
+    const name = 'file4';
+    const cachedPath = join(tmpDir, 'cached.jsonl');
+    const hookedPath = join(tmpDir, 'hooked.jsonl');
+
+    await writeFile(cachedPath, 'previous session\n', 'utf8');
+    await writeFile(hookedPath, 'current session\n', 'utf8');
+    await makeSession(env, name, cachedPath);
+    const eventsDir = join(tmpDir, 'sessions', name, 'events');
+    await writeFile(join(eventsDir, 'transcript-path'), hookedPath, 'utf8');
+
+    const result = await resolveTranscriptContent({
+      name,
+      cwd: '/tmp',
+      sinceMs: Date.now(),
+      provider: fakeFileProvider,
+      env,
+    });
+
+    expect(result).toBe('current session\n');
+    const meta = JSON.parse(
+      await readFile(join(tmpDir, 'sessions', name, 'meta.json'), 'utf8'),
+    ) as { jsonlPath: string };
+    expect(meta.jsonlPath).toBe(hookedPath);
   });
 });
