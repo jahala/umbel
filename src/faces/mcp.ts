@@ -402,15 +402,10 @@ export async function runMcpServer(opts: McpServerOpts): Promise<void> {
   server.tool(
     'umbel_actions',
     TOOL_DESCRIPTIONS.umbel_actions,
-    { name: z.string() },
+    VerbSchemas.actions.shape,
     tools.umbel_actions,
   );
-  server.tool(
-    'umbel_diff',
-    TOOL_DESCRIPTIONS.umbel_diff,
-    { name: z.string(), from: z.number().int().optional(), to: z.number().int().optional() },
-    tools.umbel_diff,
-  );
+  server.tool('umbel_diff', TOOL_DESCRIPTIONS.umbel_diff, VerbSchemas.diff.shape, tools.umbel_diff);
   server.tool(
     'umbel_capture',
     TOOL_DESCRIPTIONS.umbel_capture,

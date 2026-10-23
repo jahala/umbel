@@ -74,7 +74,6 @@ describe('VerbSchemas.wait — sinceMtime', () => {
 
 const MAIN = join(import.meta.dir, '../../src/main.ts');
 const FAKE_CLAUDE = join(import.meta.dir, '../fixtures/fake-claude.sh');
-const FAKE_CODEX = join(import.meta.dir, '../fixtures/fake-codex.sh');
 
 interface RunResult {
   code: number;
@@ -195,10 +194,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
           '--allowed-tools',
           'Read,Write',
         ],
-        {
-          UMBEL_STATE: tmpDir,
-          UMBEL_CODEX_BIN: FAKE_CODEX,
-        },
+        { UMBEL_STATE: tmpDir },
       );
       expect(r.code).toBe(2);
       expect(r.stderr).toContain('codex');
@@ -208,7 +204,6 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
   });
 
   test('spawn gemini --allowed-tools exits 2 before side effects', async () => {
-    const FAKE_GEMINI = join(import.meta.dir, '../fixtures/fake-gemini.sh');
     const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-r1-atg-'));
     try {
       const r = await spawnCli(
@@ -223,10 +218,7 @@ describe('D4: allowedTools with unsupported providers exits 2', () => {
           '--allowed-tools',
           'Read',
         ],
-        {
-          UMBEL_STATE: tmpDir,
-          UMBEL_GEMINI_BIN: FAKE_GEMINI,
-        },
+        { UMBEL_STATE: tmpDir },
       );
       expect(r.code).toBe(2);
       expect(r.stderr).toContain('gemini');

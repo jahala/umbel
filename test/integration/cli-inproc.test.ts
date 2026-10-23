@@ -159,6 +159,37 @@ describe('cli — help and version', () => {
     expect(stdout).toContain('umbel');
   });
 
+  test('spawn --help prints spawn flags, not the global usage, and exits 0', async () => {
+    const { code, stdout } = await runWithCapture(() => runCli(['spawn', '--help']));
+    expect(code).toBe(0);
+    expect(stdout).toContain('umbel spawn');
+    expect(stdout).toContain('--provider');
+    expect(stdout).toContain('--unattended');
+    expect(stdout).not.toContain('Verbs:');
+  });
+
+  test('kill -h prints kill flags and its exit codes', async () => {
+    const { code, stdout } = await runWithCapture(() => runCli(['kill', '-h']));
+    expect(code).toBe(0);
+    expect(stdout).toContain('--dry-run');
+    expect(stdout).toContain('--prefix');
+    expect(stdout).toContain('Exit codes:');
+  });
+
+  test('a verb help page runs no verb', async () => {
+    // prune would sweep state if it ran; --help must answer before dispatch.
+    const { code, stdout } = await runWithCapture(() => runCli(['prune', '--help']));
+    expect(code).toBe(0);
+    expect(stdout).toContain('--older-than');
+    expect(stdout).not.toContain('removed');
+  });
+
+  test('an unknown verb with --help falls back to the global usage', async () => {
+    const { code, stdout } = await runWithCapture(() => runCli(['bogus', '--help']));
+    expect(code).toBe(0);
+    expect(stdout).toContain('Verbs:');
+  });
+
   test('--version exits 0 with version string', async () => {
     const { code, stdout } = await runWithCapture(() => runCli(['--version']));
     expect(code).toBe(0);
