@@ -111,6 +111,40 @@ LATE_FINAL_MS="${FAKE_CLAUDE_LATE_FINAL_MS:-0}"
 LATE_NO_TOOL="${FAKE_CLAUDE_LATE_NO_TOOL:-}"
 BACKGROUND_CMD="${FAKE_CLAUDE_BACKGROUND_CMD:-}"
 BACKGROUND_STARTED=''
+SUBAGENT_WRITER_PID=''
+PANE_PAINTER_PID=''
+
+# A source that keeps moving must outlive the turn's close: the Stop hook starts
+# after the response is written, and under load that start-up stretches. A
+# fixture that stops writing one cadence early leaves the source still for the
+# tail, and an idle net reading stillness then beats the stop to the settle.
+stop_movers() {
+  local pid
+  for pid in "$SUBAGENT_WRITER_PID" "$PANE_PAINTER_PID"; do
+    if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi
+  done
+}
+trap stop_movers EXIT
+
+subagent_writer() {
+  local dir="$1"
+  local i=0
+  while :; do
+    printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"subagent step %d"}]}}\n' \
+      "$i" >> "${dir}/agent-fake.jsonl"
+    i=$((i + 1))
+    sleep 0.3
+  done
+}
+
+pane_painter() {
+  local j=0
+  while :; do
+    echo "working ${j}"
+    j=$((j + 1))
+    sleep 0.5
+  done
+}
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
 BIND_HOOK="${FAKE_CLAUDE_BIND_HOOK:-}"
 NESTED_HOOK="${FAKE_CLAUDE_NESTED_HOOK:-}"
@@ -269,28 +303,31 @@ write_turn() {
   fi
 
   # Real claude keeps a subagent's transcript beside the session's:
-  # <dir>/<session>/subagents/agent-<id>.jsonl
+  # <dir>/<session>/subagents/agent-<id>.jsonl. The writer runs until the worker
+  # exits, so a silent pane over a working subagent stays live through the
+  # turn's close and the stop, never just for a fixed span.
   if [[ "$SUBAGENT_MS" -gt 0 ]]; then
     local subagent_dir="${JSONL_FILE%.jsonl}/subagents"
     mkdir -p "$subagent_dir"
-    local i
-    for ((i = 0; i < SUBAGENT_MS / 300; i++)); do
-      printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"subagent step %d"}]}}\n' \
-        "$i" >> "${subagent_dir}/agent-fake.jsonl"
-      sleep 0.3
-    done
+    if [[ -z "$SUBAGENT_WRITER_PID" ]]; then
+      subagent_writer "$subagent_dir" &
+      SUBAGENT_WRITER_PID=$!
+    fi
+    sleep "$(echo "scale=3; $SUBAGENT_MS / 1000" | bc)"
   fi
 
   if [[ "$HANG_MS" -gt 0 ]]; then
     sleep "$(echo "scale=3; $HANG_MS / 1000" | bc)"
   fi
 
+  # A CLI that repaints its pane keeps doing so until the worker exits, so the
+  # pane is still changing when the turn's close runs and the Stop hook fires.
   if [[ "$PANE_MS" -gt 0 ]]; then
-    local j
-    for ((j = 0; j < PANE_MS / 500; j++)); do
-      echo "working ${j}"
-      sleep 0.5
-    done
+    if [[ -z "$PANE_PAINTER_PID" ]]; then
+      pane_painter &
+      PANE_PAINTER_PID=$!
+    fi
+    sleep "$(echo "scale=3; $PANE_MS / 1000" | bc)"
   fi
 
   # Sleep if requested
