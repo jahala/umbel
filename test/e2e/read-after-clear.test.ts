@@ -105,10 +105,11 @@ describe('read after a worker /clear', () => {
     const cached = JSON.parse(await readFile(metaPath, 'utf8')) as { jsonlPath: string };
     expect(cached.jsonlPath).toBe(join(tmpDir, 'projects', `${name}.jsonl`));
 
-    // /clear begins no turn, so send reports no turn started. The clear itself
-    // and the rebind have happened by then.
+    // /clear is a command to the CLI, not a prompt: it begins no turn, so send
+    // does not wait for one, and reports success.
     const cleared = await runCli(['send', name, '/clear'], env);
-    expect(cleared.code).toBe(1);
+    expect(cleared.stderr).toBe('');
+    expect(cleared.code).toBe(0);
 
     await turn(name, 'second', env);
     const second = await runCli(['read', name], env);
