@@ -1,0 +1,9 @@
+{"reason": "stop", "exitCode": 0, "meaning": "the worker's stop hook fired: it says it is done", "classification": "terminal"}
+{"reason": "file", "exitCode": 0, "meaning": "the awaited file appeared", "classification": "terminal"}
+{"reason": "pattern", "exitCode": 0, "meaning": "the awaited pattern appeared on the pane", "classification": "terminal"}
+{"reason": "provider-error", "exitCode": 122, "meaning": "a provider error on the pane, then stillness", "classification": "retryable"}
+{"reason": "idle", "exitCode": 123, "meaning": "no activity across pane, events and transcripts past the threshold", "classification": "blocked"}
+{"reason": "timeout", "exitCode": 124, "meaning": "the wait's own clock ran out with the worker still active", "classification": "retryable"}
+{"reason": "dead", "exitCode": 125, "meaning": "the session or its process is gone", "classification": "dead"}
+{"reason": "input", "exitCode": 126, "meaning": "the worker is asking a person something", "classification": "blocked"}
+{"reason": "aborted", "exitCode": 130, "meaning": "the wait was interrupted from outside", "classification": "terminal"}
