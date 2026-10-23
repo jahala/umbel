@@ -731,10 +731,10 @@ Never write the key itself into an `--env` value; see [Worker environment](#work
 |----------|-------------|
 | `UMBEL_STATE` | Override the default state directory (`~/.umbel/`). All session metadata, hook event files, and workflow run state are stored here. Useful in CI or for isolated test environments. Also determines the tmux socket, so two state roots get two independent sets of workers. |
 | `UMBEL_TMUX_SOCKET` | Override the tmux socket name, which is otherwise derived from the state root. Set it to the same value in two places to deliberately share one set of workers between them. |
-| `UMBEL_CLAUDE_BIN` | Override the `claude` binary path. Used by the test suite to inject `test/fixtures/fake-claude.sh`. Not intended for production use. |
-| `UMBEL_CODEX_BIN` | Override the `codex` binary path. Same contract as `UMBEL_CLAUDE_BIN` — inject `test/fixtures/fake-codex.sh` in tests, or point at a non-PATH install. |
-| `UMBEL_GEMINI_BIN` | Override the `gemini` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
-| `UMBEL_OPENCODE_BIN` | Override the `opencode` binary path. Same contract as `UMBEL_CLAUDE_BIN`. |
+| `UMBEL_SESSION_ID` | Set by umbel in every worker's environment to the worker's session name. The hook scripts and the opencode plugin read it to find the session's events directory. A CLI the worker starts inherits it; do not set it yourself. |
+| `UMBEL_CLAUDE_BIN` | Override the binary umbel launches for **any** provider, `spawn` and `-p` alike. The name is historical, from when claude was the only provider. Used by the test suite to inject `test/fixtures/fake-*.sh`. Not intended for production use. |
+
+A test compares this table with the `UMBEL_*` names `src/` reads, both ways, so a variable nothing reads and a read variable nothing documents both fail it.
 
 **Note on OpenCode config:** umbel installs its stop plugin once into opencode's global plugin directory, `$XDG_CONFIG_HOME/opencode/plugin/opencode-stop.ts` (default `~/.config/opencode/plugin/`), where opencode loads it on launch. One copy serves every umbel state root. umbel adds no entry to `opencode.jsonc`; it edits that file only to remove entries an older umbel added (`…/hooks/opencode-stop.ts`). The file is read as JSONC, so comments and trailing commas are fine, and every other byte is preserved, comments included. A file with nothing to remove is not written. An unparsable file refuses the spawn (exit 1) with its path, line and column, and is left untouched.
 

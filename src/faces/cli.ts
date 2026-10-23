@@ -408,7 +408,8 @@ async function runPMode(
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
   const timeoutMs = rawTimeout !== undefined ? parseDuration(rawTimeout) : undefined;
-  // UMBEL_CLAUDE_BIN allows tests to inject a fake claude binary
+  // UMBEL_CLAUDE_BIN overrides the binary of whichever provider runs. The name
+  // is historical; tests inject a fake claude, codex, gemini, opencode or agy.
   const claudeBin = process.env.UMBEL_CLAUDE_BIN;
 
   try {
@@ -465,7 +466,8 @@ async function verbSpawn(
   const allowedTools = flagStr(flags, 'allowed-tools', 'allowedTools');
   const permissionMode = flagStr(flags, 'permission-mode', 'permissionMode');
   const unattended = flagBool(flags, 'unattended');
-  // UMBEL_CLAUDE_BIN allows tests to inject a fake claude binary
+  // UMBEL_CLAUDE_BIN overrides the binary of whichever provider runs. The name
+  // is historical; tests inject a fake claude, codex, gemini, opencode or agy.
   const claudeBin = process.env.UMBEL_CLAUDE_BIN;
   const envEntries = repeated.get('env') ?? [];
   const workerEnv = envEntries.length > 0 ? parseEnvFlags(envEntries) : undefined;
