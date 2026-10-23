@@ -70,6 +70,10 @@
 #   FAKE_CLAUDE_USAGE     optional, a JSON usage object recorded on the turn's
 #                         final assistant entry, as real claude records one
 #   FAKE_CLAUDE_MODEL     optional, the model recorded on that entry
+#   FAKE_CLAUDE_CLEAR_SESSION_ID optional, a session id: a /clear prompt starts a
+#                         new session, as real claude does: a new id, SessionStart
+#                         through bind.sh rebind, and a new transcript file for
+#                         every later turn (umbel#141)
 
 set -euo pipefail
 
@@ -112,6 +116,7 @@ LATE_NO_TOOL="${FAKE_CLAUDE_LATE_NO_TOOL:-}"
 BACKGROUND_CMD="${FAKE_CLAUDE_BACKGROUND_CMD:-}"
 BACKGROUND_STARTED=''
 SESSION_ID="${UMBEL_SESSION_ID:-fake-session}"
+CLEAR_SESSION_ID="${FAKE_CLAUDE_CLEAR_SESSION_ID:-}"
 BIND_HOOK="${FAKE_CLAUDE_BIND_HOOK:-}"
 NESTED_HOOK="${FAKE_CLAUDE_NESTED_HOOK:-}"
 NESTED_SESSION_ID="${FAKE_CLAUDE_NESTED_SESSION_ID:-nested-session}"
@@ -144,14 +149,17 @@ if [[ -n "$SETTINGS_JSON" ]]; then
   TURN_START_HOOK=$(printf '%s' "$SETTINGS_JSON" | jq -r '.hooks.UserPromptSubmit[0].hooks[0].command // empty' 2>/dev/null || true)
 fi
 
-if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
-  mkdir -p "${FAKE_CLAUDE_JSONL_DIR}"
-  JSONL_FILE="${FAKE_CLAUDE_JSONL_DIR}/${SESSION_ID}.jsonl"
-else
-  ENCODED_CWD="$(echo -n "$(pwd)" | sed 's/[^a-zA-Z0-9]/-/g')"
-  JSONL_FILE="${HOME}/.claude/projects/${ENCODED_CWD}/${SESSION_ID}.jsonl"
-  mkdir -p "$(dirname "$JSONL_FILE")"
-fi
+set_jsonl_file() {
+  if [[ -n "${FAKE_CLAUDE_JSONL_DIR:-}" ]]; then
+    mkdir -p "${FAKE_CLAUDE_JSONL_DIR}"
+    JSONL_FILE="${FAKE_CLAUDE_JSONL_DIR}/${SESSION_ID}.jsonl"
+  else
+    ENCODED_CWD="$(echo -n "$(pwd)" | sed 's/[^a-zA-Z0-9]/-/g')"
+    JSONL_FILE="${HOME}/.claude/projects/${ENCODED_CWD}/${SESSION_ID}.jsonl"
+    mkdir -p "$(dirname "$JSONL_FILE")"
+  fi
+}
+set_jsonl_file
 
 if [[ -n "${FAKE_CLAUDE_ENV_PROBE:-}" ]]; then
   for n in ${FAKE_CLAUDE_ENV_PROBE_NAMES:-}; do
@@ -357,6 +365,19 @@ while IFS= read -r line || [[ -n "${line:-}" ]]; do
   # stays in the input box. Modelled by dropping the submitted line.
   if [[ "$IGNORE_FIRST_ENTER" -gt 0 ]]; then
     IGNORE_FIRST_ENTER=$((IGNORE_FIRST_ENTER - 1))
+    continue
+  fi
+  # A /clear starts a new session: claude mints a new id, fires SessionStart
+  # (bind.sh rebind, umbel#118), and writes every later turn to a new
+  # transcript, leaving the previous one untouched (umbel#141).
+  if [[ "${line:-}" == "/clear" && -n "$CLEAR_SESSION_ID" ]]; then
+    SESSION_ID="$CLEAR_SESSION_ID"
+    set_jsonl_file
+    touch "${JSONL_FILE}"
+    if [[ -n "$BIND_HOOK" && -x "$BIND_HOOK" ]]; then
+      printf '{"session_id":"%s","transcript_path":"%s","cwd":"%s","hook_event_name":"SessionStart","source":"clear"}' \
+        "${SESSION_ID}" "${JSONL_FILE}" "$(pwd)" | bash "$BIND_HOOK" rebind
+    fi
     continue
   fi
   fire_turn_start

@@ -64,7 +64,10 @@ export async function send(opts: SendOpts): Promise<SendResult> {
     await confirmSubmitted(d, opts.name, provider.pendingInputMatch, env);
   }
 
-  if (turnStartPath !== undefined) {
+  // A slash command (/clear, /compact, /model) is an instruction to the CLI,
+  // not a prompt: it starts no turn, so there is no turn start to confirm.
+  const isCliCommand = opts.prompt.trimStart().startsWith('/');
+  if (turnStartPath !== undefined && !isCliCommand) {
     await confirmTurnStarted(d, opts.name, turnStartPath, sinceTurnStart, env);
   }
 

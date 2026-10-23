@@ -285,7 +285,7 @@ interface Session {
   model?: string;                // NEW: provider-agnostic; model names differ per provider
   anonymous: boolean;
   createdAt: number;
-  jsonlPath: string | null;      // null at spawn-time; resolved on first Stop
+  jsonlPath: string | null;      // null at spawn-time; a cache, outranked by the newest events/transcript-path (umbel#141)
   repo: string | null;           // top-level of the MAIN worktree, so every linked worktree agrees (umbel#65)
   providerFiles?: Array<{        // NEW: files written by provider, for cleanup
     absPath: string;

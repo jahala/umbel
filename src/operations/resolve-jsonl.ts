@@ -6,14 +6,17 @@ import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 
 // Resolves a session's JSONL transcript path. The order of precedence:
-//   1. session.jsonlPath in meta.json (already resolved on a prior call)
-//   2. events/transcript-path (written by stop.sh from the lifecycle hook payload)
+//   1. events/transcript-path, the path the newest Stop hook recorded
+//   2. session.jsonlPath in meta.json, cached by an earlier resolve
 //   3. discovery of what the provider writes before its first hook fires:
 //      the provider's transcriptSearch (codex rollouts), else claude's project
 //      directory
 //
-// Successful resolution is persisted back to meta.json so subsequent calls
-// are O(1).
+// The hook outranks the cache because a worker's /clear or /new continues in a
+// new transcript while meta still names the one before it (umbel#141).
+//
+// A successful resolve refreshes meta.json so a status call can answer without
+// discovery.
 //
 // Throws SessionDeadError if all three strategies fail.
 export interface ResolveJsonlOpts {
@@ -61,26 +64,40 @@ export async function discoverTranscriptPath(opts: {
   });
 }
 
+async function hookedTranscriptPath(
+  name: string,
+  env: Record<string, string | undefined>,
+  d: Deps,
+): Promise<string> {
+  try {
+    return (await readFile(join(d.fs.eventsDir(name, env), 'transcript-path'), 'utf8')).trim();
+  } catch {
+    return '';
+  }
+}
+
+// The path known from state alone, without discovery. The hook's newest record
+// wins over the one meta cached before it, so a transcript that changed under
+// the worker is never missed. Reads, actions, status and wait share this, so
+// the precedence has one home.
+export async function knownTranscriptPath(
+  name: string,
+  cached: string | null,
+  env: Record<string, string | undefined>,
+  d: Deps,
+): Promise<string> {
+  const hooked = await hookedTranscriptPath(name, env, d);
+  if (hooked !== '') return hooked;
+  return cached ?? '';
+}
+
 export async function resolveJsonlPath(opts: ResolveJsonlOpts): Promise<string> {
   const d = { ...defaultDeps, ...opts.deps };
   const env = opts.env ?? {};
 
-  // 1. Cached path in meta?
   const meta = await d.fs.readMeta(opts.name, env);
-  if (meta.jsonlPath !== null && meta.jsonlPath.length > 0) {
-    return meta.jsonlPath;
-  }
+  let resolved = await knownTranscriptPath(opts.name, meta.jsonlPath, env, d);
 
-  // 2. events/transcript-path from hook?
-  const transcriptFile = join(d.fs.sessionDir(opts.name, env), 'events', 'transcript-path');
-  let resolved = '';
-  try {
-    resolved = (await readFile(transcriptFile, 'utf8')).trim();
-  } catch {
-    // file missing → fall through to discovery
-  }
-
-  // 3. discovery of the provider's own transcript file
   if (resolved === '') {
     try {
       resolved = await discoverTranscriptPath({
@@ -99,11 +116,13 @@ export async function resolveJsonlPath(opts: ResolveJsonlOpts): Promise<string> 
     }
   }
 
-  // Persist for next time (best-effort).
-  try {
-    await d.fs.writeMeta(opts.name, { ...meta, jsonlPath: resolved }, env);
-  } catch {
-    // not fatal — next call will re-resolve
+  // Refresh the cache when the hook named a newer transcript (best-effort).
+  if (resolved !== '' && resolved !== meta.jsonlPath) {
+    try {
+      await d.fs.writeMeta(opts.name, { ...meta, jsonlPath: resolved }, env);
+    } catch {
+      // not fatal; the hook file remains the source
+    }
   }
 
   return resolved;

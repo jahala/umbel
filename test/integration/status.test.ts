@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { ensureGlobalHooks } from '../../src/adapters/hooks.ts';
@@ -440,6 +440,48 @@ describe('status — awaitingProviderSince', () => {
 
     const [entry] = await status({ name, env, deps: deps() });
     expect(entry?.awaitingProviderSince).toBeUndefined();
+  });
+
+  // status reads the same transcript read does. After a /clear the hook names a
+  // new file while meta still caches the old one, and the request in flight is
+  // in the new one (umbel#141).
+  test('reads the transcript the newest Stop hook named, not the one meta cached', async () => {
+    const env = await setup();
+    const name = sessionName('recached');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    const cachedPath = join(projectsDir, 'cached', `${name}.jsonl`);
+    await mkdir(dirname(cachedPath), { recursive: true });
+    await writeFile(
+      cachedPath,
+      `${JSON.stringify({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'before /clear' }],
+          stop_reason: 'end_turn',
+        },
+      })}\n`,
+    );
+    const metaPath = join(tmpDir, 'sessions', name, 'meta.json');
+    const meta = JSON.parse(await readFile(metaPath, 'utf8')) as Record<string, unknown>;
+    await writeFile(metaPath, JSON.stringify({ ...meta, jsonlPath: cachedPath }));
+
+    const hookedPath = await writeTranscript(name, [
+      JSON.stringify({ type: 'user', message: { role: 'user', content: 'go' } }),
+      JSON.stringify({
+        type: 'api-request',
+        timestamp: REQUEST_AT,
+        querySource: 'repl_main_thread',
+      }),
+    ]);
+    const eventsDir = join(tmpDir, 'sessions', name, 'events');
+    await mkdir(eventsDir, { recursive: true });
+    await writeFile(join(eventsDir, 'transcript-path'), hookedPath);
+
+    const [waiting] = await status({ name, env, deps: deps() });
+    expect(waiting?.awaitingProviderSince).toBe(REQUEST_AT);
   });
 });
 
