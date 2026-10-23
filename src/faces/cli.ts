@@ -25,6 +25,7 @@ import type { RunningCommand } from '../core/procs.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Usage } from '../core/providers/types.ts';
 import type { EnvValue } from '../core/types.ts';
+import { WAIT_EXIT_CODES } from '../core/wait-reasons.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
 import { capture } from '../operations/capture.ts';
 import { defaultDeps } from '../operations/deps.ts';
@@ -632,18 +633,6 @@ async function verbWait(
   }
   return WAIT_EXIT_CODES[result.reason];
 }
-
-const WAIT_EXIT_CODES: Record<Awaited<ReturnType<typeof waitFor>>['reason'], number> = {
-  stop: 0,
-  file: 0,
-  pattern: 0,
-  'provider-error': 122,
-  idle: 123,
-  timeout: 124,
-  dead: 125,
-  input: 126,
-  aborted: 130,
-};
 
 // A refused spawn's exit code, where it says more than failure. The runner
 // contract reads this table (jahala/plotplot contracts/runner.md, "A spawn that

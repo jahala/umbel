@@ -17,6 +17,7 @@ import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
 import { applyDefaultTimeout, compile, deadlineOf } from '../core/wait.ts';
+import type { WaitReason } from '../core/wait-reasons.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -48,16 +49,7 @@ export interface WaitOpts {
 
 export interface WaitResult {
   stopped: boolean;
-  reason:
-    | 'stop'
-    | 'file'
-    | 'pattern'
-    | 'timeout'
-    | 'aborted'
-    | 'dead'
-    | 'input'
-    | 'idle'
-    | 'provider-error';
+  reason: WaitReason;
   // When reason is 'input', the worker is awaiting the user. `inputReason` is the
   // classified sub-reason (permission = blocked on a tool prompt, idle = done +
   // idle, question = elicitation); `message` carries the prompt text — so the

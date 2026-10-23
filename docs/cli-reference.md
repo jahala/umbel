@@ -21,11 +21,11 @@ umbel --version                  Show version (0.0.1)
 | 122 | `wait` provider-error — a provider error on the pane, then stillness |
 | 123 | `wait` idle — pane, events directory and transcript tree all still for `--idle-timeout`, with no model request in flight |
 | 124 | `wait` timeout — hard deadline hit |
-| 125 | `wait` abandoned — the target worker died before completing its turn |
+| 125 | `wait` dead — the target worker died before completing its turn |
 | 126 | `wait` input — worker is blocked waiting for input (permission prompt / elicitation). Also `spawn` refused because the CLI needs a person to sign in: the same class, blocked. |
 | 130 | SIGINT — operation aborted by the user |
 
-The mapping lives in `errorExitCode` and, for `wait` reasons and spawn refusals, `WAIT_EXIT_CODES` and `SPAWN_EXIT_CODES` (`src/faces/cli.ts`). The runner contract in jahala/plotplot reads both tables.
+The mapping lives in `errorExitCode`, `WAIT_EXIT_CODES` (`src/core/wait-reasons.ts`) and `SPAWN_EXIT_CODES` (`src/faces/cli.ts`). `WAIT_EXIT_CODES` is tested against the runner contract in jahala/plotplot; the wait section says how its pin is updated.
 
 ## Lifecycle
 
@@ -217,12 +217,17 @@ The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `
 
 | Reason | Exit | Meaning |
 |--------|------|---------|
-| stop | 0 | Turn completed — `umbel read` the result. |
-| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. A worker on its CLI's sign-in screen, for instance after its credentials expired, is also `input`, with `inputReason: "sign-in"`: only a person signing in on that machine clears it. A worker on its provider's usage-limit dialog is also `input`, and `message` is the dialog's own line, reset time included, as in `You've hit your session limit · resets 4:30pm (Europe/Copenhagen)`. That is not a question: schedule a resume at the reset time instead of retrying now. When the provider refused the turn (an exhausted account, for instance) the CLI fires no stop, only this notification; `message` is then the provider's own error line, as in `API Error: 402 Insufficient Balance (request_id: …)`, and a usage-limit line on the same screen wins over it. Fail or recast the work; the worker is not asking a question. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
+| stop | 0 | Turn completed: `umbel read` the result. |
+| file | 0 | The path given to `--file` appeared on disk. |
+| pattern | 0 | A line in the pane matched the `--pattern` regex. |
 | provider-error | 122 | The pane shows a provider error (codex `unexpected status 404`, claude `API Error`) and then stays still. The matched line is the `message`; the pane prints to stderr. Fail or recast the attempt; waiting longer will not help. |
 | idle | 123 | Pane, events directory and transcript tree all still for `--idle-timeout`, and no model request in flight. The `message` names each source and how long it has been still, e.g. `idle 1.6s: pane still 1.6s · events still 1.9s · transcript still 1.8s · subagents none`; a source umbel could not locate reads `unresolved`. Pane prints to stderr. |
-| dead | 125 | Worker exited before finishing its turn. `exitCode` is the status it exited with, read from `events/exit` (umbel's launch wrapper), with tmux's pane status as the fallback; `paneSnapshot` is its last screen, captured from the dead pane. |
 | timeout | 124 | Hard deadline hit; last pane prints to stderr. |
+| dead | 125 | Worker exited before finishing its turn. `exitCode` is the status it exited with, read from `events/exit` (umbel's launch wrapper), with tmux's pane status as the fallback; `paneSnapshot` is its last screen, captured from the dead pane. |
+| input | 126 | Worker is **blocked on a prompt** (permission / idle). The prompt text + pane print to stderr — answer with `umbel send`, then `wait` again. A worker on its CLI's sign-in screen, for instance after its credentials expired, is also `input`, with `inputReason: "sign-in"`: only a person signing in on that machine clears it. A worker on its provider's usage-limit dialog is also `input`, and `message` is the dialog's own line, reset time included, as in `You've hit your session limit · resets 4:30pm (Europe/Copenhagen)`. That is not a question: schedule a resume at the reset time instead of retrying now. When the provider refused the turn (an exhausted account, for instance) the CLI fires no stop, only this notification; `message` is then the provider's own error line, as in `API Error: 402 Insufficient Balance (request_id: …)`, and a usage-limit line on the same screen wins over it. Fail or recast the work; the worker is not asking a question. (Every provider has a precise needs-input hook — Claude `Notification`, Codex `PermissionRequest`, Gemini `ToolPermission`, OpenCode `permission.updated`; `--idle-timeout` is the universal backstop.) |
+| aborted | 130 | The wait was interrupted from outside, such as by SIGINT. |
+
+The reasons and codes above are umbel's side of the runner contract, `contracts/runner.md` in jahala/plotplot, the page a conductor classifies a finished wait by. `test/unit/runner-contract.test.ts` holds `WAIT_REASONS` and `WAIT_EXIT_CODES` (`src/core/wait-reasons.ts`) equal to a verbatim copy of the contract's fixture, vendored at `test/fixtures/contracts/runner-reasons.jsonl` and pinned in `test/fixtures/contracts/pins.json` with its repository, file, commit and the date it was read. The test reads that copy offline; the suite never fetches. To move the pin: read the fixture at the new commit with `gh api repos/jahala/plotplot/contents/contracts/fixtures/runner/reasons.jsonl?ref=<sha> --jq .content | base64 -d > test/fixtures/contracts/runner-reasons.jsonl`, update `ref` and `read_on` in `pins.json`, and change this table with `src/core/wait-reasons.ts` in the same commit. Changing the copy changes the seam both umbel and pleach see, so the contract page and its fixture move first.
 
 With `--json` the exit code is the same; the JSON carries the `reason` and `message`.
 
