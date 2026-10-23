@@ -33,6 +33,26 @@ function windowOf(value: unknown): { pct?: number; resetsAt?: string } | null {
   return { ...(pct !== undefined ? { pct } : {}), ...(resetsAt !== undefined ? { resetsAt } : {}) };
 }
 
+// The model claude names in the same statusLine payload. `model.id` is the full
+// identifier (`claude-opus-5-5`), `display_name` the short label the pane shows
+// (`Opus`); the id tells two versions apart, so it wins (umbel#69). Total, like
+// parseQuota: a payload without a readable model answers undefined.
+export function parseStatuslineModel(content: string): string | undefined {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+  if (payload === null || typeof payload !== 'object') return undefined;
+  const model = (payload as Record<string, unknown>).model;
+  if (model === null || typeof model !== 'object') return undefined;
+  const m = model as Record<string, unknown>;
+  if (typeof m.id === 'string' && m.id.length > 0) return m.id;
+  if (typeof m.display_name === 'string' && m.display_name.length > 0) return m.display_name;
+  return undefined;
+}
+
 // Pure and total: any malformed or limit-free payload yields null rather than
 // throwing, because this runs on every status call.
 export function parseQuota(content: string): Quota | null {
