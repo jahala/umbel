@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { killSession } from '../../src/adapters/tmux.ts';
@@ -220,4 +220,90 @@ describe('cli', () => {
     const idx = CREATED.indexOf(name);
     if (idx !== -1) CREATED.splice(idx, 1);
   });
+
+  // A spawned worker, with the fake claude on PATH-by-env. The two FAKE_* names
+  // travel through --env, as the worker inherits only what the caller names.
+  function fakeClaudeEnv(env: Record<string, string>): Record<string, string> {
+    return {
+      ...env,
+      UMBEL_CLAUDE_BIN: FAKE_CLAUDE,
+      FAKE_CLAUDE_JSONL_DIR: join(tmpDir, 'jsonl'),
+      FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+    };
+  }
+
+  function spawnArgs(name: string, extra: string[] = []): string[] {
+    return [
+      'spawn',
+      '--name',
+      name,
+      '--cwd',
+      tmpDir,
+      '--env',
+      'FAKE_CLAUDE_JSONL_DIR',
+      '--env',
+      'FAKE_CLAUDE_HOOK',
+      ...extra,
+    ];
+  }
+
+  // CREATED was printed as UTC with no zone, so a reader could not tell it from
+  // their own clock (umbel#69). The table is read by a person: local time and
+  // its offset. JSON keeps the epoch, so a machine never has to parse a zone.
+  test('ls prints CREATED in local time with its offset', async () => {
+    const env = await setup();
+    const name = sessionName('tz');
+    CREATED.push(name);
+    // UTC+5, so a UTC stamp and a local one differ by five hours on the clock.
+    const baseEnv = fakeClaudeEnv({ ...env, TZ: 'Etc/GMT-5' });
+
+    const spawned = await runCli(spawnArgs(name), baseEnv);
+    expect(spawned.code).toBe(0);
+
+    const json = await runCli(['ls', '--json'], baseEnv);
+    expect(json.code).toBe(0);
+    const entries = JSON.parse(json.stdout) as Array<{ name: string; createdAt: number }>;
+    const createdAt = entries.find((e) => e.name === name)?.createdAt;
+    expect(createdAt).toBeNumber();
+
+    // The same instant, written as a person in UTC+5 reads it.
+    const shifted = new Date((createdAt ?? 0) + 5 * 3600_000)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19);
+
+    const table = await runCli(['ls'], baseEnv);
+    const row = table.stdout.split('\n').find((line) => line.includes(name));
+    expect(row).toContain(`${shifted} +0500`);
+  }, 60_000);
+
+  // MODEL was the spawn's --model and nothing else, so every worker that took
+  // its provider's default showed `—`, which reads as a failed spawn
+  // (umbel#69). The spawn's flag wins; otherwise the table shows the model the
+  // provider reports for itself.
+  test('ls shows the spawn --model, else the model the provider reports', async () => {
+    const env = await setup();
+    const explicit = sessionName('mdlx');
+    const reported = sessionName('mdlr');
+    CREATED.push(explicit, reported);
+    const baseEnv = fakeClaudeEnv(env);
+
+    expect((await runCli(spawnArgs(explicit, ['--model', 'sonnet']), baseEnv)).code).toBe(0);
+    const named = await runCli(['ls'], baseEnv);
+    const namedRow = named.stdout.split('\n').find((line) => line.includes(explicit));
+    expect(namedRow).toContain('sonnet');
+
+    expect((await runCli(spawnArgs(reported), baseEnv)).code).toBe(0);
+    // What claude's statusline writes on every launch: the model, no limits.
+    const eventsDir = join(tmpDir, 'sessions', reported, 'events');
+    await mkdir(eventsDir, { recursive: true });
+    await writeFile(
+      join(eventsDir, 'quota'),
+      JSON.stringify({ model: { id: 'claude-opus-5-5', display_name: 'Opus' } }),
+    );
+
+    const shown = await runCli(['ls'], baseEnv);
+    const reportedRow = shown.stdout.split('\n').find((line) => line.includes(reported));
+    expect(reportedRow).toContain('claude-opus-5-5');
+  }, 60_000);
 });

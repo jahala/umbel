@@ -260,7 +260,7 @@ umbel wait reviewer --until pattern --pattern "All tests passed"
 
 ### status
 
-Show the status table for one session, or every live session. Columns: NAME, STATUS (`busy`/`idle`/`input`/`alive`, or `dead`), RUNNING (commands the worker still has running), REPO (the repository's folder name, `—` when none), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
+Show the status table for one session, or every live session. Columns: NAME, STATUS (`busy`/`idle`/`input`/`alive`, or `dead`), RUNNING (commands the worker still has running), REPO (the repository's folder name, `—` when none), MODEL (the spawn's `--model`, else the model the provider reports, else `—`), CWD (truncated to 30 chars), CREATED, LAST activity. CREATED and LAST print local time with the zone's offset, for example `2026-10-22 18:31:09 +0200`; `--json` keeps epoch milliseconds.
 
 ```
 umbel status [name] [--all] [--repo PATH] [--json]
@@ -283,6 +283,8 @@ umbel status [name] [--all] [--repo PATH] [--json]
 Each entry adds `state`, `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields.
 
 `state` is one word for what the worker is doing. `busy` means a turn is open: the worker's newest turn-start is newer than its newest stop. `idle` means no turn is open. `input` means it is waiting on a person. `dead` means it is gone. Providers that signal no turn start (codex, gemini, agy) answer `alive`, since busy and idle cannot be told apart. The same word drives the table's STATUS column.
+
+`reportedModel` is the model the provider reports for itself, shown in the MODEL column when the spawn named no `--model`: claude's statusline payload, else the newest turn's usage record in the transcript. It is absent when the spawn named a model, or when the provider reports none.
 
 `lastActivityAt` is the newest of the events log (hook fires) and the worker's transcript, so a long turn that fires no hook still shows activity.
 

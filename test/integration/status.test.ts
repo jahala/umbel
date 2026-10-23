@@ -386,6 +386,46 @@ describe('status — state', () => {
 });
 
 // ---------------------------------------------------------------------------
+// status — the model the provider reports (umbel#69)
+// ---------------------------------------------------------------------------
+
+describe('status — reportedModel', () => {
+  test("claude's statusline names the model from launch, before any turn", async () => {
+    const env = await setup();
+    const name = sessionName('mdlcl');
+    const { session } = await spawn(claudeSpawnOpts(env, name));
+    CREATED.push(session.name);
+
+    // The real installed script, driven as claude drives it: payload on stdin.
+    const { statusLineScriptPath } = await ensureGlobalHooks(env);
+    const proc = Bun.spawn([statusLineScriptPath], {
+      stdin: new TextEncoder().encode(
+        JSON.stringify({ model: { id: 'claude-opus-5-5', display_name: 'Opus' } }),
+      ),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: session.name },
+    });
+    expect(await proc.exited).toBe(0);
+
+    const entry = await entryOf(name, env);
+    expect(entry?.model).toBeUndefined();
+    expect(entry?.reportedModel).toBe('claude-opus-5-5');
+  });
+
+  test("the spawn's --model is the answer when one was given", async () => {
+    const env = await setup();
+    const name = sessionName('mdlsp');
+    const { session } = await spawn({ ...claudeSpawnOpts(env, name), model: 'sonnet' });
+    CREATED.push(session.name);
+
+    const entry = await entryOf(name, env);
+    expect(entry?.model).toBe('sonnet');
+    expect(entry?.reportedModel).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // status — effective routing (baseUrl)
 // ---------------------------------------------------------------------------
 

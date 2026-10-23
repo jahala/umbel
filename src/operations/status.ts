@@ -4,7 +4,7 @@ import { classifyNotification, type NeedsInputReason } from '../core/notificatio
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import type { AgentProvider } from '../core/providers/types.ts';
-import { parseQuota, type Quota } from '../core/quota.ts';
+import { parseQuota, parseStatuslineModel, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
@@ -29,6 +29,10 @@ export interface StatusEntry extends Session {
   // Newest of the events log (hook fires) and the worker's transcript, so a
   // long turn shows activity while no hook fires (umbel#71).
   lastActivityAt?: number;
+  // The model the provider reports for itself, when the spawn named none:
+  // claude's statusline payload, else the transcript's usage (umbel#69). Absent
+  // when the spawn's --model is set, or when the provider reports no model.
+  reportedModel?: string;
   // True when the worker is awaiting the user — the latest notification (newer
   // than the last turn-end) classifies as a real awaiting event, not an
   // informational one (auth_success / elicitation completion).
@@ -77,7 +81,7 @@ export interface StatusOpts {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: enrich a session with liveness, state and activity
+// Internal: enrich a session with liveness, state, activity and the model it runs
 // ---------------------------------------------------------------------------
 
 async function fileMtime(path: string): Promise<number> {
@@ -149,10 +153,17 @@ async function enrich(
   if (quota !== null) entry.quota = quota;
 
   const provider = PROVIDERS[session.provider];
-  // The transcript answers LAST and an in-flight request, so its path is
-  // resolved once. Only a live worker's transcript is discovered: a listing of
-  // tombstones reads paths somebody recorded and never guesses.
+  // The transcript answers LAST, the reported model and an in-flight request,
+  // so its path is resolved once and its bytes read at most once. Only a live
+  // worker's transcript is discovered: a listing of tombstones reads paths
+  // somebody recorded and never guesses.
   const transcript = await transcriptPath(session, provider, d, env, entry.alive);
+  let transcriptContent: Promise<string | undefined> | undefined;
+  const readTranscript = (): Promise<string | undefined> => {
+    if (transcript === undefined) return Promise.resolve(undefined);
+    transcriptContent ??= d.jsonl.readTranscriptTail(transcript).catch(() => undefined);
+    return transcriptContent;
+  };
 
   // A hook fires only at a turn's boundaries, so the events log leaves a long
   // turn still; the transcript grows as the worker writes (umbel#71).
@@ -164,9 +175,22 @@ async function enrich(
   // answer arrives, however long that takes (umbel#117). Absent when nothing is
   // in flight: a caller can tell a slow provider from a wedged worker without a
   // wait of its own.
-  if (entry.alive && provider?.requestInFlight !== undefined && transcript !== undefined) {
-    const awaiting = provider.requestInFlight(await readFileSafe(transcript));
+  if (entry.alive && provider?.requestInFlight !== undefined) {
+    const content = await readTranscript();
+    const awaiting = content === undefined ? undefined : provider.requestInFlight(content);
     if (awaiting !== undefined) entry.awaitingProviderSince = awaiting;
+  }
+
+  if (session.model === undefined) {
+    const reported = await reportedModel(
+      session,
+      provider,
+      eventsDir,
+      d,
+      entry.alive,
+      readTranscript,
+    );
+    if (reported !== undefined) entry.reportedModel = reported;
   }
 
   entry.state = workerState(
@@ -236,6 +260,37 @@ async function transcriptPath(
   } catch {
     return undefined;
   }
+}
+
+// The model the worker runs, when the spawn named none (umbel#69). claude
+// writes it into its statusline payload at launch, before any turn exists;
+// every other provider writes it into the transcript, whose usage records the
+// newest model. opencode keeps only an export, which runs a process, so a
+// tombstone answers no model rather than spawn one per row.
+async function reportedModel(
+  session: Session,
+  provider: AgentProvider | undefined,
+  eventsDir: string,
+  d: Deps,
+  alive: boolean,
+  readTranscript: () => Promise<string | undefined>,
+): Promise<string | undefined> {
+  const fromStatusline = parseStatuslineModel(await readFileSafe(join(eventsDir, 'quota')));
+  if (fromStatusline !== undefined) return fromStatusline;
+  if (provider?.extractUsage === undefined) return undefined;
+  if (provider.exportTranscript !== undefined) {
+    if (!alive) return undefined;
+    const sid = (await readFileSafe(join(eventsDir, 'session-id'))).trim();
+    if (sid === '') return undefined;
+    try {
+      const content = await d.exec.run(provider.exportTranscript(sid), { cwd: session.cwd });
+      return provider.extractUsage(content)?.model;
+    } catch {
+      return undefined;
+    }
+  }
+  const content = await readTranscript();
+  return content === undefined ? undefined : provider.extractUsage(content)?.model;
 }
 
 // ---------------------------------------------------------------------------
