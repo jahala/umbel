@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { ensureGlobalHooks } from '../../src/adapters/hooks.ts';
@@ -8,6 +8,7 @@ import * as jsonlAdapter from '../../src/adapters/jsonl.ts';
 import { killSession } from '../../src/adapters/tmux.ts';
 import { SessionNotFoundError } from '../../src/core/errors.ts';
 import { kill } from '../../src/operations/kill.ts';
+import { send } from '../../src/operations/send.ts';
 import { spawn } from '../../src/operations/spawn.ts';
 import { status } from '../../src/operations/status.ts';
 
@@ -69,6 +70,62 @@ function makeSpawnOpts(
     },
     ...extra,
   };
+}
+
+// Transcript discovery inside the test's own projects root, never the real
+// ~/.claude. Shared by the tests that need status to find a transcript.
+function transcriptDeps(): NonNullable<Parameters<typeof status>[0]['deps']> {
+  return {
+    jsonl: {
+      ...jsonlAdapter,
+      discoverSessionJsonl: (opts) =>
+        jsonlAdapter.discoverSessionJsonl({ ...opts, projectsRoot: projectsDir }),
+    },
+  };
+}
+
+// Where claude's discovery looks for a worker in /tmp: <projectsRoot>/<encoded
+// resolved cwd>. The fake writes its JSONL there so a listing finds it.
+function claudeProjectDir(): string {
+  return join(projectsDir, jsonlAdapter.encodeCwd('/tmp'));
+}
+
+function claudeSpawnOpts(
+  env: Record<string, string | undefined>,
+  name: string,
+  extraEnv: Record<string, string> = {},
+): Parameters<typeof spawn>[0] {
+  return makeSpawnOpts(env, '/tmp', {
+    name,
+    env: {
+      ...env,
+      FAKE_CLAUDE_JSONL_DIR: claudeProjectDir(),
+      FAKE_CLAUDE_HOOK: join(tmpDir, 'hooks', 'stop.sh'),
+      ...extraEnv,
+    },
+  });
+}
+
+async function entryOf(name: string, env: Record<string, string | undefined>) {
+  const [entry] = await status({ name, env, deps: transcriptDeps() });
+  return entry;
+}
+
+// Wait for the event, never a fixed time: poll until the worker reports the
+// wanted state, bounded by the test's own deadline.
+async function waitForState(
+  name: string,
+  env: Record<string, string | undefined>,
+  wanted: string,
+  withinMs: number,
+): Promise<string | undefined> {
+  const deadline = Date.now() + withinMs;
+  let seen = (await entryOf(name, env))?.state;
+  while (seen !== wanted && Date.now() < deadline) {
+    await Bun.sleep(100);
+    seen = (await entryOf(name, env))?.state;
+  }
+  return seen;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +284,6 @@ describe('status — lastActivityAt', () => {
     const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {
       try {
-        const { stat } = await import('node:fs/promises');
         await stat(logPath);
         break;
       } catch {
@@ -238,6 +294,94 @@ describe('status — lastActivityAt', () => {
     const entries = await status({ name, env });
     expect(entries[0]?.lastActivityAt).toBeNumber();
     expect(entries[0]?.lastActivityAt ?? 0).toBeGreaterThan(0);
+  });
+
+  // The events log advances only when a hook fires. A worker eleven minutes
+  // into its first turn has no hook yet, so LAST read as `—` and nothing in the
+  // listing told a working worker from a wedged one (umbel#71).
+  test('a turn in progress reaches LAST through the transcript mtime', async () => {
+    const env = await setup();
+    const name = sessionName('txlast');
+    const { session } = await spawn(claudeSpawnOpts(env, name));
+    CREATED.push(session.name);
+
+    const transcript = join(claudeProjectDir(), `${name}.jsonl`);
+    const { mtimeMs } = await stat(transcript);
+
+    const entry = await entryOf(name, env);
+    expect(entry?.lastActivityAt).toBeDefined();
+    expect(Math.abs((entry?.lastActivityAt ?? 0) - mtimeMs)).toBeLessThan(100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// status — state: what the worker is doing, in one word (umbel#71)
+// ---------------------------------------------------------------------------
+
+describe('status — state', () => {
+  test('busy while a turn is open, idle once its stop lands', async () => {
+    const env = await setup();
+    const name = sessionName('statebi');
+    const { session } = await spawn(
+      // The worker hangs inside the turn, as one does during a long tool call.
+      claudeSpawnOpts(env, name, { FAKE_CLAUDE_HANG_MS: '8000' }),
+    );
+    CREATED.push(session.name);
+
+    await send({ name, prompt: 'work', env });
+
+    expect(await waitForState(name, env, 'busy', 5000)).toBe('busy');
+    // The hang ends, the turn closes, and the stop names it done.
+    expect(await waitForState(name, env, 'idle', 15_000)).toBe('idle');
+  }, 30_000);
+
+  test('input when the worker is blocked on a person', async () => {
+    const env = await setup();
+    const name = sessionName('statein');
+    const { session } = await spawn(claudeSpawnOpts(env, name));
+    CREATED.push(session.name);
+    const eventsDir = join(tmpDir, 'sessions', name, 'events');
+    await mkdir(eventsDir, { recursive: true });
+    await writeFile(
+      join(eventsDir, 'notification'),
+      `${JSON.stringify({ notification_type: 'permission_prompt', message: 'allow?' })}\n`,
+    );
+
+    const entry = await entryOf(name, env);
+    expect(entry?.state).toBe('input');
+    expect(entry?.needsInput).toBe(true);
+  });
+
+  test('dead once the worker is gone', async () => {
+    const env = await setup();
+    const name = sessionName('statedd');
+    const { session } = await spawn(claudeSpawnOpts(env, name));
+    CREATED.push(session.name);
+    await kill({ name, env });
+
+    expect((await entryOf(name, env))?.state).toBe('dead');
+
+    await kill({ name, purge: true, env });
+  });
+
+  // A worker spawned by an older umbel carries no turn-start hook. Without the
+  // signal there is no way to tell a turn in progress from an idle worker, so
+  // the word stays the one that is certainly true.
+  test('alive when the session records no turn-start signal', async () => {
+    const env = await setup();
+    const name = sessionName('stateal');
+    const { session } = await spawn(claudeSpawnOpts(env, name));
+    CREATED.push(session.name);
+
+    const metaPath = join(tmpDir, 'sessions', name, 'meta.json');
+    const meta = JSON.parse(await readFile(metaPath, 'utf8')) as Record<string, unknown>;
+    delete meta.turnStartEvent;
+    await writeFile(metaPath, JSON.stringify(meta));
+    const eventsDir = join(tmpDir, 'sessions', name, 'events');
+    await mkdir(eventsDir, { recursive: true });
+    await writeFile(join(eventsDir, 'stop'), '');
+
+    expect((await entryOf(name, env))?.state).toBe('alive');
   });
 });
 
