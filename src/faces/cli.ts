@@ -24,6 +24,7 @@ import { isValidSessionName } from '../core/id.ts';
 import type { RunningCommand } from '../core/procs.ts';
 import { getProvider } from '../core/providers/registry.ts';
 import type { Usage } from '../core/providers/types.ts';
+import { SPAWN_EXIT_CODES } from '../core/spawn-refusals.ts';
 import type { EnvValue } from '../core/types.ts';
 import { WAIT_EXIT_CODES } from '../core/wait-reasons.ts';
 import { actions, actionsManifest } from '../operations/actions.ts';
@@ -633,16 +634,6 @@ async function verbWait(
   }
   return WAIT_EXIT_CODES[result.reason];
 }
-
-// A refused spawn's exit code, where it says more than failure. The runner
-// contract reads this table (jahala/plotplot contracts/runner.md, "A spawn that
-// needs a person is blocked, and says so by its exit code"): a CLI at its
-// sign-in screen shares 126 with the wait reason `input`, since a person is
-// needed and a retry meets the same screen. Every other spawn failure keeps its
-// code (umbel#110).
-const SPAWN_EXIT_CODES: Record<'not-signed-in', number> = {
-  'not-signed-in': 126,
-};
 
 // ---------------------------------------------------------------------------
 // status

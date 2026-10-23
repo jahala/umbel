@@ -6,5 +6,13 @@
     "read_on": "2026-10-23",
     "vendored_at": "test/fixtures/contracts/runner-reasons.jsonl",
     "note": "A verbatim copy, tested offline by test/unit/runner-contract.test.ts. Changing this copy is a change to the seam both umbel and pleach see, so the fixture is re-read from jahala/plotplot and this pin moves in the same change."
+  },
+  "spawn_refusals": {
+    "repo": "jahala/plotplot",
+    "file": "contracts/fixtures/runner/spawn-refusals.jsonl",
+    "ref": "91b944f57822a3005e4a50690a98f01bfd9625be",
+    "read_on": "2026-10-23",
+    "vendored_at": "test/fixtures/contracts/spawn-refusals.jsonl",
+    "note": "A verbatim copy, tested offline by test/unit/runner-contract.test.ts, under the same rule as runner_reasons."
   }
 }

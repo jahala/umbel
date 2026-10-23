@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SPAWN_EXIT_CODES, SPAWN_REFUSALS } from '../../src/core/spawn-refusals.ts';
 import { WAIT_EXIT_CODES, WAIT_REASONS, type WaitReason } from '../../src/core/wait-reasons.ts';
 import type { WaitResult } from '../../src/operations/wait.ts';
 
@@ -48,5 +49,23 @@ describe('the runner contract (jahala/plotplot contracts/runner.md)', () => {
   test('each reason carries the exit code the contract names', () => {
     const codesFromFixture = Object.fromEntries(rows.map((row) => [row.reason, row.exitCode]));
     expect(codesFromFixture).toEqual(WAIT_EXIT_CODES);
+  });
+});
+
+// The same contract's spawn half: a refusal with an exit code of its own.
+describe('the runner contract: spawn refusals', () => {
+  const refusals: FixtureRow[] = readFileSync(
+    join(import.meta.dir, '../fixtures/contracts/spawn-refusals.jsonl'),
+    'utf8',
+  )
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as FixtureRow);
+
+  test('each refusal carries the exit code the contract names, and no other exists', () => {
+    expect(refusals.map((row) => row.reason).sort()).toEqual([...SPAWN_REFUSALS].sort());
+    expect(Object.fromEntries(refusals.map((row) => [row.reason, row.exitCode]))).toEqual(
+      SPAWN_EXIT_CODES,
+    );
   });
 });
