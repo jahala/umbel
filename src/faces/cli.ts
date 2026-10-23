@@ -38,7 +38,14 @@ import { status } from '../operations/status.ts';
 import { waitFor } from '../operations/wait.ts';
 import { runMcpServer } from './mcp.ts';
 import { runP } from './p.ts';
-import { type KillRequest, killRequest, parseDuration, waitRequest } from './verbs.ts';
+import {
+  type KillRequest,
+  killRequest,
+  parseDuration,
+  verbHelpText,
+  verbListLines,
+  waitRequest,
+} from './verbs.ts';
 import { runWorkflow } from './workflow.ts';
 
 const VERSION = '0.0.1';
@@ -48,26 +55,13 @@ const HELP = `umbel — remote-control an interactive agent CLI over tmux
 
 Usage:
   umbel <verb> [flags...]    Supervisor verbs
+  umbel <verb> --help        That verb's flags and exit codes
   umbel -p [PROMPT]          Drop-in for claude -p
-  umbel --help               Show this help
+  umbel --help               Show this global usage
   umbel --version            Show version
 
 Verbs:
-  spawn   Create a new session
-  send    Send a prompt to a session
-  wait    Wait for a session to finish
-  status  Show session status (live sessions when no name is given)
-  ls      List live sessions (--all includes dead ones, --repo one repository)
-  kill    Kill sessions by name, or live ones by --prefix / --repo (--dry-run lists)
-  prune   Remove dead sessions' directories and tmux remains
-  attach  Attach to a session
-  read    Read last assistant message
-  actions Digest of what a worker did (tools, files, errors)
-  diff    Text diff between two turns of a session
-  capture Capture last N tmux pane lines
-  logs    Tail session event log
-  run     Run a workflow YAML file
-  mcp     Start MCP server
+${verbListLines()}
 
 Exit codes:
   0    Success
@@ -312,7 +306,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   const { flags, positionals, repeated } = parseArgv(argv);
 
   if (flagBool(flags, 'help', 'h')) {
-    process.stdout.write(HELP);
+    // `umbel <verb> --help` answers for that verb; anything else falls back to
+    // the global page, including an unknown verb.
+    const requested = positionals[0];
+    const perVerb = requested !== undefined ? verbHelpText(requested) : undefined;
+    process.stdout.write(perVerb ?? HELP);
     return 0;
   }
 

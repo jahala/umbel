@@ -6,10 +6,13 @@
 
 ```
 umbel <verb> [flags...]          Supervisor verbs
+umbel <verb> --help              That verb's synopsis, flags and exit codes
 umbel -p [PROMPT]                Drop-in for claude -p
-umbel --help                     Show help
+umbel --help                     Show the global usage
 umbel --version                  Show version (0.0.1)
 ```
+
+`umbel <verb> --help` (or `-h`) prints that verb's page and exits 0 without running it: its synopsis, its flags with one line each, and its exit codes where they differ from the global table below. The flag list is generated from the per-verb table in `src/faces/verbs.ts` and a test compares it with the flags each CLI handler reads, so a flag the parser accepts cannot be missing from the help.
 
 ## Exit codes
 
@@ -36,6 +39,8 @@ A worker's pane is kept after its death. `remain-on-exit` is set on the tmux ses
 ---
 
 ## Verbs
+
+Every verb answers `umbel <verb> --help` with its own page. The sections below are the fuller reference.
 
 ### spawn
 
