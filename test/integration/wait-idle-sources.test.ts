@@ -106,4 +106,42 @@ describe('waitFor — idle measured across pane, events and transcript tree', ()
     expect(result.reason).toBe('stop');
     expect(result.stopped).toBe(true);
   }, 20_000);
+
+  // The close of a turn takes longer than one print cadence, and under load the
+  // Stop hook's own startup stretches it further. A fixture that stops printing
+  // before the turn ends leaves the pane still for that tail, so an idle net
+  // reading stillness wins the race with the stop. These two make the tail
+  // explicit and wait only on the stop: 2500 ms of close against a 1500 ms
+  // threshold, while each source keeps moving until the hook fires.
+  test('a silent pane with a subagent still writing through a slow close settles stop', async () => {
+    const w = await spawnFake({ FAKE_CLAUDE_SUBAGENT_MS: '2000', FAKE_CLAUDE_DELAY: '2500' });
+
+    const result = await waitFor({
+      name: w.name,
+      sinceMtime: w.sinceMtime,
+      idleTimeoutMs: 1500,
+      env: w.env,
+      deps: w.deps,
+      defaultTimeoutMs: 15_000,
+    });
+
+    expect(result.reason).toBe('stop');
+    expect(result.stopped).toBe(true);
+  }, 20_000);
+
+  test('a pane that keeps printing through a slow close settles stop', async () => {
+    const w = await spawnFake({ FAKE_CLAUDE_PANE_MS: '2000', FAKE_CLAUDE_DELAY: '2500' });
+
+    const result = await waitFor({
+      name: w.name,
+      sinceMtime: w.sinceMtime,
+      idleTimeoutMs: 1500,
+      env: w.env,
+      deps: w.deps,
+      defaultTimeoutMs: 15_000,
+    });
+
+    expect(result.reason).toBe('stop');
+    expect(result.stopped).toBe(true);
+  }, 20_000);
 });
