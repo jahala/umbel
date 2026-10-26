@@ -282,7 +282,7 @@ umbel status [name] [--all] [--repo PATH] [--json]
 
 Each entry adds `state`, `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields.
 
-`state` is one word for what the worker is doing. `busy` means a turn is open: the worker's newest turn-start is newer than its newest stop. `idle` means no turn is open. `input` means it is waiting on a person. `dead` means it is gone. Providers that signal no turn start (codex, gemini, agy) answer `alive`, since busy and idle cannot be told apart. The same word drives the table's STATUS column.
+`state` is one word for what the worker is doing. `busy` means a turn is open: the worker's newest turn-start is newer than its newest stop. `idle` means no turn is open, including a worker whose only notification is the done-and-idle prompt (`needsInputReason: idle`). `input` means it is waiting on a person: a permission prompt or a question. `dead` means it is gone. Providers that signal no turn start (codex, gemini, agy) answer `alive`, since busy and idle cannot be told apart. The same word drives the table's STATUS column.
 
 `reportedModel` is the model the provider reports for itself, shown in the MODEL column when the spawn named no `--model`: claude's statusline payload, else the newest turn's usage record in the transcript. It is absent when the spawn named a model, or when the provider reports none.
 

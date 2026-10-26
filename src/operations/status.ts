@@ -215,6 +215,7 @@ async function enrich(
   entry.state = workerState(
     entry.alive,
     entry.needsInput,
+    entry.needsInputReason,
     session.turnStartEvent !== undefined,
     turnStartMtime,
     stopMtime,
@@ -223,19 +224,22 @@ async function enrich(
 }
 
 // Precedence: a gone worker is dead whatever its files say; a worker waiting on
-// a person is input even mid-turn. Only a provider that signals turn starts can
-// tell a turn in progress from an idle prompt, so the rest answer `alive`.
-// A stop landing in the same millisecond as its turn start wins the tie: the
-// turn has ended.
+// a person (a permission, a question) is input even mid-turn. claude's
+// done-and-idle prompt is a notification too, but it means the worker finished
+// and waits for its next prompt, so it reads idle. Only a provider that signals
+// turn starts can tell a turn in progress from an idle prompt, so the rest
+// answer `alive`. A stop landing in the same millisecond as its turn start wins
+// the tie: the turn has ended.
 function workerState(
   alive: boolean,
   needsInput: boolean,
+  needsInputReason: NeedsInputReason | undefined,
   hasTurnSignal: boolean,
   turnStartAt: number,
   stoppedAt: number,
 ): WorkerState {
   if (!alive) return 'dead';
-  if (needsInput) return 'input';
+  if (needsInput) return needsInputReason === 'idle' ? 'idle' : 'input';
   if (!hasTurnSignal) return 'alive';
   return turnStartAt > stoppedAt ? 'busy' : 'idle';
 }
