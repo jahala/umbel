@@ -4,8 +4,9 @@ import { classifyNotification, type NeedsInputReason } from '../core/notificatio
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import type { AgentProvider } from '../core/providers/types.ts';
-import { parseQuota, type Quota } from '../core/quota.ts';
+import { parseQuota, parseStatuslineModel, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
+import type { Workspace } from '../core/workspace.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -15,9 +16,24 @@ import { discoverTranscriptPath, knownTranscriptPath } from './resolve-jsonl.ts'
 // StatusEntry / StatusOpts
 // ---------------------------------------------------------------------------
 
+// What a worker is doing, in one word, for the table's STATUS column and the
+// same field in JSON (umbel#71). `alive` is the honest answer when the provider
+// offers no signal that says a turn began, so busy and idle are never guessed.
+export type WorkerState = 'busy' | 'idle' | 'input' | 'dead' | 'alive';
+
 export interface StatusEntry extends Session {
   alive: boolean;
+  // busy: a turn is open (its start is newer than the last stop); idle: no turn
+  // is open; input: the worker is waiting on a person; dead: gone. alive: no
+  // turn-start signal, so only liveness can be told.
+  state: WorkerState;
+  // Newest of the events log (hook fires) and the worker's transcript, so a
+  // long turn shows activity while no hook fires (umbel#71).
   lastActivityAt?: number;
+  // The model the provider reports for itself, when the spawn named none:
+  // claude's statusline payload, else the transcript's usage (umbel#69). Absent
+  // when the spawn's --model is set, or when the provider reports no model.
+  reportedModel?: string;
   // True when the worker is awaiting the user — the latest notification (newer
   // than the last turn-end) classifies as a real awaiting event, not an
   // informational one (auth_success / elicitation completion).
@@ -38,6 +54,11 @@ export interface StatusEntry extends Session {
   // when the worker is gone. A non-empty list means the turn finished but its
   // work did not (jahala/umbel#106).
   runningCommands: RunningCommand[];
+  // What the worker has done to its cwd, measured from the HEAD spawn recorded:
+  // branch and HEAD, the commits since spawn, and the changed and untracked
+  // files plus the diff stat (umbel#153). null outside a git repository. Read
+  // with no optional locks, so it never disturbs a commit the worker is making.
+  workspace: Workspace | null;
   // Subscription rate-limit usage, when the provider reports any. Absent is the
   // normal case and means no limit pressure was reported — a caller can re-cast
   // a node to another provider before dispatch instead of losing its work to a
@@ -66,7 +87,7 @@ export interface StatusOpts {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: enrich a session with alive + lastActivityAt
+// Internal: enrich a session with liveness, state, activity and the model it runs
 // ---------------------------------------------------------------------------
 
 async function fileMtime(path: string): Promise<number> {
@@ -82,14 +103,27 @@ async function enrich(
   d: Deps,
   env: Record<string, string | undefined>,
   processList: () => Promise<string>,
+  // A listing that will hide the dead ones reads no git for them: one status
+  // call over hundreds of tombstones would otherwise run git in each.
+  workspaceForDead: boolean,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
-  const [pane, dead, logMtime, notifMtime, stopMtime] = await Promise.all([
-    d.tmux.paneState(session.name, env),
+  // Started before the reads below so it overlaps them: a status call answers
+  // about the work and the worker together, not one after the other. It answers
+  // null rather than throwing, so one unreadable tree never fails a listing.
+  const paneRead = d.tmux.paneState(session.name, env);
+  const workspaceRead = workspaceForDead
+    ? d.git.workspace(session.cwd, session.baseHead)
+    : paneRead.then((p) =>
+        p.exists && !p.dead ? d.git.workspace(session.cwd, session.baseHead) : null,
+      );
+  const [pane, dead, logMtime, notifMtime, stopMtime, turnStartMtime] = await Promise.all([
+    paneRead,
     d.fs.readDead(session.name, env),
     fileMtime(join(eventsDir, 'log')),
     fileMtime(join(eventsDir, 'notification')),
     fileMtime(join(eventsDir, 'stop')),
+    session.turnStartEvent === undefined ? 0 : fileMtime(join(eventsDir, session.turnStartEvent)),
   ]);
 
   // Alive is the pane, not the session: remain-on-exit keeps a dead worker's
@@ -97,14 +131,15 @@ async function enrich(
   const entry: StatusEntry = {
     ...session,
     alive: pane.exists && !pane.dead,
+    // Replaced below, once the notification has been classified: input outranks
+    // whatever the turn signal says.
+    state: 'alive',
     needsInput: false,
     runningCommands: [],
+    workspace: await workspaceRead,
   };
   if (pane.pid !== undefined) {
     entry.runningCommands = runningCommands(await processList(), pane.pid);
-  }
-  if (logMtime > 0) {
-    entry.lastActivityAt = logMtime;
   }
 
   // How it went: the record written when the death was found, or — for a worker
@@ -136,12 +171,73 @@ async function enrich(
   const quota = parseQuota(await readFileSafe(join(eventsDir, 'quota')));
   if (quota !== null) entry.quota = quota;
 
-  if (entry.alive) {
-    const awaiting = await awaitingProviderSince(session, d, env);
+  const provider = PROVIDERS[session.provider];
+  // The transcript answers LAST, the reported model and an in-flight request,
+  // so its path is resolved once and its bytes read at most once. Only a live
+  // worker's transcript is discovered: a listing of tombstones reads paths
+  // somebody recorded and never guesses.
+  const transcript = await transcriptPath(session, provider, d, env, entry.alive);
+  let transcriptContent: Promise<string | undefined> | undefined;
+  const readTranscript = (): Promise<string | undefined> => {
+    if (transcript === undefined) return Promise.resolve(undefined);
+    transcriptContent ??= d.jsonl.readTranscriptTail(transcript).catch(() => undefined);
+    return transcriptContent;
+  };
+
+  // A hook fires only at a turn's boundaries, so the events log leaves a long
+  // turn still; the transcript grows as the worker writes (umbel#71).
+  const transcriptMtime = transcript === undefined ? 0 : await fileMtime(transcript);
+  const lastActivityAt = Math.max(logMtime, transcriptMtime);
+  if (lastActivityAt > 0) entry.lastActivityAt = lastActivityAt;
+
+  // A model request in flight is a worker with nothing to write until the
+  // answer arrives, however long that takes (umbel#117). Absent when nothing is
+  // in flight: a caller can tell a slow provider from a wedged worker without a
+  // wait of its own.
+  if (entry.alive && provider?.requestInFlight !== undefined) {
+    const content = await readTranscript();
+    const awaiting = content === undefined ? undefined : provider.requestInFlight(content);
     if (awaiting !== undefined) entry.awaitingProviderSince = awaiting;
   }
 
+  if (session.model === undefined) {
+    const reported = await reportedModel(
+      session,
+      provider,
+      eventsDir,
+      d,
+      entry.alive,
+      readTranscript,
+    );
+    if (reported !== undefined) entry.reportedModel = reported;
+  }
+
+  entry.state = workerState(
+    entry.alive,
+    entry.needsInput,
+    session.turnStartEvent !== undefined,
+    turnStartMtime,
+    stopMtime,
+  );
   return entry;
+}
+
+// Precedence: a gone worker is dead whatever its files say; a worker waiting on
+// a person is input even mid-turn. Only a provider that signals turn starts can
+// tell a turn in progress from an idle prompt, so the rest answer `alive`.
+// A stop landing in the same millisecond as its turn start wins the tie: the
+// turn has ended.
+function workerState(
+  alive: boolean,
+  needsInput: boolean,
+  hasTurnSignal: boolean,
+  turnStartAt: number,
+  stoppedAt: number,
+): WorkerState {
+  if (!alive) return 'dead';
+  if (needsInput) return 'input';
+  if (!hasTurnSignal) return 'alive';
+  return turnStartAt > stoppedAt ? 'busy' : 'idle';
 }
 
 async function readFileSafe(path: string): Promise<string> {
@@ -155,15 +251,21 @@ async function readFileSafe(path: string): Promise<string> {
 // The transcript status reads is resolved the cheap way: the path the newest
 // stop hook captured, then the one meta already holds, then a single discovery
 // scan. No waiting: a status call must answer now, and a session with no
-// transcript yet simply has no request in flight.
+// transcript yet simply has no request in flight. Discovery is for a live worker
+// only, and only where a scan can name the worker's own file: codex's rollout
+// search, or claude's project directory. Every other provider's transcript is
+// unnamed or export-only, and a guess would read another worker's.
 async function transcriptPath(
   session: Session,
-  provider: AgentProvider,
+  provider: AgentProvider | undefined,
   d: Deps,
   env: Record<string, string | undefined>,
+  discover: boolean,
 ): Promise<string | undefined> {
   const known = await knownTranscriptPath(session.name, session.jsonlPath, env, d);
   if (known !== '') return known;
+  if (!discover || provider === undefined) return undefined;
+  if (provider.transcriptSearch === undefined && provider.name !== 'claude') return undefined;
   try {
     return await discoverTranscriptPath({
       name: session.name,
@@ -179,21 +281,35 @@ async function transcriptPath(
   }
 }
 
-// A model request in flight is a worker with nothing to write until the answer
-// arrives, however long that takes (umbel#117). One field, absent when nothing
-// is in flight: a caller can tell a slow provider from a wedged worker without
-// a wait of its own.
-async function awaitingProviderSince(
+// The model the worker runs, when the spawn named none (umbel#69). claude
+// writes it into its statusline payload at launch, before any turn exists;
+// every other provider writes it into the transcript, whose usage records the
+// newest model. opencode keeps only an export, which runs a process, so a
+// tombstone answers no model rather than spawn one per row.
+async function reportedModel(
   session: Session,
+  provider: AgentProvider | undefined,
+  eventsDir: string,
   d: Deps,
-  env: Record<string, string | undefined>,
+  alive: boolean,
+  readTranscript: () => Promise<string | undefined>,
 ): Promise<string | undefined> {
-  const provider = PROVIDERS[session.provider];
-  if (provider?.requestInFlight === undefined) return undefined;
-  const path = await transcriptPath(session, provider, d, env);
-  if (path === undefined) return undefined;
-  const content = await readFileSafe(path);
-  return provider.requestInFlight(content);
+  const fromStatusline = parseStatuslineModel(await readFileSafe(join(eventsDir, 'quota')));
+  if (fromStatusline !== undefined) return fromStatusline;
+  if (provider?.extractUsage === undefined) return undefined;
+  if (provider.exportTranscript !== undefined) {
+    if (!alive) return undefined;
+    const sid = (await readFileSafe(join(eventsDir, 'session-id'))).trim();
+    if (sid === '') return undefined;
+    try {
+      const content = await d.exec.run(provider.exportTranscript(sid), { cwd: session.cwd });
+      return provider.extractUsage(content)?.model;
+    } catch {
+      return undefined;
+    }
+  }
+  const content = await readTranscript();
+  return content === undefined ? undefined : provider.extractUsage(content)?.model;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +327,7 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
 
   if (opts.name !== undefined) {
     const session = await d.fs.readMeta(opts.name, env);
-    const entry = await enrich(session, d, env, processes);
+    const entry = await enrich(session, d, env, processes, true);
     return [entry];
   }
 
@@ -234,7 +350,7 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
     }
     // Before enrich: a session of another repository costs no tmux call.
     if (wantedRepo !== undefined && session.repo !== wantedRepo) continue;
-    entries.push(await enrich(session, d, env, processes));
+    entries.push(await enrich(session, d, env, processes, opts.all === true));
   }
 
   // Liveness is read per session, so the filter comes after: there is no

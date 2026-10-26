@@ -201,8 +201,17 @@ export function parseEnvFlags(entries: string[]): Record<string, EnvValue> {
   return out;
 }
 
+// Local time with the zone's offset, the way a person reads a clock:
+// `2026-10-22 18:31:09 +0200`. JSON keeps the epoch, so no machine parses this
+// (umbel#69).
 function formatTimestamp(ms: number): string {
-  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+  const d = new Date(ms);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const offsetMin = -d.getTimezoneOffset();
+  const sign = offsetMin < 0 ? '-' : '+';
+  const abs = Math.abs(offsetMin);
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${stamp} ${sign}${pad(Math.floor(abs / 60))}${pad(abs % 60)}`;
 }
 
 function truncateCwd(cwd: string, max = 30): string {
@@ -212,11 +221,30 @@ function truncateCwd(cwd: string, max = 30): string {
 
 type StatusEntry = Awaited<ReturnType<typeof status>>[0];
 
-// A dead worker's STATUS names what it died of, when tmux recorded a status, so
-// the post-mortem starts at the table. A death by signal recorded none; the
-// pane snapshot in events/dead names it.
+// One line for the table: the branch, then what the worker has done since
+// spawn. The HEAD and every count are in --json; a row is read at a glance and
+// the full detail would crowd out the columns beside it.
+function workspaceSummary(w: StatusEntry['workspace']): string {
+  if (w === null) return '—';
+  // --json carries the full object id; a row shows the seven characters git
+  // itself prints for a detached HEAD.
+  const parts = [w.branch ?? (w.head === null ? 'no branch' : `detached@${w.head.slice(0, 7)}`)];
+  if (w.commits.length > 0) {
+    parts.push(`${w.commits.length} ${w.commits.length === 1 ? 'commit' : 'commits'}`);
+  }
+  if (w.changedFiles > 0) parts.push(`${w.changedFiles} changed`);
+  if (w.untrackedFiles > 0) parts.push(`${w.untrackedFiles} untracked`);
+  const { insertions, deletions } = w.diffStat;
+  if (insertions > 0 || deletions > 0) parts.push(`+${insertions}/-${deletions}`);
+  return parts.join(' ');
+}
+
+// A live worker's STATUS is what it is doing (busy/idle/input/alive, umbel#71).
+// A dead worker's names what it died of, when tmux recorded a status, so the
+// post-mortem starts at the table. A death by signal recorded none; the pane
+// snapshot in events/dead names it.
 function statusWord(e: StatusEntry): string {
-  if (e.alive) return 'alive';
+  if (e.alive) return e.state;
   const exitCode = e.dead?.exitCode;
   return exitCode === undefined ? 'dead' : `dead (exit ${exitCode})`;
 }
@@ -230,7 +258,11 @@ function printStatusTable(entries: StatusEntry[]): void {
     // path of every session would crowd out the columns that matter. A session
     // spawned before umbel recorded its repository has none.
     repo: e.repo === null ? '—' : basename(e.repo),
-    model: e.model ?? '—',
+    workspace: workspaceSummary(e.workspace),
+    // The spawn's --model wins; otherwise the model the provider reports for
+    // itself, so a worker on its provider's default is not shown as unknown
+    // (umbel#69).
+    model: e.model ?? e.reportedModel ?? '—',
     cwd: truncateCwd(e.cwd),
     created: formatTimestamp(e.createdAt),
     last: e.lastActivityAt !== undefined ? formatTimestamp(e.lastActivityAt) : '—',
@@ -242,6 +274,7 @@ function printStatusTable(entries: StatusEntry[]): void {
     { key: 'status', header: 'STATUS' },
     { key: 'running', header: 'RUNNING' },
     { key: 'repo', header: 'REPO' },
+    { key: 'workspace', header: 'WORKSPACE' },
     { key: 'model', header: 'MODEL' },
     { key: 'cwd', header: 'CWD' },
     { key: 'created', header: 'CREATED' },

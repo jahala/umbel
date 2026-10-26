@@ -260,7 +260,7 @@ umbel wait reviewer --until pattern --pattern "All tests passed"
 
 ### status
 
-Show the status table for one session, or every live session. Columns: NAME, STATUS (alive/dead), RUNNING (commands the worker still has running), REPO (the repository's folder name, `—` when none), MODEL, CWD (truncated to 30 chars), CREATED, LAST activity.
+Show the status table for one session, or every live session. Columns: NAME, STATUS (`busy`/`idle`/`input`/`alive`, or `dead`), RUNNING (commands the worker still has running), REPO (the repository's folder name, `—` when none), WORKSPACE (the worker's branch and what it has done since spawn, one line), MODEL (the spawn's `--model`, else the model the provider reports, else `—`), CWD (truncated to 30 chars), CREATED, LAST activity. CREATED and LAST print local time with the zone's offset, for example `2026-10-22 18:31:09 +0200`; `--json` keeps epoch milliseconds.
 
 ```
 umbel status [name] [--all] [--repo PATH] [--json]
@@ -280,11 +280,25 @@ umbel status [name] [--all] [--repo PATH] [--json]
 | `--repo PATH` | Keep only the sessions of the repository at `PATH`. Any path inside a repository works, including a linked worktree: spawn records the top-level of the repository's main working tree, so every worktree of one repository matches. Sessions spawned before umbel recorded a repository, and sessions outside git, do not match. |
 | `--json` | Emit the entries as one JSON array instead of the table — for shell/CI watchers that can't call MCP. With no `<name>` it lists live sessions unless `--all` is given. |
 
-Each entry adds `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields. `needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
+Each entry adds `state`, `needsInput`, `needsInputReason` (`permission` \| `idle` \| `question`), and `pendingTool` to the persisted session fields.
+
+`state` is one word for what the worker is doing. `busy` means a turn is open: the worker's newest turn-start is newer than its newest stop. `idle` means no turn is open. `input` means it is waiting on a person. `dead` means it is gone. Providers that signal no turn start (codex, gemini, agy) answer `alive`, since busy and idle cannot be told apart. The same word drives the table's STATUS column.
+
+`reportedModel` is the model the provider reports for itself, shown in the MODEL column when the spawn named no `--model`: claude's statusline payload, else the newest turn's usage record in the transcript. It is absent when the spawn named a model, or when the provider reports none.
+
+`lastActivityAt` is the newest of the events log (hook fires) and the worker's transcript, so a long turn that fires no hook still shows activity.
+
+`needsInputReason` distinguishes a worker **blocked on a permission prompt** (`permission` — intervene) from one that simply **finished and idled** (`idle` — move on), so a poller never has to scrape the pane. `pendingTool` is best-effort — absent for Claude's main permission prompt, which omits the tool from the hook payload.
 
 `awaitingProviderSince` (claude) is the timestamp of a model request the worker has sent and not yet answered. A slow model leaves the pane, the event log and the transcript still, so this field tells a worker waiting on the provider from one that is wedged. It clears when the answer lands. Absent when nothing is in flight, for a dead worker, and for providers whose transcript cannot say.
 
 `runningCommands` lists `{pid, command}` for each command the worker's CLI still has running in its pane, empty when none. `command` is the executable's name without its arguments, which can carry a token. A worker that started a long command in the background and ended its turn reports it here, so a caller knows the worktree may still be changing. Only commands the CLI started through a shell count; its own infrastructure, such as MCP servers, does not. One `ps` call is made per status, shared by every entry in the listing.
+
+`workspace` says what the worker has done to its cwd. `spawn` records the cwd's HEAD in `meta.json` as `baseHead`, `null` outside git and in a repository with no commit yet. Each status reads the tree against it: `branch` (`null` when HEAD is detached), `head`, `baseHead`, `commits` (`{hash, subject}`, newest first), `changedFiles` and `untrackedFiles` at this moment, and `diffStat` (`files`, `insertions`, `deletions`) for the tracked work since the base, committed work included. `workspace` is `null` outside a git repository, and an unreadable tree answers `null` too, so one bad repository never fails a listing. The table shows the one-line summary: branch, commits since spawn, changed and untracked counts, and insertions/deletions. Object ids are full, not abbreviated, in both faces.
+
+Every git read carries `--no-optional-locks`, and the call set behind one entry is bounded at five seconds. A plain `git status` refreshes and rewrites `.git/index` when a file's stat info is stale, taking `.git/index.lock`; a worker committing at that instant fails with "index.lock exists". The diff stat comes from `git diff-index`, because `git diff` rewrites the index as a side effect even with `--no-optional-locks` set. umbel never writes in a worker's cwd.
+
+A conductor inspecting a worker's tree itself follows the same rule: read with `git --no-optional-locks` (or `GIT_OPTIONAL_LOCKS=0`), and run anything that writes only after the worker stops, or in a copy. One `git status` that takes the lock can break the worker's next commit.
 
 A worker that reaches for a tool not in `--allowedTools` surfaces as `needsInputReason: permission` instead of hanging silently. Avoid it by allowlisting your project's MCP (read-only) tools at spawn — and note that **`Write` does not imply `Edit`** (appending to a file uses `Edit`).
 
@@ -313,7 +327,7 @@ When the provider reports subscription rate-limit usage, entries carry a `quota`
 
 ### ls
 
-List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table, REPO included. `--all` includes dead sessions (tombstones), which is what a post-mortem reads. `--repo PATH` keeps only the sessions of one repository. `--json` prints the same array `status --json` prints, so a selector reads a field instead of a column.
+List live sessions. Equivalent to `umbel status` with no argument. Output is the same columnar table, REPO and WORKSPACE included. `--all` includes dead sessions (tombstones), which is what a post-mortem reads. `--repo PATH` keeps only the sessions of one repository. `--json` prints the same array `status --json` prints, so a selector reads a field instead of a column.
 
 ```
 umbel ls [--all] [--repo PATH] [--json]

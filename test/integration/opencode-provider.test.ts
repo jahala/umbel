@@ -7,6 +7,7 @@ import { killSession } from '../../src/adapters/tmux.ts';
 import { resolveTranscriptContent } from '../../src/operations/resolve-transcript.ts';
 import { send } from '../../src/operations/send.ts';
 import { spawn } from '../../src/operations/spawn.ts';
+import { status } from '../../src/operations/status.ts';
 import { waitFor } from '../../src/operations/wait.ts';
 
 // ---------------------------------------------------------------------------
@@ -200,6 +201,47 @@ describe('opencode provider — send+wait', () => {
     const stopPath = join(tmpDir, 'sessions', name, 'events', 'stop');
     const s = await stat(stopPath);
     expect(s.isFile()).toBe(true);
+  });
+});
+
+// An export carrying what opencode writes per assistant message: the model that
+// answered and its tokens (info.modelID / info.tokens).
+const MODEL_EXPORT_JSON = JSON.stringify({
+  info: { id: 'ses_fake123', model: { id: 'big-pickle', providerID: 'opencode' } },
+  messages: [
+    { info: { role: 'user' }, parts: [{ type: 'text', text: 'audit' }] },
+    {
+      info: {
+        role: 'assistant',
+        modelID: 'deepseek/deepseek-v4-pro',
+        tokens: { input: 12, output: 4 },
+      },
+      parts: [{ type: 'text', text: 'done' }],
+    },
+  ],
+});
+
+describe('opencode provider — reported model (umbel#69)', () => {
+  test('status reports the model the export records when the spawn named none', async () => {
+    const env = await setup();
+    const cwd = tmpDir;
+    const name = sessionName('mdl');
+    CREATED.push(name);
+
+    await spawn(makeSpawnOpts(env, cwd, { name }));
+    const { sinceMtime } = await send({ name, prompt: 'audit', env });
+    await waitFor({ name, sinceMtime, env, defaultTimeoutMs: 15_000 });
+
+    const fakeExec = {
+      run: async (argv: readonly string[]) => {
+        if (argv[0] === 'opencode' && argv[1] === 'export') return MODEL_EXPORT_JSON;
+        throw new Error(`unexpected argv: ${argv.join(' ')}`);
+      },
+    };
+
+    const [entry] = await status({ name, env, deps: { exec: fakeExec } });
+    expect(entry?.model).toBeUndefined();
+    expect(entry?.reportedModel).toBe('deepseek/deepseek-v4-pro');
   });
 });
 

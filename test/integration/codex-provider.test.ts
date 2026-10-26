@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { lstat, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { killSession } from '../../src/adapters/tmux.ts';
@@ -10,6 +10,7 @@ import { kill } from '../../src/operations/kill.ts';
 import { resolveJsonlPath } from '../../src/operations/resolve-jsonl.ts';
 import { send } from '../../src/operations/send.ts';
 import { spawn } from '../../src/operations/spawn.ts';
+import { status } from '../../src/operations/status.ts';
 import { waitFor } from '../../src/operations/wait.ts';
 
 // ---------------------------------------------------------------------------
@@ -275,6 +276,33 @@ describe('codex-provider — session meta', () => {
       const { session } = await spawn(makeSpawnOpts(env, cwd, { model: 'o4-mini' }));
       CREATED.push(session.name);
       expect(session.model).toBe('o4-mini');
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  // When the spawn names no model, the rollout is the only place the model is
+  // written down. A listed worker with MODEL `—` reads as a failed spawn
+  // (umbel#69). The transcript here is a real 0.154.0 rollout.
+  test('status reports the model the rollout records', async () => {
+    const env = await setup();
+    const cwd = await mkdtemp(join(tmpdir(), 'umbel-codex-cwd-'));
+    try {
+      const { session } = await spawn(makeSpawnOpts(env, cwd));
+      CREATED.push(session.name);
+
+      const rollout = join(tmpDir, 'recorded-rollout.jsonl');
+      await writeFile(
+        rollout,
+        await readFile(join(import.meta.dir, '../fixtures/codex-0.154-rollout.jsonl'), 'utf8'),
+      );
+      const eventsDir = join(tmpDir, 'sessions', session.name, 'events');
+      await mkdir(eventsDir, { recursive: true });
+      await writeFile(join(eventsDir, 'transcript-path'), rollout);
+
+      const [entry] = await status({ name: session.name, env });
+      expect(entry?.model).toBeUndefined();
+      expect(entry?.reportedModel).toBe('gpt-5.6-sol');
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

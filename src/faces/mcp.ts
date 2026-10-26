@@ -46,7 +46,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_wait:
     "Block until stop/input/idle/dead/timeout. Call after umbel_send; branch on reason. reason:input means the worker needs a response — send it, then wait again. Pass sinceMtime from umbel_send's result for race-free stop detection across processes.",
   umbel_status:
-    'Inspect one session by name, or live sessions if omitted: alive/dead, provider, cwd, repo, last activity, needsInput + needsInputReason (permission/idle/question), and runningCommands. all=true adds the dead.',
+    'Inspect one session by name, or live sessions if omitted: state (busy/idle/input/alive/dead), model, repo, workspace (branch, commits, changes since spawn), last activity, needsInput + reason, runningCommands.',
   umbel_ls:
     'List live sessions; all=true includes dead ones, and repo=<a path inside a repository> keeps only that repository. Same as umbel_status with no name.',
   umbel_kill:

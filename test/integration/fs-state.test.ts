@@ -40,6 +40,7 @@ function makeSession(name: string): Session {
     createdAt: Date.now(),
     jsonlPath: null,
     repo: null,
+    baseHead: null,
     baseUrl: null,
   };
 }
