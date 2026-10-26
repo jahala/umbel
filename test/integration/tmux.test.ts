@@ -9,6 +9,7 @@ import {
   killSession,
   listSessions,
   newSession,
+  paneState,
   sendText,
 } from '../../src/adapters/tmux.ts';
 import { TmuxError } from '../../src/core/errors.ts';
@@ -181,5 +182,23 @@ describe('listSessions — no server (catch path)', () => {
     await proc.exited;
 
     expect(JSON.parse(out.trim())).toEqual([]);
+  });
+});
+
+// tmux resolves `-t name` by prefix when no session has exactly that name, so
+// a lookup of a dead worker found a live one whose name it starts (umbel#154).
+describe('a session target names exactly one session', () => {
+  test('with only <name>b alive, <name> is found by nothing and killing it spares <name>b', async () => {
+    const base = sessionName('pfx');
+    const longer = `${base}b`;
+    CREATED.push(longer);
+    await newSession({ name: longer, cwd: '/tmp', cmd: ['bash'] });
+
+    expect(await hasSession(base)).toBe(false);
+    expect((await paneState(base)).exists).toBe(false);
+    await expect(capturePane(base)).rejects.toThrow();
+    await safeKill(base);
+
+    expect(await hasSession(longer)).toBe(true);
   });
 });

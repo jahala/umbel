@@ -12,6 +12,15 @@ function prefixed(name: string): string {
   return `${PREFIX}${name}`;
 }
 
+// The tmux target for a worker's session, matched exactly. A bare `-t name`
+// falls back to a session whose name starts with it when none is called
+// exactly that, so a lookup of a gone `ds-1` read, typed into or killed
+// `ds-10` (umbel#154). `=` makes tmux match the whole name; the colon makes it
+// a pane target too, which capture-pane, send-keys and display need.
+function target(name: string): string {
+  return `=${PREFIX}${name}:`;
+}
+
 // Every worker lives on a private tmux socket, never the default one.
 //
 // The default socket is shared with the user's own sessions and every other
@@ -155,7 +164,7 @@ export async function newSession(
   opts: SpawnSessionOpts,
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
-  const target = prefixed(opts.name);
+  const session = prefixed(opts.name);
   // The environment goes in by stdin to a buffer the pane's launch wrapper reads
   // and deletes, never as `-e K=V`: those flags sit on the client's argv, and on
   // the server's for its whole life when this client starts it (umbel#93). The
@@ -185,7 +194,7 @@ export async function newSession(
       'new-session',
       '-d',
       '-s',
-      target,
+      session,
       '-c',
       opts.cwd,
       '--',
@@ -215,7 +224,7 @@ export async function attach(
   name: string,
   env: Record<string, string | undefined> = {},
 ): Promise<number> {
-  const proc = Bun.spawn(['tmux', ...tmuxArgs(['attach', '-t', prefixed(name)], env)], {
+  const proc = Bun.spawn(['tmux', ...tmuxArgs(['attach', '-t', target(name)], env)], {
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',
@@ -234,7 +243,7 @@ export async function hasSession(
 ): Promise<boolean> {
   // A tmux that never answers says nothing about the session, so runTmux throws
   // rather than let `false` report a live worker as gone (umbel#98).
-  const { exitCode } = await runTmux(['has-session', '-t', prefixed(name)], env);
+  const { exitCode } = await runTmux(['has-session', '-t', target(name)], env);
   return exitCode === 0;
 }
 
@@ -274,7 +283,7 @@ export async function paneState(
         'list-panes',
         '-s',
         '-t',
-        prefixed(name),
+        target(name),
         '-F',
         '#{pane_dead} #{pane_dead_status} #{pane_dead_signal} #{pane_pid}',
       ],
@@ -316,7 +325,7 @@ export async function killSession(
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
   try {
-    await tmux(['kill-session', '-t', prefixed(name)], env);
+    await tmux(['kill-session', '-t', target(name)], env);
   } catch (err) {
     if (err instanceof TmuxError && NO_TARGET_RE.test(err.stderr)) return;
     throw err;
@@ -362,7 +371,7 @@ export async function sendText(
   opts?: SendTextOpts,
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
-  const target = prefixed(name);
+  const paneTarget = target(name);
   const useBuffer = text.includes('\n') || text.length > 1000;
 
   if (useBuffer) {
@@ -377,9 +386,9 @@ export async function sendText(
       throw new TmuxError('load-buffer', loadStderr.trim());
     }
     // Paste buffer (bracketed paste, delete after)
-    await tmux(['paste-buffer', '-p', '-d', '-b', bufName, '-t', target], env);
+    await tmux(['paste-buffer', '-p', '-d', '-b', bufName, '-t', paneTarget], env);
   } else {
-    await tmux(['send-keys', '-t', target, '-l', text], env);
+    await tmux(['send-keys', '-t', paneTarget, '-l', text], env);
   }
   // Let the TUI ingest the text before the submitting Enter (see SendTextOpts).
   const delay = opts?.submitDelayMs ?? 0;
@@ -387,7 +396,7 @@ export async function sendText(
     await Bun.sleep(delay);
   }
   // Send Enter to submit
-  await tmux(['send-keys', '-t', target, 'Enter'], env);
+  await tmux(['send-keys', '-t', paneTarget, 'Enter'], env);
 }
 
 // ---------------------------------------------------------------------------
@@ -405,8 +414,8 @@ export async function sendKeys(
   env: Record<string, string | undefined> = {},
 ): Promise<void> {
   if (keys.length === 0) return;
-  const target = prefixed(name);
-  await tmux(['send-keys', '-t', target, ...keys], env);
+  const paneTarget = target(name);
+  await tmux(['send-keys', '-t', paneTarget, ...keys], env);
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +427,7 @@ export async function capturePane(
   lines = 100,
   env: Record<string, string | undefined> = {},
 ): Promise<string> {
-  const target = prefixed(name);
-  const { stdout } = await tmux(['capture-pane', '-p', '-t', target, '-S', `-${lines}`], env);
+  const paneTarget = target(name);
+  const { stdout } = await tmux(['capture-pane', '-p', '-t', paneTarget, '-S', `-${lines}`], env);
   return stdout;
 }
