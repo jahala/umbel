@@ -250,6 +250,10 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // Recorded now, while the worker's cwd is known: a listing later has only
   // meta.json, and the repository is what tells two conductors' sessions apart.
   const repo = await d.git.repoRoot(realCwd);
+  // The base a later status measures the worker's commits and diff against
+  // (umbel#153). Read before the worker runs, so work it does from its first
+  // turn counts.
+  const baseHead = await d.git.headCommit(realCwd);
 
   // Install global stop hook
   const {
@@ -490,6 +494,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
     createdAt: sinceMs,
     jsonlPath: null,
     repo,
+    baseHead,
     baseUrl: workerEnvFinal.ANTHROPIC_BASE_URL ?? null,
     turnStartEvent: provider.turnStartEvent,
   });

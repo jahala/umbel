@@ -56,4 +56,19 @@ describe('run', () => {
     });
     expect(out).toBe('bar');
   });
+
+  // A read that a stuck command holds open must still answer: status calls
+  // every git read with a bound so one busy tree cannot hang a listing
+  // (umbel#153). `exec` makes the shell become sleep, so the kill ends it.
+  test('a command that outlives timeoutMs is killed and the call throws', async () => {
+    const started = Date.now();
+    let caught: Error | undefined;
+    try {
+      await run(['sh', '-c', 'exec sleep 30'], { timeoutMs: 200 });
+    } catch (err) {
+      caught = err as Error;
+    }
+    expect(caught?.message).toContain('did not answer within 0.2s');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
 });

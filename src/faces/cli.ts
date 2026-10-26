@@ -212,6 +212,24 @@ function truncateCwd(cwd: string, max = 30): string {
 
 type StatusEntry = Awaited<ReturnType<typeof status>>[0];
 
+// One line for the table: the branch, then what the worker has done since
+// spawn. The HEAD and every count are in --json; a row is read at a glance and
+// the full detail would crowd out the columns beside it.
+function workspaceSummary(w: StatusEntry['workspace']): string {
+  if (w === null) return '—';
+  // --json carries the full object id; a row shows the seven characters git
+  // itself prints for a detached HEAD.
+  const parts = [w.branch ?? (w.head === null ? 'no branch' : `detached@${w.head.slice(0, 7)}`)];
+  if (w.commits.length > 0) {
+    parts.push(`${w.commits.length} ${w.commits.length === 1 ? 'commit' : 'commits'}`);
+  }
+  if (w.changedFiles > 0) parts.push(`${w.changedFiles} changed`);
+  if (w.untrackedFiles > 0) parts.push(`${w.untrackedFiles} untracked`);
+  const { insertions, deletions } = w.diffStat;
+  if (insertions > 0 || deletions > 0) parts.push(`+${insertions}/-${deletions}`);
+  return parts.join(' ');
+}
+
 // A dead worker's STATUS names what it died of, when tmux recorded a status, so
 // the post-mortem starts at the table. A death by signal recorded none; the
 // pane snapshot in events/dead names it.
@@ -230,6 +248,7 @@ function printStatusTable(entries: StatusEntry[]): void {
     // path of every session would crowd out the columns that matter. A session
     // spawned before umbel recorded its repository has none.
     repo: e.repo === null ? '—' : basename(e.repo),
+    workspace: workspaceSummary(e.workspace),
     model: e.model ?? '—',
     cwd: truncateCwd(e.cwd),
     created: formatTimestamp(e.createdAt),
@@ -242,6 +261,7 @@ function printStatusTable(entries: StatusEntry[]): void {
     { key: 'status', header: 'STATUS' },
     { key: 'running', header: 'RUNNING' },
     { key: 'repo', header: 'REPO' },
+    { key: 'workspace', header: 'WORKSPACE' },
     { key: 'model', header: 'MODEL' },
     { key: 'cwd', header: 'CWD' },
     { key: 'created', header: 'CREATED' },
