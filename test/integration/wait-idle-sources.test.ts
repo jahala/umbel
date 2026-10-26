@@ -106,4 +106,40 @@ describe('waitFor — idle measured across pane, events and transcript tree', ()
     expect(result.reason).toBe('stop');
     expect(result.stopped).toBe(true);
   }, 20_000);
+
+  // A turn whose close outlasts the idle threshold: the moving source is the
+  // only thing between the net and a wedged verdict, so it has to keep moving
+  // through the close (umbel#130). Deliberately 2500 ms against 1500 ms, so a
+  // source that stops early would settle idle on any machine, loaded or not.
+  test('a silent pane with a subagent still writing through a slow close settles stop', async () => {
+    const w = await spawnFake({ FAKE_CLAUDE_SUBAGENT_MS: '2000', FAKE_CLAUDE_DELAY: '2500' });
+
+    const result = await waitFor({
+      name: w.name,
+      sinceMtime: w.sinceMtime,
+      idleTimeoutMs: 1500,
+      env: w.env,
+      deps: w.deps,
+      defaultTimeoutMs: 15_000,
+    });
+
+    expect(result.reason).toBe('stop');
+    expect(result.stopped).toBe(true);
+  }, 20_000);
+
+  test('a pane that keeps printing through a slow close settles stop', async () => {
+    const w = await spawnFake({ FAKE_CLAUDE_PANE_MS: '2000', FAKE_CLAUDE_DELAY: '2500' });
+
+    const result = await waitFor({
+      name: w.name,
+      sinceMtime: w.sinceMtime,
+      idleTimeoutMs: 1500,
+      env: w.env,
+      deps: w.deps,
+      defaultTimeoutMs: 15_000,
+    });
+
+    expect(result.reason).toBe('stop');
+    expect(result.stopped).toBe(true);
+  }, 20_000);
 });
