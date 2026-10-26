@@ -352,6 +352,26 @@ describe('status — state', () => {
     expect(entry?.needsInput).toBe(true);
   });
 
+  // claude fires idle_prompt about a minute after it finishes a turn: it is done
+  // and waiting for its next prompt, not asking a person anything. Seen on
+  // 2026-10-26: three finished workers all read `input` in ls.
+  test('idle when the only notification is the done-and-idle prompt', async () => {
+    const env = await setup();
+    const name = sessionName('stateip');
+    const { session } = await spawn(claudeSpawnOpts(env, name));
+    CREATED.push(session.name);
+    const eventsDir = join(tmpDir, 'sessions', name, 'events');
+    await mkdir(eventsDir, { recursive: true });
+    await writeFile(
+      join(eventsDir, 'notification'),
+      `${JSON.stringify({ notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })}\n`,
+    );
+
+    const entry = await entryOf(name, env);
+    expect(entry?.state).toBe('idle');
+    expect(entry?.needsInputReason).toBe('idle');
+  });
+
   test('dead once the worker is gone', async () => {
     const env = await setup();
     const name = sessionName('statedd');
