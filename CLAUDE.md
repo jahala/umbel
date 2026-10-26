@@ -33,7 +33,7 @@ core/              types  errors  wait  workflow  id              ← pure
 core/providers/    types  claude  codex  gemini  registry         ← pure provider abstraction
 ```
 
-Adapters are injected into operations. Operations are called by faces. Providers are looked up by `name` from `core/providers/registry.ts`. **Nothing reaches across layers.**
+Adapters are injected into operations. Operations are called by faces. Providers are looked up by `name` from `core/providers/registry.ts`. **Nothing reaches across layers.** `weeder.toml` at the root declares these layers, and weeder's D2 rule refuses a commit that crosses one.
 
 ## Stack
 
