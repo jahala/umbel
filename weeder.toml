@@ -1,0 +1,15 @@
+# umbel's layers, and D2 is what holds them. Every arrow runs downwards: core
+# computes and reaches nothing, adapters wrap the world, operations compose the
+# two, faces are the user surfaces. The providers are pure, so core/providers is
+# part of core.
+
+[deps]
+layers = { faces = ["src/faces/**", "src/main.ts"], operations = ["src/operations/**"], adapters = ["src/adapters/**"], core = ["src/core/**"] }
+allow = [
+    { from = "faces", to = "operations" },
+    { from = "faces", to = "adapters" },
+    { from = "faces", to = "core" },
+    { from = "operations", to = "adapters" },
+    { from = "operations", to = "core" },
+    { from = "adapters", to = "core" },
+]

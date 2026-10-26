@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   BIND_HOOK_SCRIPT,
-  buildSettingsJson,
   ensureGlobalHooks,
   NOTIFY_HOOK_SCRIPT,
   STOP_HOOK_SCRIPT,
 } from '../../src/adapters/hooks.ts';
+import { buildSettingsJson } from '../../src/core/providers/claude-settings.ts';
 
 let tmpDir: string;
 

@@ -8,8 +8,8 @@
  * through. Safety for autonomous use is external (sandbox + audit), not prompts.
  */
 import { describe, expect, test } from 'bun:test';
-import { buildSettingsJson } from '../../src/adapters/hooks.ts';
 import { ClaudeProvider } from '../../src/core/providers/claude.ts';
+import { buildSettingsJson } from '../../src/core/providers/claude-settings.ts';
 
 describe('buildSettingsJson — permissionMode', () => {
   test('sets permissions.defaultMode when permissionMode given', () => {

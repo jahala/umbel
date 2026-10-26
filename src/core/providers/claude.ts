@@ -1,5 +1,5 @@
 import { basename, dirname, join } from 'node:path';
-import { buildSettingsJson } from '../../adapters/hooks.ts';
+import { buildSettingsJson } from './claude-settings.ts';
 import type { ActionManifest, AgentProvider, ProviderLaunchSpec, Turn, Usage } from './types.ts';
 import {
   addCacheReadTokens,
