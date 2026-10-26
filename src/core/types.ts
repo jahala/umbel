@@ -39,6 +39,11 @@ export const SessionSchema = z.object({
   // listing can tell two conductors' sessions apart (umbel#65). null outside a
   // git repository, and for a session spawned before umbel recorded it.
   repo: z.string().nullable().default(null),
+  // The cwd's HEAD at spawn, full object id: the base status measures the
+  // worker's commits and diff stat against (umbel#153). null outside a git
+  // repository, in a repository with no commit yet, and for a session spawned
+  // before umbel recorded it.
+  baseHead: z.string().nullable().default(null),
   // Effective custom Anthropic-compatible endpoint (ANTHROPIC_BASE_URL) the
   // worker was launched with, or null. Non-secret routing info surfaced by
   // status so callers can confirm routing without a printenv round-trip.

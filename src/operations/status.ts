@@ -6,6 +6,7 @@ import { PROVIDERS } from '../core/providers/registry.ts';
 import type { AgentProvider } from '../core/providers/types.ts';
 import { parseQuota, parseStatuslineModel, type Quota } from '../core/quota.ts';
 import type { Session } from '../core/types.ts';
+import type { Workspace } from '../core/workspace.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
@@ -53,6 +54,11 @@ export interface StatusEntry extends Session {
   // when the worker is gone. A non-empty list means the turn finished but its
   // work did not (jahala/umbel#106).
   runningCommands: RunningCommand[];
+  // What the worker has done to its cwd, measured from the HEAD spawn recorded:
+  // branch and HEAD, the commits since spawn, and the changed and untracked
+  // files plus the diff stat (umbel#153). null outside a git repository. Read
+  // with no optional locks, so it never disturbs a commit the worker is making.
+  workspace: Workspace | null;
   // Subscription rate-limit usage, when the provider reports any. Absent is the
   // normal case and means no limit pressure was reported — a caller can re-cast
   // a node to another provider before dispatch instead of losing its work to a
@@ -99,6 +105,10 @@ async function enrich(
   processList: () => Promise<string>,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
+  // Started before the reads below so it overlaps them: a status call answers
+  // about the work and the worker together, not one after the other. It answers
+  // null rather than throwing, so one unreadable tree never fails a listing.
+  const workspaceRead = d.git.workspace(session.cwd, session.baseHead);
   const [pane, dead, logMtime, notifMtime, stopMtime, turnStartMtime] = await Promise.all([
     d.tmux.paneState(session.name, env),
     d.fs.readDead(session.name, env),
@@ -118,6 +128,7 @@ async function enrich(
     state: 'alive',
     needsInput: false,
     runningCommands: [],
+    workspace: await workspaceRead,
   };
   if (pane.pid !== undefined) {
     entry.runningCommands = runningCommands(await processList(), pane.pid);

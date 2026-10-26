@@ -67,7 +67,7 @@ umbel_wait returns { reason, message?, paneSnapshot?, runningCommands?, usage? }
   dead   → the worker exited without finishing. Respawn or fail.
   timeout→ hard deadline hit; paneSnapshot shows the stuck pane.
 
-For poll-style control of a fleet, umbel_status carries needsInput + needsInputReason (permission/idle/question) and runningCommands per worker — the same disambiguation without a blocking wait. It also carries awaitingProviderSince (claude) when the worker has a model request out and unanswered: a slow provider, not a wedged worker. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
+For poll-style control of a fleet, umbel_status carries needsInput + needsInputReason (permission/idle/question), runningCommands and workspace per worker — the same disambiguation without a blocking wait. workspace is the worker's branch, its commits since spawn, the changed and untracked counts now, and the diff stat since spawn, read from its cwd with no optional locks; null outside git. It also carries awaitingProviderSince (claude) when the worker has a model request out and unanswered: a slow provider, not a wedged worker. Tip: a worker reaching for a tool NOT in allowedTools wedges on a permission prompt (now surfaced as reason permission) — allowlist the project's MCP read-only tools at spawn to avoid it. (Write does not imply Edit.)
 
 ## Interrupt discipline
 
