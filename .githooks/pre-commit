@@ -1,0 +1,14 @@
+#!/bin/sh
+# weeder guard, the law in git. `weeder guard install` wrote this file;
+# `weeder guard uninstall` takes it away and puts back what was here.
+# weeder-guard-binary: /Users/jahala/.local/bin/weeder
+set -eu
+
+weeder='/Users/jahala/.local/bin/weeder'
+[ -x "$weeder" ] || weeder="$(command -v weeder || true)"
+if [ ! -x "$weeder" ]; then
+	printf '%s\n' 'weeder guard: the pre-commit hook names the weeder binary at /Users/jahala/.local/bin/weeder, which is not there, and none is on PATH. run weeder guard install again.' >&2
+	exit 1
+fi
+
+exec "$weeder" guard pre-commit
