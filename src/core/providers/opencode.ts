@@ -238,20 +238,15 @@ export function extractOpencodeTurnsFromContent(content: string): Turn[] {
 // ---------------------------------------------------------------------------
 // extractOpencodeActionsFromContent — pure, defensive:
 //
-// CONFIDENCE LEVEL: medium. RELIABLE fields: finalMessage (reuses
-// parseTranscript logic), turnCount (= number of assistant messages).
-// DEFENSIVE/INFERRED fields: tool extraction scans assistant parts for
-// tool-call-like entries. Tool-call part shape is NOT documented in the
-// opencode export spec — it is inferred by analogy with Claude's tool_use
-// format and Codex/Gemini extractors:
+// Tool calls, recorded from opencode 1.18.18 (test/fixtures/opencode/), are one
+// part each:
 //
-//   { type: 'tool-call', toolName: string, args?: {...} | input?: {...} }
+//   { type: 'tool', tool, state: { status, input, output?, error?, metadata? } }
 //
-// Tool-result errors inferred as:
-//   { type: 'tool-result', isError: true, content?: string | output?: string }
-//
-// TODO(opencode): verify tool-call part shape against a real tool-using
-// transcript and refine field extraction.
+// bash takes input.command; read, edit and write take input.filePath. A failed
+// tool has status 'error' and its message in state.error. A shell command that
+// exits non-zero stays 'completed' and records the code in metadata.exit, so
+// that is read as a failure too. Other tools are counted only.
 // ---------------------------------------------------------------------------
 
 function pushUnique(arr: string[], val: string): void {
@@ -290,46 +285,34 @@ export function extractOpencodeActionsFromContent(content: string): ActionManife
       if (part === null || typeof part !== 'object') continue;
       const p = part as JsonObj;
 
-      // Defensive tool-call extraction. Accept { toolName } (camelCase) with
-      // { args } or { input } containing optional file_path / command fields.
-      if (typeof p.type === 'string' && p.type.includes('tool-call')) {
-        const toolName = typeof p.toolName === 'string' ? p.toolName : undefined;
-        if (toolName !== undefined) {
-          toolsUsed[toolName] = (toolsUsed[toolName] ?? 0) + 1;
+      if (p.type !== 'tool' || typeof p.tool !== 'string') continue;
+      const tool = p.tool;
+      toolsUsed[tool] = (toolsUsed[tool] ?? 0) + 1;
+      const state = p.state !== null && typeof p.state === 'object' ? (p.state as JsonObj) : null;
+      if (state === null) continue;
+      const input =
+        state.input !== null && typeof state.input === 'object' ? (state.input as JsonObj) : {};
+      const filePath = typeof input.filePath === 'string' ? input.filePath : undefined;
+      const command = typeof input.command === 'string' ? input.command : undefined;
 
-          const argsField =
-            p.args !== undefined && typeof p.args === 'object'
-              ? (p.args as JsonObj)
-              : p.input !== undefined && typeof p.input === 'object'
-                ? (p.input as JsonObj)
-                : null;
+      if (tool === 'read' && filePath !== undefined) pushUnique(filesRead, filePath);
+      else if (tool === 'edit' && filePath !== undefined) pushUnique(filesEdited, filePath);
+      else if (tool === 'write' && filePath !== undefined) pushUnique(filesWritten, filePath);
+      else if (tool === 'bash' && command !== undefined) bashCommands.push(command);
 
-          if (argsField !== null) {
-            const filePath =
-              typeof argsField.file_path === 'string' ? argsField.file_path : undefined;
-            const command = typeof argsField.command === 'string' ? argsField.command : undefined;
-
-            if (toolName === 'Read' && filePath !== undefined) pushUnique(filesRead, filePath);
-            else if ((toolName === 'Edit' || toolName === 'MultiEdit') && filePath !== undefined)
-              pushUnique(filesEdited, filePath);
-            else if (toolName === 'Write' && filePath !== undefined)
-              pushUnique(filesWritten, filePath);
-            else if (toolName === 'Bash' && command !== undefined) bashCommands.push(command);
-          }
-        }
+      if (state.status === 'error') {
+        const message = typeof state.error === 'string' ? state.error : '';
+        if (message.length > 0) errors.push(message);
+        continue;
       }
-
-      // Defensive tool-result error extraction.
-      if (typeof p.type === 'string' && p.type.includes('tool-result') && p.isError === true) {
-        const msg =
-          typeof p.content === 'string'
-            ? p.content
-            : typeof p.output === 'string'
-              ? p.output
-              : typeof p.message === 'string'
-                ? p.message
-                : '';
-        if (msg.length > 0) errors.push(msg);
+      const metadata =
+        state.metadata !== null && typeof state.metadata === 'object'
+          ? (state.metadata as JsonObj)
+          : null;
+      const exit = metadata !== null && typeof metadata.exit === 'number' ? metadata.exit : 0;
+      if (tool === 'bash' && exit !== 0) {
+        const output = typeof state.output === 'string' ? state.output.split('\n')[0] : '';
+        errors.push(`${command ?? 'command'} exited ${exit}${output !== '' ? `: ${output}` : ''}`);
       }
     }
   }

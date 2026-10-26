@@ -24,8 +24,6 @@ import { defaultDeps } from './deps.ts';
 import { discoverTranscriptPath, knownTranscriptPath } from './resolve-jsonl.ts';
 import { readTranscriptAtStop, TURN_END_SETTLE_MS } from './resolve-transcript.ts';
 
-// Re-export WaitCondition for convenience at call sites
-export type { WaitCondition };
 
 // ---------------------------------------------------------------------------
 // WaitOpts / WaitResult

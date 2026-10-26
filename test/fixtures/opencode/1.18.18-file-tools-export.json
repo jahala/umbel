@@ -1,0 +1,92 @@
+{
+  "info": {
+    "id": "ses_e8890744bffeIyU6c8X2GV7iNg"
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Use your read tool to read a.txt, then use your edit tool to change alpha to beta in a.txt, then use your write tool to create b.txt containing gamma, then read the file missing.txt with your read tool. Then reply with the single word done."
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "tool",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/work/a.txt"
+            }
+          }
+        },
+        {
+          "type": "tool",
+          "tool": "edit",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/work/a.txt",
+              "oldString": "alpha",
+              "newString": "beta"
+            }
+          }
+        },
+        {
+          "type": "tool",
+          "tool": "write",
+          "state": {
+            "status": "completed",
+            "input": {
+              "content": "gamma",
+              "filePath": "/work/b.txt"
+            }
+          }
+        },
+        {
+          "type": "tool",
+          "tool": "read",
+          "state": {
+            "status": "error",
+            "input": {
+              "filePath": "/work/missing.txt"
+            },
+            "error": "File not found: /work/missing.txt"
+          }
+        },
+        {
+          "type": "step-finish"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "text",
+          "text": "done"
+        },
+        {
+          "type": "step-finish"
+        }
+      ]
+    }
+  ]
+}

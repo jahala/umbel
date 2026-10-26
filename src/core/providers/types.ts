@@ -4,8 +4,6 @@
 
 import type { StartupDialog } from '../startup-dialogs.ts';
 
-export type { StartupDialog };
-
 export interface ProviderLaunchSpec {
   bin: string; // 'claude' | 'codex' | 'gemini' | absolute path
   args: string[]; // launch flags (model, allowedTools, hook config)

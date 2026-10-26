@@ -164,14 +164,10 @@ export const WorkerSpecSchema = z.object({
   env: z.record(z.string(), EnvValueSchema).optional(),
 });
 
-export type WorkerSpec = z.infer<typeof WorkerSpecSchema>;
-
 export const OutputSpecSchema = z.union([
   z.string().startsWith('file:'),
   z.literal('assistant_last_message'),
 ]);
-
-export type OutputSpec = z.infer<typeof OutputSpecSchema>;
 
 export const WorkflowStepSchema = z.object({
   run: SessionNameSchema,
