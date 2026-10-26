@@ -11,8 +11,8 @@
  * gate, quarantine — never the prompt.
  */
 import { describe, expect, test } from 'bun:test';
-import { buildSettingsJson } from '../../src/adapters/hooks.ts';
 import { ClaudeProvider } from '../../src/core/providers/claude.ts';
+import { buildSettingsJson } from '../../src/core/providers/claude-settings.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
 import { GeminiProvider } from '../../src/core/providers/gemini.ts';
 import { OpenCodeProvider } from '../../src/core/providers/opencode.ts';

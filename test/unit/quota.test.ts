@@ -8,7 +8,7 @@
  * reports pressure, so absence is the normal case, not an error.
  */
 import { describe, expect, test } from 'bun:test';
-import { buildSettingsJson } from '../../src/adapters/hooks.ts';
+import { buildSettingsJson } from '../../src/core/providers/claude-settings.ts';
 import { parseQuota } from '../../src/core/quota.ts';
 
 describe('parseQuota', () => {
