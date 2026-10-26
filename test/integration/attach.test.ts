@@ -44,7 +44,9 @@ describe('umbel attach', () => {
       socketFor({ UMBEL_STATE: process.env.UMBEL_STATE }),
       'attach',
       '-t',
-      'umbel-w1',
+      // Exact: a bare name would attach to a session whose name merely starts
+      // with it (umbel#154).
+      '=umbel-w1:',
     ]);
   });
 });
