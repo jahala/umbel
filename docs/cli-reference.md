@@ -442,7 +442,7 @@ umbel attach reviewer
 
 ### read
 
-Write the last assistant message from the session's JSONL log to stdout. Reads `session.jsonl` at the path stored in `meta.json`. Does not interact with the tmux pane.
+Write the last assistant message from the session's transcript to stdout. The transcript is the path the newest Stop hook recorded (`events/transcript-path`), else the one cached in `meta.json`, else the provider's own transcript found by search. Does not interact with the tmux pane.
 
 ```
 umbel read [--json] <name>

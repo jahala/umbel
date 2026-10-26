@@ -11,10 +11,6 @@ import {
   usageOf,
 } from './usage.ts';
 
-// Re-export buildSettingsJson for backward compatibility during refactor.
-// Delete after operations layer is fully updated.
-export { buildSettingsJson };
-
 // ---------------------------------------------------------------------------
 // Internal JSONL parsing — extracted from adapters/jsonl.ts logic
 // ---------------------------------------------------------------------------

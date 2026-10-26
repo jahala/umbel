@@ -118,6 +118,8 @@ async function collectFiles(
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch {
+    // A directory that cannot be read holds no transcript this worker can use;
+    // the search goes on through the rest of the tree.
     return;
   }
   for (const entry of entries) {

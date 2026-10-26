@@ -15,7 +15,7 @@
 | spawn passes full process.env to tmux | Inherit only an allowlist: what any CLI needs to run as its user, plus the configuration variables the provider names (`ANTHROPIC_*` and `CLAUDE_CONFIG_DIR` for claude, and so on). Anything else is passed explicitly with `--env`/`env:`, a secret by name. The environment reaches the worker through a tmux buffer the launch wrapper reads and deletes. | A worker that inherited the caller's whole environment received every key in it, and `new-session -e K=V` put each value on tmux's argv for the server's whole life (umbel#93, `docs/worker-env-93.md`). The shell-init vars that race the first send-keys are outside the allowlist. |
 | `lastAssistantMessage` walks backward stopping at first non-assistant | Finds last assistant index, then walks back from there | Real claude appends `system`/`last-prompt`/`ai-title`/`permission-mode` metadata AFTER the assistant response. |
 | `encodeCwd` literal slash replacement | `realpathSync` before encoding | macOS `/var/folders` resolves to `/private/var/folders`; claude encodes the resolved path. |
-| No trust-dialog handling | `dismissTrustDialog` polls capture-pane and sends Enter when the prompt appears | Real claude shows a workspace-trust dialog on first launch in every fresh cwd. Gated on `isRealClaudeBin` so non-claude binaries don't pay the polling cost. |
+| No trust-dialog handling | `dismissStartupDialogs` watches the visible screen and answers each provider's declared `startupDialogs`, matched on the highlighted option | Real claude shows a workspace-trust dialog on first launch in every fresh cwd, and codex shows up to three gates. |
 
 Net: provider-agnostic core, sustained Claude Code support, and provider-shaped scaffolding for Codex and Gemini.
 
@@ -119,7 +119,7 @@ A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEn
 - `stopEventName: 'Stop'`
 - `turnStartEvent: 'turn-start'` — the `UserPromptSubmit` hook (`turn-start.sh`) touches it when a submitted prompt begins a turn, so `send` fails instead of reporting a lost prompt as sent. `submitDelayMs: 750` separates the paste from the submitting Enter, because claude can read them as one stream while startup settles (umbel#121)
 - `parseTranscript`: walks backward from end of JSONL, finds last assistant index, joins consecutive assistant entries (handles thinking + text blocks; per real-claude trace findings)
-- Trust dialog auto-dismiss via `isRealClaudeBin` gate
+- Trust dialog answered through `startupDialogs`, matched on the highlighted option (`❯ No, exit` → Down, Enter), as for every provider
 - Custom endpoints: pointing `ANTHROPIC_BASE_URL`/`AUTH_TOKEN`/`MODEL` (via the env passthrough) at any Anthropic-compatible API (DeepSeek, OpenRouter, local) runs that model under Claude Code's harness — the **second** model-agnostic lane alongside OpenCode, API-billed not subscription. Not a new provider: same binary, hooks, transcript.
 
 ### CodexProvider (`src/core/providers/codex.ts`)
@@ -134,7 +134,7 @@ A CLI with no hooks but a line protocol declares `stream: { encodePrompt, turnEn
 - `buildLaunch` → writes `<cwd>/.gemini/settings.json` with `AfterAgent` hook
 - `files: [{ path: '.gemini/settings.json', content: settingsJsonStr }]`
 - `stopEventName: 'AfterAgent'` (Gemini uses different event names)
-- `parseTranscript`: Gemini transcript JSONL envelope (`message_response` items, last one is the response)
+- `parseTranscript`: Gemini transcript JSONL; the response is the last `gemini` record, with `message_update` records trailing it
 
 ### OpenCodeProvider (`src/core/providers/opencode.ts`) — verified against opencode v1.15.12 (2026-05-29)
 - `buildLaunch` → `bin: 'opencode', args: ['-m', model], env: { OPENCODE_DISABLE_AUTOUPDATE: '1' }`. The autoupdate check runs after launch and opens a modal that holds the keyboard, so the first prompt lands on it and no turn starts (umbel#116). The model is ANY `provider/model` — free+keyless (`opencode/big-pickle`, `opencode/deepseek-v4-flash-free`), paid (`anthropic/…`, `openrouter/deepseek/…`), or local (`ollama/…`). Paid-model API keys reach the worker via the **inherited env** (the PR1 env passthrough) or `--env KEY=VAL`; custom providers (openrouter/ollama) also need a one-time provider block in the user's own opencode config. The free model is for umbel's $0 smoke only — real use sets `--model`. MUST run in the tmux PTY — headless non-TTY `opencode run` hangs after bootstrap.

@@ -64,8 +64,8 @@ function parseGeminiTranscript(content: string): string {
 // records are *inferred* by analogy — handled if present, gracefully ignored
 // if not. Final-message and turn-count remain reliable.
 //
-// TODO(b3-gemini): verify function_call / function_response record shape
-// against a real Gemini CLI transcript and refine field extraction.
+// Unverified: no real gemini transcript with tool calls has been recorded,
+// because the CLI is refused for this account (umbel#149).
 
 function pushUnique(arr: string[], val: string): void {
   if (!arr.includes(val)) arr.push(val);

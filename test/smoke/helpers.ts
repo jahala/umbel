@@ -47,12 +47,8 @@ export function smokeDescribeFor(provider: Provider, name: string, body: () => v
 }
 
 // ---------------------------------------------------------------------------
-// Backward-compatible wrappers (claude defaults)
+// claude defaults
 // ---------------------------------------------------------------------------
-
-export function smokeEnabled(): boolean {
-  return smokeEnabledFor('claude');
-}
 
 export function smokeDescribe(name: string, body: () => void): void {
   smokeDescribeFor('claude', name, body);

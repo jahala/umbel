@@ -1,0 +1,89 @@
+{
+  "info": {
+    "id": "ses_e88924342ffeQVpKft0MIuKVOh"
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Run the shell command ls -la with your bash tool, then run: ls does-not-exist . Then reply with the single word done."
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "ls -la"
+            },
+            "output": "total 0",
+            "metadata": {
+              "exit": 0
+            }
+          }
+        },
+        {
+          "type": "step-finish"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "ls does-not-exist ."
+            },
+            "output": "ls: does-not-exist: No such file or directory",
+            "metadata": {
+              "exit": 1
+            }
+          }
+        },
+        {
+          "type": "step-finish"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant"
+      },
+      "parts": [
+        {
+          "type": "step-start"
+        },
+        {
+          "type": "text",
+          "text": "done"
+        },
+        {
+          "type": "step-finish"
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   extractOpencodeActionsFromContent,
   extractOpencodeTurnsFromContent,
@@ -11,20 +13,15 @@ import {
 // Real export shape (§4 of docs/research/opencode-surface.md):
 //   { info: {...}, messages: [{ info: { role }, parts: [{ type, text? }] }] }
 //
-// Part types observed: step-start, reasoning, text, step-finish.
-// Tool-call part shapes are NOT documented — we infer a plausible shape and
-// document it here so tests double as a spec for the assumed format.
+// Part types observed: step-start, reasoning, text, step-finish, tool.
 //
-// ASSUMED tool-call part shape (unverified against a real tool-using transcript):
-//   { type: 'tool-call', toolName: string, args: { file_path?: string, command?: string, ... } }
-//   or
-//   { type: 'tool-call', toolName: string, input: { file_path?: string, ... } }
-// ASSUMED tool-result-error part shape:
-//   { type: 'tool-result', toolCallId: string, isError: true, content: string }
-//
-// These shapes are chosen by analogy with Codex/Gemini extractors which accept
-// both `args`/`input` and `tool_name`/`name` variants. If the real opencode
-// transcript differs, this comment + the tests must be updated.
+// Tool part shape, recorded from opencode 1.18.18 (test/fixtures/opencode/):
+//   { type: 'tool', tool: 'bash' | 'read' | 'edit' | 'write' | ...,
+//     state: { status: 'completed' | 'error' | ..., input: {...},
+//              output?: string, error?: string, metadata?: { exit?: number } } }
+// bash takes input.command; read, edit and write take input.filePath. A failed
+// tool has status 'error' and the message in state.error; a shell command that
+// exits non-zero stays 'completed' and records the code in metadata.exit.
 
 function makeExportJson(
   messages: Array<{ role: string; parts: Array<Record<string, unknown>> }>,
@@ -62,14 +59,9 @@ function stepFinishPart(): Record<string, unknown> {
   return { type: 'step-finish', reason: 'stop' };
 }
 
-// Inferred tool-call part shape — see comment at top of file.
-function toolCallPart(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
-  return { type: 'tool-call', toolName, args };
-}
-
-// Inferred tool-result error part shape — see comment at top of file.
-function toolResultErrorPart(content: string): Record<string, unknown> {
-  return { type: 'tool-result', isError: true, content };
+// A finished tool call, in the recorded shape (see the comment at the top).
+function toolPart(tool: string, input: Record<string, unknown>): Record<string, unknown> {
+  return { type: 'tool', tool, state: { status: 'completed', input } };
 }
 
 // ---------------------------------------------------------------------------
@@ -271,55 +263,55 @@ describe('extractOpencodeActionsFromContent — reliable fields', () => {
 // ---------------------------------------------------------------------------
 
 describe('extractOpencodeActionsFromContent — defensive tool extraction', () => {
-  test('tool-call part with Read + file_path → filesRead populated', () => {
+  test('read tool with filePath → filesRead populated', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
-        parts: [toolCallPart('Read', { file_path: '/repo/foo.ts' }), textPart('done')],
+        parts: [toolPart('read', { filePath: '/repo/foo.ts' }), textPart('done')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Read: 1 });
+    expect(m.toolsUsed).toEqual({ read: 1 });
     expect(m.filesRead).toEqual(['/repo/foo.ts']);
   });
 
-  test('tool-call part with Edit + file_path → filesEdited populated', () => {
+  test('edit tool with filePath → filesEdited populated', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
-        parts: [toolCallPart('Edit', { file_path: '/repo/a.ts' }), textPart('done')],
+        parts: [toolPart('edit', { filePath: '/repo/a.ts' }), textPart('done')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Edit: 1 });
+    expect(m.toolsUsed).toEqual({ edit: 1 });
     expect(m.filesEdited).toEqual(['/repo/a.ts']);
   });
 
-  test('tool-call part with Write + file_path → filesWritten populated', () => {
+  test('write tool with filePath → filesWritten populated', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
-        parts: [toolCallPart('Write', { file_path: '/repo/new.ts' }), textPart('done')],
+        parts: [toolPart('write', { filePath: '/repo/new.ts' }), textPart('done')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Write: 1 });
+    expect(m.toolsUsed).toEqual({ write: 1 });
     expect(m.filesWritten).toEqual(['/repo/new.ts']);
   });
 
-  test('tool-call part with Bash + command → bashCommands populated', () => {
+  test('bash tool with command → bashCommands populated', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
-        parts: [toolCallPart('Bash', { command: 'bun test' }), textPart('done')],
+        parts: [toolPart('bash', { command: 'bun test' }), textPart('done')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Bash: 1 });
+    expect(m.toolsUsed).toEqual({ bash: 1 });
     expect(m.bashCommands).toEqual(['bun test']);
   });
 
@@ -329,39 +321,42 @@ describe('extractOpencodeActionsFromContent — defensive tool extraction', () =
       {
         role: 'assistant',
         parts: [
-          toolCallPart('Read', { file_path: '/repo/a.ts' }),
-          toolCallPart('Edit', { file_path: '/repo/b.ts' }),
+          toolPart('read', { filePath: '/repo/a.ts' }),
+          toolPart('edit', { filePath: '/repo/b.ts' }),
           textPart('a1'),
         ],
       },
       { role: 'user', parts: [textPart('q2')] },
       {
         role: 'assistant',
-        parts: [toolCallPart('Bash', { command: 'ls' }), textPart('a2')],
+        parts: [toolPart('bash', { command: 'ls' }), textPart('a2')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Read: 1, Edit: 1, Bash: 1 });
+    expect(m.toolsUsed).toEqual({ read: 1, edit: 1, bash: 1 });
     expect(m.filesRead).toEqual(['/repo/a.ts']);
     expect(m.filesEdited).toEqual(['/repo/b.ts']);
     expect(m.bashCommands).toEqual(['ls']);
     expect(m.turnCount).toBe(2);
   });
 
-  test('tool-call part with `input` field (alternative shape) is also accepted', () => {
-    // Accept both `args` and `input` field names, mirroring codex/gemini defensiveness.
+  test('a tool still running is counted, and its file read', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
         parts: [
-          { type: 'tool-call', toolName: 'Read', input: { file_path: '/repo/alt.ts' } },
+          {
+            type: 'tool',
+            tool: 'read',
+            state: { status: 'running', input: { filePath: '/repo/alt.ts' } },
+          },
           textPart('done'),
         ],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Read: 1 });
+    expect(m.toolsUsed).toEqual({ read: 1 });
     expect(m.filesRead).toEqual(['/repo/alt.ts']);
   });
 
@@ -370,7 +365,7 @@ describe('extractOpencodeActionsFromContent — defensive tool extraction', () =
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
-        parts: [toolCallPart('SomeFuture', { random_arg: 'value' }), textPart('done')],
+        parts: [toolPart('SomeFuture', { random_arg: 'value' }), textPart('done')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
@@ -384,25 +379,28 @@ describe('extractOpencodeActionsFromContent — defensive tool extraction', () =
       {
         role: 'assistant',
         parts: [
-          toolCallPart('Read', { file_path: '/repo/foo.ts' }),
-          toolCallPart('Read', { file_path: '/repo/foo.ts' }),
+          toolPart('read', { filePath: '/repo/foo.ts' }),
+          toolPart('read', { filePath: '/repo/foo.ts' }),
           textPart('done'),
         ],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Read: 2 });
+    expect(m.toolsUsed).toEqual({ read: 2 });
     expect(m.filesRead).toEqual(['/repo/foo.ts']);
   });
 
-  test('tool-result-error part → errors populated', () => {
+  test('a tool that failed → its error message in errors', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
         parts: [
-          toolCallPart('Edit', { file_path: '/missing.ts' }),
-          toolResultErrorPart('File not found'),
+          {
+            type: 'tool',
+            tool: 'edit',
+            state: { status: 'error', input: { filePath: '/missing.ts' }, error: 'File not found' },
+          },
           textPart('failed'),
         ],
       },
@@ -411,16 +409,16 @@ describe('extractOpencodeActionsFromContent — defensive tool extraction', () =
     expect(m.errors).toEqual(['File not found']);
   });
 
-  test('tool part with neither `args` nor `input` → tool still counted, fields empty', () => {
+  test('a tool part with no state → tool still counted, fields empty', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       {
         role: 'assistant',
-        parts: [{ type: 'tool-call', toolName: 'Read' }, textPart('done')],
+        parts: [{ type: 'tool', tool: 'read' }, textPart('done')],
       },
     ]);
     const m = extractOpencodeActionsFromContent(content);
-    expect(m.toolsUsed).toEqual({ Read: 1 });
+    expect(m.toolsUsed).toEqual({ read: 1 });
     expect(m.filesRead).toEqual([]);
   });
 });
@@ -469,5 +467,31 @@ describe('OpenCodeProvider.extractTurns', () => {
 
   test('returns empty array on empty string (no throw)', () => {
     expect(OpenCodeProvider.extractTurns?.('')).toEqual([]);
+  });
+});
+
+// Real opencode 1.18.18 exports, trimmed (umbel#148).
+function recorded(name: string): string {
+  return readFileSync(join(import.meta.dir, '../../fixtures/opencode', name), 'utf8');
+}
+
+describe('extractOpencodeActionsFromContent — recorded opencode 1.18.18 exports', () => {
+  test('shell calls: counted, commands in order, a non-zero exit is an error', () => {
+    const m = extractOpencodeActionsFromContent(recorded('1.18.18-tool-export.json'));
+    expect(m.toolsUsed).toEqual({ bash: 2 });
+    expect(m.bashCommands).toEqual(['ls -la', 'ls does-not-exist .']);
+    expect(m.errors).toEqual([
+      'ls does-not-exist . exited 1: ls: does-not-exist: No such file or directory',
+    ]);
+    expect(m.finalMessage).toBe('done');
+  });
+
+  test('file tools: read, edit and write by filePath, a failed read is an error', () => {
+    const m = extractOpencodeActionsFromContent(recorded('1.18.18-file-tools-export.json'));
+    expect(m.toolsUsed).toEqual({ read: 2, edit: 1, write: 1 });
+    expect(m.filesRead).toEqual(['/work/a.txt', '/work/missing.txt']);
+    expect(m.filesEdited).toEqual(['/work/a.txt']);
+    expect(m.filesWritten).toEqual(['/work/b.txt']);
+    expect(m.errors).toEqual(['File not found: /work/missing.txt']);
   });
 });
