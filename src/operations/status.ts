@@ -103,14 +103,22 @@ async function enrich(
   d: Deps,
   env: Record<string, string | undefined>,
   processList: () => Promise<string>,
+  // A listing that will hide the dead ones reads no git for them: one status
+  // call over hundreds of tombstones would otherwise run git in each.
+  workspaceForDead: boolean,
 ): Promise<StatusEntry> {
   const eventsDir = d.fs.eventsDir(session.name, env);
   // Started before the reads below so it overlaps them: a status call answers
   // about the work and the worker together, not one after the other. It answers
   // null rather than throwing, so one unreadable tree never fails a listing.
-  const workspaceRead = d.git.workspace(session.cwd, session.baseHead);
+  const paneRead = d.tmux.paneState(session.name, env);
+  const workspaceRead = workspaceForDead
+    ? d.git.workspace(session.cwd, session.baseHead)
+    : paneRead.then((p) =>
+        p.exists && !p.dead ? d.git.workspace(session.cwd, session.baseHead) : null,
+      );
   const [pane, dead, logMtime, notifMtime, stopMtime, turnStartMtime] = await Promise.all([
-    d.tmux.paneState(session.name, env),
+    paneRead,
     d.fs.readDead(session.name, env),
     fileMtime(join(eventsDir, 'log')),
     fileMtime(join(eventsDir, 'notification')),
@@ -319,7 +327,7 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
 
   if (opts.name !== undefined) {
     const session = await d.fs.readMeta(opts.name, env);
-    const entry = await enrich(session, d, env, processes);
+    const entry = await enrich(session, d, env, processes, true);
     return [entry];
   }
 
@@ -342,7 +350,7 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
     }
     // Before enrich: a session of another repository costs no tmux call.
     if (wantedRepo !== undefined && session.repo !== wantedRepo) continue;
-    entries.push(await enrich(session, d, env, processes));
+    entries.push(await enrich(session, d, env, processes, opts.all === true));
   }
 
   // Liveness is read per session, so the filter comes after: there is no

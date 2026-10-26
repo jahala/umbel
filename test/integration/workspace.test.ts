@@ -339,3 +339,53 @@ describe('git reads never disturb a commit in the worker tree', () => {
     expect((await readFile(index)).equals(beforeRead)).toBe(true);
   }, 60_000);
 });
+
+// A listing without --all hides dead sessions, so it must not run git in every
+// tombstone's cwd to build entries it then drops; a named status or --all still
+// reads a dead worker's workspace, which says what it left behind.
+describe('status reads a workspace only where it will be shown', () => {
+  test('a dead session: not for the live listing, yes for --all and by name', async () => {
+    const { ensureSessionDir, writeMeta } = await import('../../src/adapters/fs-state.ts');
+    const git = await import('../../src/adapters/git.ts');
+    const { SessionSchema } = await import('../../src/core/types.ts');
+    const root = await mkdtemp(join(tmpdir(), 'umbel-ws-dead-'));
+    try {
+      const env = {
+        UMBEL_STATE: join(root, 'state'),
+        UMBEL_TMUX_SOCKET: `umbel-test-ws-${randomBytes(3).toString('hex')}`,
+      };
+      const name = 'ws-dead';
+      await ensureSessionDir(name, env);
+      await writeMeta(
+        name,
+        SessionSchema.parse({
+          name,
+          cwd: root,
+          anonymous: false,
+          createdAt: Date.now(),
+          jsonlPath: null,
+        }),
+        env,
+      );
+      let reads = 0;
+      const deps = {
+        git: {
+          ...git,
+          workspace: async (...args: Parameters<typeof git.workspace>) => {
+            reads++;
+            return git.workspace(...args);
+          },
+        },
+      };
+
+      await status({ env, deps });
+      expect(reads).toBe(0);
+      await status({ env, deps, all: true });
+      expect(reads).toBe(1);
+      await status({ env, deps, name });
+      expect(reads).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
