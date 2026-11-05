@@ -341,4 +341,11 @@ export interface AgentProvider {
   // requested one is unknown, so spawn can refuse an unlisted --model before
   // a worker exists. `bin` is the binary the launch will use.
   listModels?(bin: string): readonly string[];
+
+  // Optional: matches a model-probe failure worth retrying, because the cause
+  // is a momentarily busy local resource rather than an answer about the
+  // model. spawn retries a matching failure a bounded number of times with a
+  // short backoff; any other failure stands (umbel#169). Matched against the
+  // probe's error message, which carries the command and its stderr.
+  readonly listModelsRetryMatch?: RegExp;
 }

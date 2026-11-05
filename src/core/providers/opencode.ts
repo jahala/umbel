@@ -634,6 +634,11 @@ const opencodeProvider: AgentProvider = {
     return [bin, 'models'];
   },
 
+  // `opencode models` reads opencode's local SQLite database. A simultaneous
+  // spawn writing it makes the reader exit 1 with this line, and the listing
+  // is there a moment later, so spawn retries only this failure (umbel#169).
+  listModelsRetryMatch: /database is locked/,
+
   extractActions(content: string): ActionManifest {
     return extractOpencodeActionsFromContent(content);
   },

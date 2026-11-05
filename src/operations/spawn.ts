@@ -39,6 +39,11 @@ const DIALOG_KEY_SETTLE_MS = 300;
 // had rendered but was not yet reading input. Re-send rather than move on, but
 // cap it — retrying is what makes typing forever into a live agent possible.
 const MAX_DIALOG_ATTEMPTS = 3;
+// A model probe that meets a busy local database is retried a few times over
+// about four seconds before its failure stands (umbel#169). Each attempt is
+// bounded too, so a probe that stops answering cannot hang a spawn.
+const MODEL_PROBE_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1000, 2000];
+const MODEL_PROBE_TIMEOUT_MS = 10_000;
 
 export async function dismissStartupDialogs(
   d: Pick<Deps, 'tmux'>,
@@ -351,13 +356,30 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // probe runs the launch's binary with the launch's env and cwd, so it sees
   // the same provider config the worker would.
   if (opts.model !== undefined && provider.listModels !== undefined) {
-    let out: string;
-    try {
-      out = await d.exec.run(provider.listModels(bin), { cwd: opts.cwd, env: workerEnvFinal });
-    } catch (err) {
+    const argv = provider.listModels(bin);
+    let out: string | undefined;
+    let probeError: unknown;
+    // A locked local database is not a missing model: retry the probe with a
+    // short backoff, and let any other failure stand (umbel#169).
+    for (let attempt = 0; out === undefined; attempt++) {
+      try {
+        out = await d.exec.run(argv, {
+          cwd: opts.cwd,
+          env: workerEnvFinal,
+          timeoutMs: MODEL_PROBE_TIMEOUT_MS,
+        });
+      } catch (err) {
+        probeError = err;
+        const delay = MODEL_PROBE_RETRY_DELAYS_MS[attempt];
+        const message = err instanceof Error ? err.message : String(err);
+        if (delay === undefined || provider.listModelsRetryMatch?.test(message) !== true) break;
+        await Bun.sleep(delay);
+      }
+    }
+    if (out === undefined) {
       throw new ModelListUnavailableError(
         opts.model,
-        err instanceof Error ? err.message : String(err),
+        probeError instanceof Error ? probeError.message : String(probeError),
       );
     }
     const listed = out

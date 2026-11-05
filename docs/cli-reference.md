@@ -323,7 +323,7 @@ umbel status reviewer
 
 ---
 
-When the provider reports subscription rate-limit usage, entries carry a `quota` field (`fiveHourPct`, `sevenDayPct`, `resetsAt`). It is absent whenever no limit pressure is reported, which is the normal case — claude only sends the figures as a window fills. The numbers come from the provider's structured status payload, not from reading the pane. Checking it before dispatch is what lets a caller re-cast work to another provider rather than lose a turn to a limit dialog.
+When the provider reports subscription rate-limit usage, entries carry a `quota` field (`fiveHourPct`, `sevenDayPct`, `resetsAt`). `resetsAt` is the soonest reported window's reset as an ISO 8601 timestamp, so a reader can tell a current reading from one whose window has already reset. The field set is absent whenever no limit pressure is reported, which is the normal case — claude only sends the figures as a window fills. The numbers come from the provider's structured status payload, not from reading the pane. Checking it before dispatch is what lets a caller re-cast work to another provider rather than lose a turn to a limit dialog.
 
 ### ls
 

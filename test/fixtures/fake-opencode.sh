@@ -6,6 +6,12 @@
 #   FAKE_OPENCODE_DELAY  optional, ms to sleep before responding (default 0)
 #   FAKE_OPENCODE_MODELS_EXTRA  optional, one more id for `models` to list
 #   FAKE_OPENCODE_MODELS_EXIT   optional, non-zero makes `models` fail with it
+#   FAKE_OPENCODE_MODELS_LOCKED optional file; while it holds a positive count,
+#                        `models` fails with "database is locked" and decrements
+#                        it, as opencode's SQLite does under a concurrent spawn
+#                        (umbel#169)
+#   FAKE_OPENCODE_MODELS_CALLS  optional file; every `models` invocation appends
+#                        a line, so a test can count the probe's attempts
 #   FAKE_OPENCODE_ARGV   optional file; the launch argv is written there, one per line
 #   FAKE_OPENCODE_SWALLOW_FIRST_INPUT  optional count of prompts to drop, as the
 #                        real TUI drops the first one when its update modal holds
@@ -28,6 +34,16 @@ FAKE_SESSION_ID="ses_fake123"
 
 # `opencode models` prints one provider/model id per line and exits.
 if [[ "${1:-}" == "models" ]]; then
+  [[ -n "${FAKE_OPENCODE_MODELS_CALLS:-}" ]] && echo called >> "${FAKE_OPENCODE_MODELS_CALLS}"
+  if [[ -n "${FAKE_OPENCODE_MODELS_LOCKED:-}" ]]; then
+    remaining=$(cat "${FAKE_OPENCODE_MODELS_LOCKED}" 2>/dev/null || echo 0)
+    if [[ "${remaining}" -gt 0 ]]; then
+      echo $((remaining - 1)) > "${FAKE_OPENCODE_MODELS_LOCKED}"
+      echo "Error: Unexpected error" >&2
+      echo "database is locked" >&2
+      exit 1
+    fi
+  fi
   if [[ "${FAKE_OPENCODE_MODELS_EXIT:-0}" -ne 0 ]]; then
     echo "fake-opencode: model catalogue unavailable" >&2
     exit "${FAKE_OPENCODE_MODELS_EXIT}"
