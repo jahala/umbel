@@ -287,9 +287,9 @@ const geminiProvider: AgentProvider = {
   // No readyMatch: gemini's welcome banner ("Gemini CLI v…", "Tips for getting
   // started") renders ABOVE the trust dialog in the same frame, so a
   // banner-based readyMatch could short-circuit before the dialog is dismissed.
-  // With a single dialog the loop already exits the instant it fires, so the
-  // fast-path optimization isn't needed; an already-trusted spawn just polls to
-  // the timeout (correct, only slightly slower).
+  // So the startup loop polls to its timeout, watching for the sign-in panel,
+  // which paints after the trust dialog is answered (umbel#166). Correct, only
+  // slower; a verified main-UI readyMatch would make it fast.
   //
   // NOTE: gemini must already be authenticated (a one-time `gemini` → Sign in
   // with Google). On an unauthenticated machine an auth-method prompt appears

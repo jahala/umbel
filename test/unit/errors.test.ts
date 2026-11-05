@@ -145,11 +145,14 @@ describe('ProviderNotSignedInError', () => {
     expect(err.screenCause).toBe('Failed to sign in. Message: quota exceeded');
     expect(err.message).toContain('Failed to sign in. Message: quota exceeded');
     expect(err.message).toContain('once in a terminal');
+    expect(err.message).toContain('gemini could not sign in here');
+    expect(err.message).not.toContain('is not signed in');
   });
 
   test('keeps the sign-in remedy when the screen shows no cause', () => {
     const err = new ProviderNotSignedInError('claude', 'Select login method:');
     expect(err.message).toContain('run claude once in a terminal and sign in');
+    expect(err.message).toContain('claude is not signed in here');
     expect(err.message).not.toContain('The screen shows:');
   });
 });

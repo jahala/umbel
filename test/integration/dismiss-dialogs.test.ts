@@ -251,6 +251,35 @@ describe('dismissStartupDialogs (GeminiProvider specs)', () => {
     });
   });
 
+  // Real 0.46.0 timing in a fresh folder: Enter on the trust dialog, then the
+  // pane holds still for about 1.4 s before the sign-in panel paints. With no
+  // readyMatch the loop used to stop as soon as the trust dialog was answered,
+  // so spawn reported a worker that was waiting on a sign-in screen.
+  test('keeps watching for the sign-in panel after the trust dialog is answered', async () => {
+    const screen = readFileSync(
+      join(import.meta.dir, '../fixtures/sign-in/gemini-0.46.0-sign-in-error.txt'),
+      'utf8',
+    );
+    const trust =
+      "Gemini CLI v0.46.0\n│ Do you trust the files in this folder? │\n● 1. Trust folder\n  2. Trust parent folder\n  3. Don't trust";
+    const loading = 'Gemini CLI v0.46.0\nTips for getting started';
+    const { sent, tmux } = makeFakeTmux([trust, loading, loading, loading, loading, screen]);
+
+    const result = await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      GeminiProvider.startupDialogs ?? [],
+      GeminiProvider.readyMatch,
+      undefined,
+      {},
+      GeminiProvider.signInMatch,
+      GeminiProvider.signInCause,
+    );
+
+    expect(sent).toEqual([['Enter']]);
+    expect(result?.line).toBe('How would you like to authenticate for this project?');
+  });
+
   test('returns only the line when the panel shows no failure', async () => {
     const screen = readFileSync(
       join(import.meta.dir, '../fixtures/sign-in/gemini-0.46.0-sign-in.txt'),

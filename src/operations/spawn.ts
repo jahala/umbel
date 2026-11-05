@@ -126,8 +126,11 @@ export async function dismissStartupDialogs(
       } else if (Date.now() - settling.since >= readySettleMs) {
         return undefined;
       }
-    } else if (attempts.size >= dialogs.length) {
+    } else if (attempts.size >= dialogs.length && signInMatch === undefined) {
       // No ready signal to wait for; done once all known dialogs are dismissed.
+      // A CLI with a sign-in screen keeps being watched to the deadline: gemini
+      // 0.46.0 paints its sign-in panel about 1.4 s after the trust dialog is
+      // answered, on a pane that holds still until then (umbel#166).
       return undefined;
     }
 

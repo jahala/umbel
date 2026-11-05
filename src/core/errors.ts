@@ -128,7 +128,10 @@ export class ProviderNotSignedInError extends Error {
     public screenCause?: string,
   ) {
     super(
-      `${providerName} is not signed in here: it opened on its sign-in screen ("${line}").` +
+      (screenCause === undefined
+        ? `${providerName} is not signed in here`
+        : `${providerName} could not sign in here`) +
+        `: it opened on its sign-in screen ("${line}").` +
         signInCauseNote(screenCause) +
         (screenCause === undefined
           ? ` A person must run ${providerName} once in a terminal and sign in; then spawn again.`
