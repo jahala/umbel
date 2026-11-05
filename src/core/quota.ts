@@ -24,11 +24,20 @@ export interface Quota {
   resetsAt?: string;
 }
 
+// Claude sends resets_at as epoch seconds; the string form is kept for a
+// provider that sends an ISO timestamp instead. Quota.resetsAt is always ISO.
+function resetsAtOf(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const date = new Date(value * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 function windowOf(value: unknown): { pct?: number; resetsAt?: string } | null {
   if (value === null || typeof value !== 'object') return null;
   const w = value as Record<string, unknown>;
   const pct = typeof w.used_percentage === 'number' ? w.used_percentage : undefined;
-  const resetsAt = typeof w.resets_at === 'string' ? w.resets_at : undefined;
+  const resetsAt = resetsAtOf(w.resets_at);
   if (pct === undefined && resetsAt === undefined) return null;
   return { ...(pct !== undefined ? { pct } : {}), ...(resetsAt !== undefined ? { resetsAt } : {}) };
 }

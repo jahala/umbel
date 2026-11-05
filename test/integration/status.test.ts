@@ -720,6 +720,31 @@ describe('status — subscription quota', () => {
     expect(entry?.quota).toEqual({ fiveHourPct: 94, resetsAt: '2026-09-05T21:20:00Z' });
   });
 
+  // The stored payload claude actually writes carries epoch seconds, so status
+  // must convert it rather than dropping the reset time (umbel#165).
+  test('a numeric resets_at reaches status as an ISO timestamp', async () => {
+    const env = await setup();
+    const name = sessionName('quotaepoch');
+    const { session } = await spawn(makeSpawnOpts(env, '/tmp', { name }));
+    CREATED.push(session.name);
+
+    const { statusLineScriptPath } = await ensureGlobalHooks(env);
+    const proc = Bun.spawn([statusLineScriptPath], {
+      stdin: new TextEncoder().encode(
+        JSON.stringify({
+          rate_limits: { seven_day: { used_percentage: 40, resets_at: 1794362400 } },
+        }),
+      ),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: session.name },
+    });
+    expect(await proc.exited).toBe(0);
+
+    const [entry] = await status({ name: session.name, env });
+    expect(entry?.quota).toEqual({ sevenDayPct: 40, resetsAt: '2026-11-11T02:00:00.000Z' });
+  });
+
   test('a worker with no reported limits carries no quota field', async () => {
     const env = await setup();
     const name = sessionName('noquota');

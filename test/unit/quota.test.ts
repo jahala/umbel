@@ -28,11 +28,48 @@ describe('parseQuota', () => {
     });
   });
 
+  // Claude's statusLine sends resets_at as epoch seconds, not a string: this is
+  // the rate_limits block of a real stored events/quota (audit-step2-core).
+  test('reads an epoch-seconds resets_at the way claude actually sends it', () => {
+    expect(
+      parseQuota(
+        JSON.stringify({
+          rate_limits: { seven_day: { used_percentage: 40, resets_at: 1794362400 } },
+        }),
+      ),
+    ).toEqual({ sevenDayPct: 40, resetsAt: '2026-11-11T02:00:00.000Z' });
+  });
+
+  test('reports the sooner reset when the windows use different forms', () => {
+    expect(
+      parseQuota(
+        JSON.stringify({
+          rate_limits: {
+            five_hour: { used_percentage: 94, resets_at: 1794362400 },
+            seven_day: { used_percentage: 41, resets_at: '2026-09-09T00:00:00Z' },
+          },
+        }),
+      ),
+    ).toEqual({ fiveHourPct: 94, sevenDayPct: 41, resetsAt: '2026-09-09T00:00:00Z' });
+  });
+
   test('a payload with no rate_limits is not an error — it means no pressure', () => {
     // Verbatim key set observed from a real statusLine invocation.
     expect(
       parseQuota(JSON.stringify({ model: {}, workspace: {}, context_window: {}, cost: {} })),
     ).toBeNull();
+  });
+
+  test('an unreadable resets_at is dropped, not converted to an invalid date', () => {
+    for (const resetsAt of [Number.NaN, Number.POSITIVE_INFINITY, null, true]) {
+      expect(
+        parseQuota(
+          JSON.stringify({
+            rate_limits: { five_hour: { used_percentage: 9, resets_at: resetsAt } },
+          }),
+        ),
+      ).toEqual({ fiveHourPct: 9 });
+    }
   });
 
   test('is total: malformed input yields null rather than throwing', () => {
