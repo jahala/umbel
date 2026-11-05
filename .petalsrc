@@ -2,6 +2,6 @@
 # .brand/products/umbel/; the rest of .brand/ is fetched and git-ignored.
 brand:
   source: https://github.com/jahala/plotplot.git
-  version: v1.11.0
+  version: v1.11.1
   product: umbel
   overrides: {}
