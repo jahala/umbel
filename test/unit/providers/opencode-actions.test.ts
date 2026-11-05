@@ -152,12 +152,12 @@ describe('extractOpencodeTurnsFromContent', () => {
     expect(extractOpencodeTurnsFromContent(content)).toEqual([{ index: 0, text: 'OPENCODE_OK' }]);
   });
 
-  test('assistant message with no text parts → empty-text turn', () => {
+  test('assistant message with no text parts is not a turn', () => {
     const content = makeExportJson([
       { role: 'user', parts: [textPart('q')] },
       { role: 'assistant', parts: [stepStartPart(), stepFinishPart()] },
     ]);
-    expect(extractOpencodeTurnsFromContent(content)).toEqual([{ index: 0, text: '' }]);
+    expect(extractOpencodeTurnsFromContent(content)).toEqual([]);
   });
 
   test('trailing non-assistant message does not affect turn extraction', () => {
@@ -493,5 +493,22 @@ describe('extractOpencodeActionsFromContent — recorded opencode 1.18.18 export
     expect(m.filesEdited).toEqual(['/work/a.txt']);
     expect(m.filesWritten).toEqual(['/work/b.txt']);
     expect(m.errors).toEqual(['File not found: /work/missing.txt']);
+  });
+
+  // The mid-step export's turn ends on an assistant message that only called a
+  // tool, so the newest message holds no text (umbel#168).
+  test('mid-step: the newest message is a tool step, so the turn text is the one before it', () => {
+    const m = extractOpencodeActionsFromContent(recorded('1.18.18-mid-step-export.json'));
+    expect(m.finalMessage).toContain('Rivers are the arteries');
+    expect(m.toolsUsed).toEqual({ bash: 2 });
+    expect(m.turnCount).toBe(1);
+  });
+});
+
+describe('extractOpencodeTurnsFromContent — recorded opencode 1.18.18 exports', () => {
+  test('mid-step: the tool-only step is not a turn, and the turn text is the text beside it', () => {
+    const turns = extractOpencodeTurnsFromContent(recorded('1.18.18-mid-step-export.json'));
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.text).toContain('Rivers are the arteries');
   });
 });

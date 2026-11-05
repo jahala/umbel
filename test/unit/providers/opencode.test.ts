@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -160,6 +160,52 @@ describe('OpenCodeProvider.parseTranscript', () => {
       ],
     };
     expect(OpenCodeProvider.parseTranscript(JSON.stringify(exportObj))).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A turn whose newest assistant message carries no text
+//
+// opencode writes one assistant message per step. A step that only calls a
+// tool holds step-start/tool/step-finish and no text, so the answer to read
+// may be the newest text in the turn rather than the newest message
+// (test/fixtures/opencode/1.18.18-mid-step-export.json, real 1.18.18 export).
+// ---------------------------------------------------------------------------
+
+function recorded(name: string): string {
+  return readFileSync(join(import.meta.dir, '../../fixtures/opencode', name), 'utf8');
+}
+
+function turnExport(messages: Array<{ role: string; parts: Array<Record<string, unknown>> }>) {
+  return JSON.stringify({
+    info: { id: 'ses_x' },
+    messages: messages.map((m) => ({ info: { role: m.role }, parts: m.parts })),
+  });
+}
+
+describe('OpenCodeProvider.parseTranscript — newest message carries no text', () => {
+  test('returns the turn text when the newest assistant message is a tool step', () => {
+    const text = OpenCodeProvider.parseTranscript(recorded('1.18.18-mid-step-export.json'));
+    expect(text).toContain('Rivers are the arteries');
+  });
+
+  test('does not return the previous turn when the open turn has no text yet', () => {
+    const content = turnExport([
+      { role: 'user', parts: [{ type: 'text', text: 'first question' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: 'first answer' }] },
+      { role: 'user', parts: [{ type: 'text', text: 'second question' }] },
+      { role: 'assistant', parts: [{ type: 'step-start' }, { type: 'tool', tool: 'bash' }] },
+    ]);
+    expect(OpenCodeProvider.parseTranscript(content)).toBe('');
+  });
+
+  test('skips an empty newest message and returns the turn text', () => {
+    const content = turnExport([
+      { role: 'user', parts: [{ type: 'text', text: 'question' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: 'the answer' }] },
+      { role: 'assistant', parts: [] },
+    ]);
+    expect(OpenCodeProvider.parseTranscript(content)).toBe('the answer');
   });
 });
 
