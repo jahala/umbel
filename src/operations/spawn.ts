@@ -30,8 +30,9 @@ import { defaultDeps } from './deps.ts';
 // been handled OR the provider's readyMatch shows the main UI is up
 // (already-trusted cwd → no dialogs appear). Best-effort throughout — never
 // throws. Returns the line of the provider's sign-in screen when the CLI opened
-// on it instead of starting (umbel#105): no dialog or readiness follows that,
-// only a person.
+// on it instead of starting (umbel#105), with the cause its panel shows beside
+// that line when there is one (umbel#166): no dialog or readiness follows the
+// screen, only a person.
 const DIALOG_POLL_INTERVAL_MS = 150;
 const DIALOG_POLL_TIMEOUT_MS = 8000;
 const DIALOG_KEY_SETTLE_MS = 300;
@@ -48,7 +49,8 @@ export async function dismissStartupDialogs(
   readySettleMs?: number,
   env: Record<string, string | undefined> = {},
   signInMatch?: RegExp,
-): Promise<string | undefined> {
+  signInCause?: (pane: string) => string | undefined,
+): Promise<{ line: string; cause: string | undefined } | undefined> {
   // Nothing to wait for: no dialogs to dismiss AND no ready signal to poll for.
   if (dialogs.length === 0 && readyMatch === undefined && signInMatch === undefined) {
     return undefined;
@@ -77,7 +79,7 @@ export async function dismissStartupDialogs(
     // Checked before readiness: claude's readyMatch includes a box border,
     // which a sign-in screen can draw too.
     const signIn = matchedLine(pane, signInMatch);
-    if (signIn !== undefined) return signIn;
+    if (signIn !== undefined) return { line: signIn, cause: signInCause?.(pane) };
 
     // The worker died during startup. Its pane is kept (remain-on-exit), so the
     // capture above succeeds and would otherwise keep this loop typing at a
@@ -433,7 +435,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // readyMatch (gemini) gives a fake nothing to print, and the loop would poll
   // to its timeout, so its fake keeps the warm-up.
   const fakeWithoutReadySignal = opts.claudeBin !== undefined && provider.readyMatch === undefined;
-  let signIn: string | undefined;
+  let signIn: { line: string; cause: string | undefined } | undefined;
   // The watch runs for any provider with something to watch for. Gating it on
   // startupDialogs alone skipped the sign-in check of a CLI that has no dialogs.
   const watchesStartup =
@@ -449,6 +451,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
       provider.readySettleMs,
       env,
       provider.signInMatch,
+      provider.signInCause,
     ).catch(() => undefined);
   } else {
     await Bun.sleep(800);
@@ -459,7 +462,7 @@ export async function spawn(opts: SpawnOpts): Promise<SpawnResult> {
   // conductor's retry met the same screen (umbel#105).
   if (signIn !== undefined) {
     await unwind();
-    throw new ProviderNotSignedInError(providerName, signIn);
+    throw new ProviderNotSignedInError(providerName, signIn.line, signIn.cause);
   }
 
   // Returning success is a promise to the caller that a worker exists to talk

@@ -12,7 +12,7 @@ import { classifyNotification, type NeedsInputReason } from '../core/notificatio
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
 import type { AgentProvider, Usage } from '../core/providers/types.ts';
-import { matchedLine } from '../core/startup-dialogs.ts';
+import { matchedLine, signInCauseNote } from '../core/startup-dialogs.ts';
 import type { Session, WaitCondition } from '../core/types.ts';
 import { SessionNameSchema } from '../core/types.ts';
 import type { WaitContext } from '../core/wait.ts';
@@ -538,7 +538,9 @@ export async function waitFor(opts: WaitOpts): Promise<WaitResult> {
               stopped: false,
               reason: 'input',
               inputReason: 'sign-in',
-              message: `${provider.name} is asking a person to sign in: "${line}"`,
+              message:
+                `${provider.name} is asking a person to sign in: "${line}"` +
+                signInCauseNote(provider.signInCause?.(lastAlivePane)),
               paneSnapshot: lastAlivePane,
             });
           }

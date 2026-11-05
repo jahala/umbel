@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ClaudeProvider } from '../../src/core/providers/claude.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
 import { GeminiProvider } from '../../src/core/providers/gemini.ts';
@@ -219,6 +221,58 @@ describe('dismissStartupDialogs (GeminiProvider specs)', () => {
     );
 
     expect(sent).toEqual([['Enter']]);
+  });
+
+  // umbel#166: the same panel, with the failure gemini shows inside it.
+  test('returns the sign-in line and the failure the panel shows', async () => {
+    const screen = readFileSync(
+      join(import.meta.dir, '../fixtures/sign-in/gemini-0.46.0-sign-in-error.txt'),
+      'utf8',
+    );
+    const { tmux } = makeFakeTmux([screen]);
+
+    const result = await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      GeminiProvider.startupDialogs ?? [],
+      GeminiProvider.readyMatch,
+      undefined,
+      {},
+      GeminiProvider.signInMatch,
+      GeminiProvider.signInCause,
+    );
+
+    expect(result).toEqual({
+      line: 'How would you like to authenticate for this project?',
+      cause:
+        'Failed to sign in. Message: This client is no longer supported for Gemini Code Assist for ' +
+        'individuals. To continue using Gemini, please migrate to the Antigravity suite of products: ' +
+        'https://antigravity.google',
+    });
+  });
+
+  test('returns only the line when the panel shows no failure', async () => {
+    const screen = readFileSync(
+      join(import.meta.dir, '../fixtures/sign-in/gemini-0.46.0-sign-in.txt'),
+      'utf8',
+    );
+    const { tmux } = makeFakeTmux([screen]);
+
+    const result = await dismissStartupDialogs(
+      { tmux } as never,
+      'sess',
+      GeminiProvider.startupDialogs ?? [],
+      GeminiProvider.readyMatch,
+      undefined,
+      {},
+      GeminiProvider.signInMatch,
+      GeminiProvider.signInCause,
+    );
+
+    expect(result).toEqual({
+      line: 'How would you like to authenticate for this project?',
+      cause: undefined,
+    });
   });
 
   test('gemini banner alone (no trust dialog) sends nothing', async () => {

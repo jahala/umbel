@@ -18,6 +18,10 @@ const signInPane = readFileSync(
   join(import.meta.dir, '../fixtures/sign-in/gemini-0.46.0-sign-in.txt'),
   'utf8',
 );
+const signInErrorPane = readFileSync(
+  join(import.meta.dir, '../fixtures/sign-in/gemini-0.46.0-sign-in-error.txt'),
+  'utf8',
+);
 
 describe('waitFor: a worker at its sign-in screen', () => {
   test('settles input with the line, long before the deadline', async () => {
@@ -56,7 +60,53 @@ describe('waitFor: a worker at its sign-in screen', () => {
       expect(result.inputReason).toBe('sign-in');
       expect(result.message).toContain('How would you like to authenticate for this project?');
       expect(result.paneSnapshot).toBe(signInPane);
+      expect(result.message).not.toContain('The screen shows:');
       expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  // umbel#166: gemini's panel names the failure beside the prompt. Reporting
+  // only the prompt said "not signed in" and dropped the cause.
+  test('carries the failure the screen shows beside the prompt', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'umbel-wait-sign-in-'));
+    const env = { UMBEL_STATE: tmpDir };
+    try {
+      const name = 'auth-failed';
+      await ensureSessionDir(name, env);
+      await writeMeta(
+        name,
+        SessionSchema.parse({
+          name,
+          cwd: '/tmp',
+          anonymous: false,
+          createdAt: Date.now(),
+          jsonlPath: null,
+          provider: 'gemini',
+        }),
+        env,
+      );
+
+      const result = await waitFor({
+        name,
+        env,
+        defaultTimeoutMs: 20_000,
+        deps: {
+          tmux: {
+            paneState: async () => ({ exists: true, dead: false }),
+            capturePane: async () => signInErrorPane,
+          },
+        } as never,
+      });
+
+      expect(result.reason).toBe('input');
+      expect(result.inputReason).toBe('sign-in');
+      expect(result.message).toContain('How would you like to authenticate for this project?');
+      expect(result.message).toContain(
+        'Failed to sign in. Message: This client is no longer supported for Gemini Code Assist',
+      );
+      expect(result.message).toContain('https://antigravity.google');
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
