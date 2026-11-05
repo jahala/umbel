@@ -40,9 +40,9 @@ const DIALOG_KEY_SETTLE_MS = 300;
 // cap it — retrying is what makes typing forever into a live agent possible.
 const MAX_DIALOG_ATTEMPTS = 3;
 // A model probe that meets a busy local database is retried a few times over
-// about a second before its failure stands (umbel#169). Each attempt is
+// about four seconds before its failure stands (umbel#169). Each attempt is
 // bounded too, so a probe that stops answering cannot hang a spawn.
-const MODEL_PROBE_RETRY_DELAYS_MS: readonly number[] = [100, 250, 500];
+const MODEL_PROBE_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1000, 2000];
 const MODEL_PROBE_TIMEOUT_MS = 10_000;
 
 export async function dismissStartupDialogs(

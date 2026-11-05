@@ -218,11 +218,11 @@ describe('spawn --provider opencode --model', () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).name).toBe('ModelListUnavailableError');
     expect((err as Error).message).toContain('database is locked');
-    // One attempt plus three bounded retries: a lock that never clears ends
+    // One attempt plus four bounded retries: a lock that never clears ends
     // the spawn instead of hanging it.
-    expect((await readFile(callFile, 'utf8')).trim().split('\n')).toHaveLength(4);
+    expect((await readFile(callFile, 'utf8')).trim().split('\n')).toHaveLength(5);
     await expectNothingCreated(name, env, cfgPath);
-  });
+  }, 30_000);
 
   test('umbel spawn exits 2 naming the model and the listed ids, with no session', async () => {
     const { env, cfgPath, cwd } = await setup();
