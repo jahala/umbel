@@ -1,3 +1,5 @@
+import { signInCauseNote } from './startup-dialogs.ts';
+
 export class SessionNotFoundError extends Error {
   override name = 'SessionNotFoundError';
 
@@ -115,17 +117,25 @@ export class UnattendedUnsupportedError extends Error {
 }
 
 // A CLI with no credentials opens on its sign-in screen and waits for a person
-// there, so every wait on it would run to its deadline (umbel#105).
+// there, so every wait on it would run to its deadline (umbel#105). The screen
+// can also carry the reason authentication failed (umbel#166).
 export class ProviderNotSignedInError extends Error {
   override name = 'ProviderNotSignedInError';
 
   constructor(
     public providerName: string,
     public line: string,
+    public screenCause?: string,
   ) {
     super(
-      `${providerName} is not signed in here: it opened on its sign-in screen ("${line}"). ` +
-        `A person must run ${providerName} once in a terminal and sign in; then spawn again.`,
+      (screenCause === undefined
+        ? `${providerName} is not signed in here`
+        : `${providerName} could not sign in here`) +
+        `: it opened on its sign-in screen ("${line}").` +
+        signInCauseNote(screenCause) +
+        (screenCause === undefined
+          ? ` A person must run ${providerName} once in a terminal and sign in; then spawn again.`
+          : ` A person must resolve this in ${providerName} once in a terminal; then spawn again.`),
     );
   }
 }

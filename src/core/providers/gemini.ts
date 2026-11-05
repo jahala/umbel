@@ -212,6 +212,53 @@ export function extractGeminiTurnsFromContent(content: string): Turn[] {
 }
 
 // ---------------------------------------------------------------------------
+// Sign-in panel
+// ---------------------------------------------------------------------------
+
+// gemini 0.46 opens on this panel both when it has no credentials and when a
+// credential refresh fails: useAuthCommand sets the dialog's authError to any
+// refresh failure, and AuthDialog renders it in the row between the options
+// and "(Use Enter to select)". Captured on 0.46.0 with a valid token in
+// test/fixtures/sign-in/gemini-0.46.0-sign-in-error.txt. Reading that row
+// backward from the closing line keeps the wrapped message and drops the
+// panel's options and static copy.
+const SIGN_IN_QUESTION = /^[\s│]*How would you like to authenticate for this project\?[\s│]*$/m;
+const SIGN_IN_ENTER = /^[\s│]*\(Use Enter to select\)[\s│]*$/;
+const SIGN_IN_OPTION = /^[\s│]*(?:[●○]\s*)?\d+\.\s+\S/;
+// The row also carries these when nothing failed. They restate that the worker
+// has no credentials, which the refusal already says, so they are not a cause.
+const SIGN_IN_STATE_LINES = ['No authentication method selected.', 'Existing API key detected'];
+
+function trimPaneEdges(line: string): string {
+  return line.replace(/^[\s│]+|[\s│]+$/g, '');
+}
+
+export function extractGeminiSignInCause(pane: string): string | undefined {
+  const lines = pane.split('\n');
+  const start = lines.findIndex((line) => SIGN_IN_QUESTION.test(line));
+  if (start < 0) return undefined;
+  const end = lines.findIndex((line, i) => i > start && SIGN_IN_ENTER.test(line));
+  if (end < 0) return undefined;
+
+  const block: string[] = [];
+  for (let i = end - 1; i > start; i--) {
+    const raw = lines[i] ?? '';
+    if (SIGN_IN_OPTION.test(raw)) break;
+    const text = trimPaneEdges(raw);
+    if (text === '') {
+      if (block.length > 0) break;
+      continue;
+    }
+    block.unshift(text);
+  }
+
+  const cause = block.join(' ');
+  if (cause === '') return undefined;
+  if (SIGN_IN_STATE_LINES.some((state) => cause.startsWith(state))) return undefined;
+  return cause;
+}
+
+// ---------------------------------------------------------------------------
 // GeminiProvider
 // ---------------------------------------------------------------------------
 
@@ -240,17 +287,20 @@ const geminiProvider: AgentProvider = {
   // No readyMatch: gemini's welcome banner ("Gemini CLI v…", "Tips for getting
   // started") renders ABOVE the trust dialog in the same frame, so a
   // banner-based readyMatch could short-circuit before the dialog is dismissed.
-  // With a single dialog the loop already exits the instant it fires, so the
-  // fast-path optimization isn't needed; an already-trusted spawn just polls to
-  // the timeout (correct, only slightly slower).
+  // So the startup loop polls to its timeout, watching for the sign-in panel,
+  // which paints after the trust dialog is answered (umbel#166). Correct, only
+  // slower; a verified main-UI readyMatch would make it fast.
   //
   // NOTE: gemini must already be authenticated (a one-time `gemini` → Sign in
   // with Google). On an unauthenticated machine an auth-method prompt appears
   // AFTER trust; umbel does not auto-dismiss it (completing OAuth needs a
   // browser, and silently picking an auth method is a poor default).
   startupDialogs: [{ match: /trust the files in this folder/i, keys: ['Enter'] }],
-  // 0.46.0 with no credentials opens on its authentication menu, after trust.
-  signInMatch: /^[\s│]*How would you like to authenticate for this project\?[\s│]*$/m,
+  // 0.46.0 opens on this menu when it has no credentials and when a credential
+  // refresh fails; the failure is a row of the menu, which signInCause reads
+  // (umbel#166).
+  signInMatch: SIGN_IN_QUESTION,
+  signInCause: extractGeminiSignInCause,
 
   buildLaunch(opts): ProviderLaunchSpec {
     const settingsPath = join(opts.cwd, '.gemini', 'settings.json');

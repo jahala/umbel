@@ -270,6 +270,13 @@ export interface AgentProvider {
   // meets it later settles `input` (umbel#105). Absent for a CLI that has none.
   readonly signInMatch?: RegExp;
 
+  // Optional: the cause the CLI shows beside its sign-in screen, as the pane
+  // renders it (a failed credential refresh: quota, validation, a retired
+  // client). PURE and total; undefined when the screen names no cause. spawn's
+  // refusal and wait's input message carry it, so an authentication failure is
+  // not reported as "not signed in" with its cause dropped (umbel#166).
+  signInCause?(pane: string): string | undefined;
+
   // Optional: the CLI's usage-limit dialog, as a whole-line pattern (`^…$`, m
   // flag) taken from the text the binary composes and its panes show. The
   // dialog blocks the worker the same way an input prompt does, so a wait that

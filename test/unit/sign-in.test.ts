@@ -60,3 +60,31 @@ describe('signInMatch', () => {
     expect(matchedLine('anything', undefined)).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// umbel#166: gemini 0.46 shows the same authentication menu on any startup
+// authentication failure, with the real error in a row of that panel. The menu
+// alone says "not signed in"; the row says why.
+// ---------------------------------------------------------------------------
+const GEMINI_AUTH_FAILURE =
+  'Failed to sign in. Message: This client is no longer supported for Gemini Code Assist for ' +
+  'individuals. To continue using Gemini, please migrate to the Antigravity suite of products: ' +
+  'https://antigravity.google';
+
+describe('the cause beside a sign-in screen', () => {
+  test('gemini carries the failure its panel shows', () => {
+    expect(GeminiProvider.signInCause?.(pane('sign-in/gemini-0.46.0-sign-in-error.txt'))).toBe(
+      GEMINI_AUTH_FAILURE,
+    );
+  });
+
+  test('gemini with no credentials names no cause', () => {
+    // The panel's same row reads "No authentication method selected." there,
+    // which is the state the refusal already reports.
+    expect(GeminiProvider.signInCause?.(pane('sign-in/gemini-0.46.0-sign-in.txt'))).toBeUndefined();
+  });
+
+  test('a working pane names no cause', () => {
+    expect(GeminiProvider.signInCause?.('✦ Reading the repository')).toBeUndefined();
+  });
+});

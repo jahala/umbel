@@ -31,6 +31,16 @@ export function matchedLine(pane: string, match: RegExp | undefined): string | u
   return hit === null ? undefined : hit[0].replace(/^[\s│]+|[\s│]+$/g, '');
 }
 
+// PURE. The clause umbel adds to a sign-in report when the provider's screen
+// shows a cause beside its prompt (gemini's failed credential refresh). spawn's
+// refusal and wait's input message use the same words, so the cause reads the
+// same at either face (umbel#166).
+export function signInCauseNote(cause: string | undefined): string {
+  if (cause === undefined) return '';
+  const sentence = /[.!?]$/.test(cause) ? cause : `${cause}.`;
+  return ` The screen shows: ${sentence}`;
+}
+
 // Pure: given the current pane text, the provider's dialog specs, and the set
 // of dialog indices to skip (those whose keys have been re-sent to the attempt
 // limit without the dialog clearing), return the index of the first remaining
