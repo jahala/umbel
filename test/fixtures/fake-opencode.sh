@@ -16,6 +16,11 @@
 #   FAKE_OPENCODE_SWALLOW_FIRST_INPUT  optional count of prompts to drop, as the
 #                        real TUI drops the first one when its update modal holds
 #                        the keyboard (jahala/umbel#116)
+#   FAKE_OPENCODE_EXPORT_FILE  optional path `export` reads. The worker writes a
+#                        mid-turn export there before it fires stop, and the
+#                        final one after FAKE_OPENCODE_FINAL_AFTER_MS (umbel#167).
+#   FAKE_OPENCODE_FINAL_AFTER_MS  optional delay before the final export replaces
+#                        the mid-turn one; 0 leaves the turn open forever.
 #
 # This fake stands in for "opencode + umbel's JS plugin" together:
 # - Prints a banner so readyMatch can fire.
@@ -24,13 +29,23 @@
 #   then writing events/session-id and touching events/stop (the same plugin on
 #   session.status {type:"idle"}).
 # - Never writes a JSONL file — opencode uses SQLite; reads go via
-#   `opencode export <sessionID>`, injected in tests via deps.exec.
+#   `opencode export <sessionID>`, served from FAKE_OPENCODE_EXPORT_FILE when set.
 
 set -euo pipefail
 
 DELAY="${FAKE_OPENCODE_DELAY:-0}"
 SESSION_ID="${UMBEL_SESSION_ID:-fake-opencode-session}"
 FAKE_SESSION_ID="ses_fake123"
+
+# `opencode export <sessionID>` prints the transcript the worker recorded.
+if [[ "${1:-}" == "export" ]]; then
+  if [[ -z "${FAKE_OPENCODE_EXPORT_FILE:-}" || ! -f "${FAKE_OPENCODE_EXPORT_FILE}" ]]; then
+    echo "fake-opencode: no export recorded" >&2
+    exit 1
+  fi
+  cat "${FAKE_OPENCODE_EXPORT_FILE}"
+  exit 0
+fi
 
 # `opencode models` prints one provider/model id per line and exits.
 if [[ "${1:-}" == "models" ]]; then
@@ -100,13 +115,32 @@ fire_stop() {
   printf '%s stop\n' "$(date +%s%N)" >> "$(events_dir)/log"
 }
 
+write_export() {
+  [[ -z "${FAKE_OPENCODE_EXPORT_FILE:-}" ]] && return 0
+  printf '%s' "$1" > "${FAKE_OPENCODE_EXPORT_FILE}.part"
+  mv -f "${FAKE_OPENCODE_EXPORT_FILE}.part" "${FAKE_OPENCODE_EXPORT_FILE}"
+}
+
+# The mid-turn shape: the newest assistant message is still calling a tool, so
+# the turn has not ended even though the plugin has already fired its stop.
+OPEN_EXPORT='{"info":{"id":"ses_fake123"},"messages":[{"info":{"id":"m1","role":"user","time":{"created":1}},"parts":[{"type":"text","text":"a prompt"}]},{"info":{"id":"m2","role":"assistant","finish":"tool-calls","time":{"created":2,"completed":3},"tokens":{"input":10,"output":5}},"parts":[{"type":"step-start"},{"type":"tool","tool":"bash","state":{"status":"running","input":{"command":"sleep 60"}}}]}]}'
+FINAL_EXPORT='{"info":{"id":"ses_fake123"},"messages":[{"info":{"id":"m1","role":"user","time":{"created":1}},"parts":[{"type":"text","text":"a prompt"}]},{"info":{"id":"m2","role":"assistant","finish":"stop","time":{"created":2,"completed":4},"modelID":"opencode/big-pickle","tokens":{"input":10,"output":7}},"parts":[{"type":"step-start"},{"type":"text","text":"the final report"},{"type":"step-finish"}]}]}'
+
 process_turn() {
   local prompt="$1"
   fire_turn_start
+  write_export "$OPEN_EXPORT"
   if [[ "$DELAY" -gt 0 ]]; then
     sleep "$(echo "scale=3; $DELAY / 1000" | bc)"
   fi
+  # The plugin's stop can land before the turn's last message does (umbel#167).
   fire_stop
+  local final_after="${FAKE_OPENCODE_FINAL_AFTER_MS:-0}"
+  if [[ "$final_after" -gt 0 ]]; then
+    sleep "$(echo "scale=3; $final_after / 1000" | bc)"
+    write_export "$FINAL_EXPORT"
+    touch "$(events_dir)/final-export"
+  fi
 }
 
 SWALLOW_FIRST_INPUT="${FAKE_OPENCODE_SWALLOW_FIRST_INPUT:-0}"

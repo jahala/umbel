@@ -196,7 +196,7 @@ umbel wait [--json] [--since N] <name> [--until stop|file|pattern] [--file PATH]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | off | Emit one JSON object to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `reason` is always present. `message` comes with `input` (the prompt), `idle` (the still sources) and `provider-error` (the error line); `inputReason` comes with `input` (`permission`, `idle`, `question`, or `sign-in`); `exitCode` and `paneSnapshot` come with `dead`; `paneSnapshot` comes with `timeout`; `runningCommands` and `usage` come with `stop`. When the pane is showing the provider's usage-limit dialog, an `input` result's `message` is that dialog's own line instead of the hook's text; when the pane is showing the provider's own error line (a refused turn), it is that line, and a limit line wins when both show. |
+| `--json` | off | Emit one JSON object to stdout instead of the human-readable stderr output. The exit code is the same as without `--json`. `reason` is always present. `message` comes with `input` (the prompt), `idle` (the still sources), `provider-error` (the error line) and `stop` (a handback that had not landed within 5 s); `inputReason` comes with `input` (`permission`, `idle`, `question`, or `sign-in`); `exitCode` and `paneSnapshot` come with `dead`; `paneSnapshot` comes with `timeout`; `runningCommands` and `usage` come with `stop`. When the pane is showing the provider's usage-limit dialog, an `input` result's `message` is that dialog's own line instead of the hook's text; when the pane is showing the provider's own error line (a refused turn), it is that line, and a limit line wins when both show. |
 | `--since N` | 0 | Stop-mtime baseline in milliseconds (the `sinceMtime` value from `umbel send --json`). Makes stop-detection race-free when send and wait run in different processes: `wait` only resolves when the stop file's mtime exceeds N. 0 means no stop has been recorded yet, so any stop after the send resolves the wait. |
 | `--until stop\|file\|pattern` | `stop` | Condition kind. |
 | `--file PATH` | — | Required when `--until=file`. Path to watch for existence. |
@@ -222,7 +222,7 @@ The MCP tool `umbel_wait` takes the same fields as the flags (`until`, `file`, `
 
 | Reason | Exit | Meaning |
 |--------|------|---------|
-| stop | 0 | Turn completed: `umbel read` the result. |
+| stop | 0 | Turn completed: `umbel read` the result. When the provider's transcript does not show the turn closed within 5 s of the stop, the result also carries `message`: the worker stopped, but its final message was not in the transcript; read may return an earlier message. A worker whose turn ended with an empty answer (opencode, umbel#167) reports this rather than a handback that is not there. |
 | file | 0 | The path given to `--file` appeared on disk. |
 | pattern | 0 | A line in the pane matched the `--pattern` regex. |
 | provider-error | 122 | The pane shows a provider error (codex `unexpected status 404`, claude `API Error`) and then stays still. The matched line is the `message`; the pane prints to stderr. Fail or recast the attempt; waiting longer will not help. |

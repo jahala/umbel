@@ -208,6 +208,71 @@ function parseRoot(content: string): JsonObj | null {
 }
 
 // ---------------------------------------------------------------------------
+// opencodeTurnEnded — does the export already hold the end of the turn?
+//
+// The plugin's stop comes from session.status idle. opencode also goes idle
+// when a turn ends with nothing to hand back (the model answered with an empty
+// message), so a stop alone does not promise a final message (umbel#167). A
+// turn has ended when the newest message is the assistant's, that message has
+// completed (time.completed), it did not stop for a tool, no tool part is still
+// running, and it carries text. PURE and total: a shape it cannot read answers
+// true, so a read never stalls on a format it cannot judge.
+// ---------------------------------------------------------------------------
+
+function toolStillRunning(parts: readonly unknown[]): boolean {
+  for (const part of parts) {
+    if (part === null || typeof part !== 'object') continue;
+    const p = part as JsonObj;
+    if (p.type !== 'tool') continue;
+    const state = p.state;
+    if (state === null || typeof state !== 'object') continue;
+    const status = (state as JsonObj).status;
+    if (status === 'pending' || status === 'running') return true;
+  }
+  return false;
+}
+
+function hasFinalText(parts: readonly unknown[]): boolean {
+  for (const part of parts) {
+    if (part === null || typeof part !== 'object') continue;
+    const p = part as JsonObj;
+    if (p.type === 'text' && typeof p.text === 'string' && p.text.trim().length > 0) return true;
+  }
+  return false;
+}
+
+export function opencodeTurnEnded(content: string): boolean {
+  const root = parseRoot(content);
+  if (root === null) return true;
+  const messages = root.messages;
+  if (!Array.isArray(messages)) return true;
+  if (messages.length === 0) return false;
+
+  const last = messages[messages.length - 1];
+  if (last === null || typeof last !== 'object') return true;
+  const msg = last as JsonObj;
+  const info = msg.info;
+  if (info === null || typeof info !== 'object') return true;
+  const inf = info as JsonObj;
+
+  // A prompt after the last answer means a new turn is owed a reply.
+  if (inf.role === 'user') return false;
+  if (inf.role !== 'assistant') return true;
+
+  const time = inf.time;
+  if (time === null || typeof time !== 'object') return true;
+  if (typeof (time as JsonObj).completed !== 'number') return false;
+
+  // 'tool-calls' means the run loop continues with another step.
+  if (typeof inf.finish !== 'string' || inf.finish === 'tool-calls') return false;
+
+  const parts = msg.parts;
+  if (!Array.isArray(parts)) return true;
+  if (toolStillRunning(parts)) return false;
+  return hasFinalText(parts);
+}
+
+// ---------------------------------------------------------------------------
 // extractOpencodeTurnsFromContent — pure, total: one Turn per assistant
 // message that carries text, in order. A message with no text is a tool step,
 // not an answer, so it makes no turn (same rule as parseTranscript). Index is
@@ -610,6 +675,10 @@ const opencodeProvider: AgentProvider = {
 
   parseTranscript(content: string): string {
     return parseTranscript(content);
+  },
+
+  turnEnded(content: string): boolean {
+    return opencodeTurnEnded(content);
   },
 
   exportTranscript(sessionId: string): readonly string[] {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { ClaudeProvider } from '../../src/core/providers/claude.ts';
 import { CodexProvider } from '../../src/core/providers/codex.ts';
+import { OpenCodeProvider } from '../../src/core/providers/opencode.ts';
 import type { AgentProvider } from '../../src/core/providers/types.ts';
 
 // Throws rather than defaulting, so a provider without the method fails every
@@ -144,5 +145,79 @@ describe('CodexProvider.turnEnded', () => {
     // Older rollouts predate the markers. Unable to prove the turn open, the
     // read must not wait on it.
     expect(codex(event('agent_message'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// opencode answers with an export: {info, messages: [{info, parts}]}. Its stop
+// is session.status idle, which also fires when a turn ends with no final
+// message at all (umbel#167). The export says whether there is a handback.
+// ---------------------------------------------------------------------------
+
+type OcMessage = { info: Record<string, unknown>; parts: unknown[] };
+
+const ocExport = (...messages: OcMessage[]): string =>
+  JSON.stringify({ info: { id: 'ses_x' }, messages });
+const ocUser = (): OcMessage => ({ info: { role: 'user', time: { created: 1 } }, parts: [] });
+const ocAnswer = (finish: unknown, parts: unknown[]): OcMessage => ({
+  info: { role: 'assistant', finish, time: { created: 2, completed: 3 } },
+  parts,
+});
+const ocText = (text: string): unknown => ({ type: 'text', text });
+const ocTool = (status: string): unknown => ({ type: 'tool', tool: 'bash', state: { status } });
+
+const opencode = (content: string): boolean => ended(OpenCodeProvider, [content]);
+
+describe('OpenCodeProvider.turnEnded', () => {
+  test('a completed reply with final text closes the turn', () => {
+    expect(opencode(ocExport(ocUser(), ocAnswer('stop', [ocText('done')])))).toBe(true);
+  });
+
+  test('a turn that ended with no text is open: the empty handback of umbel#167', () => {
+    expect(opencode(ocExport(ocUser(), ocAnswer('stop', [])))).toBe(false);
+    expect(opencode(ocExport(ocUser(), ocAnswer('stop', [ocText('  \n')])))).toBe(false);
+  });
+
+  test('a message still calling tools is open', () => {
+    expect(
+      opencode(
+        ocExport(ocUser(), ocAnswer('tool-calls', [ocTool('completed'), ocText('running')])),
+      ),
+    ).toBe(false);
+  });
+
+  test('a tool part still running keeps the turn open', () => {
+    expect(
+      opencode(ocExport(ocUser(), ocAnswer('stop', [ocTool('running'), ocText('done')]))),
+    ).toBe(false);
+  });
+
+  test('a prompt with no reply yet is open', () => {
+    expect(opencode(ocExport(ocUser(), ocAnswer('stop', [ocText('first')]), ocUser()))).toBe(false);
+  });
+
+  test('a message with no completed time is open', () => {
+    const streaming = {
+      info: { role: 'assistant', time: { created: 2 } },
+      parts: [ocText('partial')],
+    };
+    expect(opencode(ocExport(ocUser(), streaming))).toBe(false);
+  });
+
+  test('an ending it does not name still closes the turn when text is on disk', () => {
+    expect(opencode(ocExport(ocUser(), ocAnswer('unknown', [ocText('an answer')])))).toBe(true);
+  });
+
+  test('an empty export waits for the message it is owed', () => {
+    expect(opencode(ocExport())).toBe(false);
+  });
+
+  test('an unreadable shape never holds a read', () => {
+    expect(opencode('not json')).toBe(true);
+    expect(opencode(JSON.stringify({ messages: 'nope' }))).toBe(true);
+    expect(
+      opencode(JSON.stringify({ messages: [{ info: { role: 'assistant' }, parts: 42 }] })),
+    ).toBe(true);
+    expect(opencode(JSON.stringify({ messages: [42] }))).toBe(true);
   });
 });
