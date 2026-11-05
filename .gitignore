@@ -11,5 +11,9 @@ dist/
 *.tsbuildinfo
 coverage/
 docs/research/
-.brand/
+# the brand is fetched by tag; only umbel's own product layer is kept
+.brand/*
+!.brand/products/
+.brand/products/*
+!.brand/products/umbel/
 .loop-scratch/
