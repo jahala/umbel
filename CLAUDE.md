@@ -85,7 +85,7 @@ if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
 fi
 touch "$state/events/stop"
-date +%s%N >> "$state/events/log"
+printf '%s stop\n' "$(date +%s%N)" >> "$state/events/log"
 ```
 
 Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtime advance → done.** Handles "Stop fired before we started watching" and concurrent waiters correctly. The canonical source is `STOP_HOOK_SCRIPT` in `src/adapters/hooks.ts`; do not duplicate elsewhere.
