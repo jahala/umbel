@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -261,6 +261,34 @@ async function fire(
   return await proc.exited;
 }
 
+// The hook scripts run with PATH holding the commands they need and no jq, so
+// `command -v jq` fails exactly as it does on a machine that never installed it.
+async function jqFreeBin(): Promise<string> {
+  const dir = join(tmpDir, 'bin-no-jq');
+  await mkdir(dir, { recursive: true });
+  for (const cmd of ['mkdir', 'cat', 'touch', 'date']) {
+    const resolved = Bun.which(cmd);
+    if (resolved !== null) await symlink(resolved, join(dir, cmd));
+  }
+  return dir;
+}
+
+async function fireWithoutJq(
+  scriptPath: string,
+  sessionId: string,
+  payload: object,
+): Promise<number | null> {
+  const proc = Bun.spawn(['/bin/bash', scriptPath], {
+    env: { UMBEL_STATE: tmpDir, UMBEL_SESSION_ID: sessionId, PATH: await jqFreeBin() },
+    stdin: 'pipe',
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+  proc.stdin.write(JSON.stringify(payload));
+  await proc.stdin.end();
+  return await proc.exited;
+}
+
 const sessionEvents = (sessionId: string): string => join(tmpDir, 'sessions', sessionId, 'events');
 
 const stopPayload = (sessionId: string, transcript: string): object => ({
@@ -414,6 +442,65 @@ describe('BIND_HOOK_SCRIPT and identity', () => {
     const lines = (await Bun.file(join(sessionEvents(sessionId), 'log')).text()).trim().split('\n');
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/^\d+ turn-start$/);
+  });
+
+  test('stop.sh refuses a stop that carries no id once bound (umbel#160)', async () => {
+    const env = await setup();
+    const { stopScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-bound-noid';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    await Bun.write(join(sessionEvents(sessionId), 'worker-session'), 'ses_own');
+
+    expect(
+      await fire(stopScriptPath, sessionId, {
+        transcript_path: '/nested.jsonl',
+        hook_event_name: 'Stop',
+      }),
+    ).toBe(0);
+
+    // A bound worker counts only its own id. A payload without one cannot be
+    // shown to be its own, so it must leave the stop, path and log untouched.
+    const events = sessionEvents(sessionId);
+    expect(await Bun.file(join(events, 'stop')).exists()).toBe(false);
+    expect(await Bun.file(join(events, 'transcript-path')).exists()).toBe(false);
+    expect(await Bun.file(join(events, 'log')).exists()).toBe(false);
+  });
+
+  test('notify.sh refuses a notification that carries no id once bound (umbel#160)', async () => {
+    const env = await setup();
+    const { notifyScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-notify-noid';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    await Bun.write(join(sessionEvents(sessionId), 'worker-session'), 'ses_own');
+
+    await fire(notifyScriptPath, sessionId, {
+      notification_type: 'permission_prompt',
+      message: 'nested asks for permission',
+    });
+
+    expect(await Bun.file(join(sessionEvents(sessionId), 'notification')).exists()).toBe(false);
+  });
+
+  test('with nothing bound, an event without an id still counts (today behaviour)', async () => {
+    const env = await setup();
+    const { stopScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-unbound-noid';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+
+    expect(await fire(stopScriptPath, sessionId, { hook_event_name: 'Stop' })).toBe(0);
+    expect(await Bun.file(join(sessionEvents(sessionId), 'stop')).exists()).toBe(true);
+  });
+
+  test('a machine without jq keeps the old behaviour: the bound stop still fires', async () => {
+    const env = await setup();
+    const { stopScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-no-jq';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    // The binding was written by a machine that had jq; this run has none.
+    await Bun.write(join(sessionEvents(sessionId), 'worker-session'), 'ses_own');
+
+    expect(await fireWithoutJq(stopScriptPath, sessionId, { hook_event_name: 'Stop' })).toBe(0);
+    expect(await Bun.file(join(sessionEvents(sessionId), 'stop')).exists()).toBe(true);
   });
 
   test('notify.sh ignores another session notification once bound', async () => {
