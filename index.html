@@ -24,6 +24,7 @@
     /* product blooms */
     --pp-mull:#76D4FF; --pp-glean:#0096B3; --pp-cultivate:#09636B; --pp-graft:#FEAA68; --pp-petals:#CC6A37;
     --pp-tend:#98D98D; --pp-pleach:#779C46; --pp-umbel:#545E05; --pp-tilth:#F7D4B7; --pp-mycelium:#C9A18D; --pp-weeder:#A37A6E; --pp-well:#4D5972;
+    --pp-coldframe:#4E5A48;
     /* soil-night terminal (fixed in both themes) */
     --pp-term-bg:#1C1610; --pp-term-surface:#262019; --pp-term-border:#403628;
     --pp-term-green:#84C56A; --pp-term-sun:#F2A93B; --pp-term-text:#F3ECD9;
@@ -58,7 +59,7 @@
     --pp-primary:#84C56A; --pp-accent:#F2A93B; --pp-leaf:#9FD08A;
     --pp-text:#F3ECD9; --pp-text-soft:#C9BBA0;
     --pp-bg:#1C1610; --pp-bg-band:#211A12; --pp-surface:#262019; --pp-border:#403628;
-    --pp-cultivate:#1E6F77; --pp-umbel:#5F6A18; --pp-well:#58647E;
+    --pp-cultivate:#1E6F77; --pp-umbel:#5F6A18; --pp-well:#58647E; --pp-coldframe:#5A6853;
     --pp-weeder-word:#A37A6E;
     --pp-shadow-rest:0 1px 0 #403628, 0 12px 40px -16px rgba(8,6,4,0.6);
     --pp-shadow-lift:0 2px 4px rgba(8,6,4,0.3), 0 14px 32px rgba(8,6,4,0.45);
@@ -380,7 +381,7 @@
     .wip span{position:relative;top:auto;right:auto;width:auto;transform:none;margin:6px 0;padding:var(--pp-space-4xs) 0;font-size:.6rem}
   }
   .note{margin-top:var(--pp-space-sm)}
-  .body code{font-size:.86em}
+  .body code{font-size:.86em;white-space:nowrap}
 </style>
 </head>
 <body id="top">
