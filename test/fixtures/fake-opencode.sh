@@ -78,6 +78,7 @@ own_session() {
   if [[ -z "$bound" ]]; then
     if [[ -n "$id" ]]; then
       printf '%s' "$id" > "$(events_dir)/worker-session"
+      printf '%s bind\n' "$(date +%s%N)" >> "$(events_dir)/log"
     fi
     return 0
   fi
@@ -88,7 +89,7 @@ fire_turn_start() {
   own_session "${FAKE_SESSION_ID}" || return
   # Simulate the plugin on session.status busy: the submitted prompt started a turn.
   touch "$(events_dir)/turn-start"
-  date +%s%N >> "$(events_dir)/log"
+  printf '%s turn-start\n' "$(date +%s%N)" >> "$(events_dir)/log"
 }
 
 fire_stop() {
@@ -96,7 +97,7 @@ fire_stop() {
   # Simulate the plugin: write the opencode session ID and touch the stop file.
   printf '%s' "${FAKE_SESSION_ID}" > "$(events_dir)/session-id"
   touch "$(events_dir)/stop"
-  date +%s%N >> "$(events_dir)/log"
+  printf '%s stop\n' "$(date +%s%N)" >> "$(events_dir)/log"
 }
 
 process_turn() {

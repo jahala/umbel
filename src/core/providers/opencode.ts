@@ -59,25 +59,26 @@ async function forOwnSession(sessionID) {
     const tmp = bindPath + ".tmp." + process.pid;
     await writeFile(tmp, String(sessionID), "utf8");
     await rename(tmp, bindPath);
+    await logLine(dir, "bind");
     return dir;
   }
   if (!sessionID || String(sessionID) !== bound) return null;
   return dir;
 }
 
-async function logLine(dir) {
-  await appendFile(join(dir, "log"), String(Date.now() * 1_000_000) + "\\n", "utf8");
+async function logLine(dir, event) {
+  await appendFile(join(dir, "log"), String(Date.now() * 1_000_000) + " " + event + "\\n", "utf8");
 }
 
 async function fireTurnStart(dir) {
   await writeFile(join(dir, "turn-start"), "", "utf8");
-  await logLine(dir);
+  await logLine(dir, "turn-start");
 }
 
 async function fireStop(dir, sessionID) {
   await writeFile(join(dir, "session-id"), String(sessionID ?? ""), "utf8");
   await writeFile(join(dir, "stop"), "", "utf8");
-  await logLine(dir);
+  await logLine(dir, "stop");
 }
 
 async function fireNotification(dir, tool, message) {
@@ -92,7 +93,7 @@ async function fireNotification(dir, tool, message) {
     }) + "\\n",
     "utf8",
   );
-  await logLine(dir);
+  await logLine(dir, "notify");
 }
 
 export const Plugin = async () => ({

@@ -583,7 +583,7 @@ umbel capture reviewer --lines 50
 
 ### logs
 
-Print the session event log (`~/.umbel/sessions/<name>/events/log`). Each line is a nanosecond timestamp appended when the Stop hook fires.
+Print the session event log (`~/.umbel/sessions/<name>/events/log`). Each hook appends one line, `<nanosecond timestamp> <event>`, where the event is `bind`, `turn-start`, `stop` or `notify`. The lines print as recorded, in order, so the log reads as the worker's timeline. A line written by an older umbel holds only the timestamp and still prints.
 
 ```
 umbel logs <name> [--follow]

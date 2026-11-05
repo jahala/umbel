@@ -2613,11 +2613,11 @@ a.masthead-tend__chip:hover { color: var(--accent); border-color: var(--border-s
     },
     {
       "id": "c006",
-      "description": "STOP_HOOK_SCRIPT and NOTIFY_HOOK_SCRIPT are executable bash scripts installed by ensureGlobalHooks; stop.sh touches events/stop and appends a nanosecond timestamp to events/log; notify.sh appends the payload JSON to events/notification (JSONL, no clobber).",
+      "description": "STOP_HOOK_SCRIPT and NOTIFY_HOOK_SCRIPT are executable bash scripts installed by ensureGlobalHooks; stop.sh touches events/stop and appends '<nanosecond timestamp> stop' to events/log; notify.sh appends the payload JSON to events/notification (JSONL, no clobber) and '<nanosecond timestamp> notify' to events/log.",
       "validates": "where",
       "method": "synthetic-test",
       "integration_level": "integration",
-      "verification_recipe": "Call ensureGlobalHooks, exec stop.sh with UMBEL_STATE+UMBEL_SESSION_ID set; assert events/stop exists and events/log has a numeric line. Exec notify.sh twice with different payloads; assert events/notification has 2 lines, each parseable, in order.",
+      "verification_recipe": "Call ensureGlobalHooks, exec stop.sh with UMBEL_STATE+UMBEL_SESSION_ID set; assert events/stop exists and events/log's last line matches '^[0-9]+ stop$'. Exec notify.sh twice with different payloads; assert events/notification has 2 lines, each parseable, in order, and events/log gains '^[0-9]+ notify$' lines.",
       "validates_job": "host-agent:1"
     },
     {

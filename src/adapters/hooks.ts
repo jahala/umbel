@@ -42,7 +42,7 @@ ${WORKER_IDENTITY_GUARD}if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
 fi
 touch "$state/events/stop"
-date +%s%N >> "$state/events/log"
+printf '%s stop\\n' "$(date +%s%N)" >> "$state/events/log"
 `;
 
 // ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ state="\${UMBEL_STATE:?}/sessions/\${UMBEL_SESSION_ID:?}"
 mkdir -p "$state/events"
 cat >/dev/null || true
 touch "$state/events/turn-start"
-date +%s%N >> "$state/events/log"
+printf '%s turn-start\\n' "$(date +%s%N)" >> "$state/events/log"
 `;
 
 // ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ ${WORKER_IDENTITY_GUARD}if command -v jq >/dev/null 2>&1; then
 else
   printf '{"ts":%s}\\n' "$(( $(date +%s) * 1000 ))" >> "$state/events/notification"
 fi
-date +%s%N >> "$state/events/log"
+printf '%s notify\\n' "$(date +%s%N)" >> "$state/events/log"
 `;
 
 // ---------------------------------------------------------------------------
@@ -109,6 +109,7 @@ if command -v jq >/dev/null 2>&1; then
   if [ -n "$session_id" ]; then
     printf '%s' "$session_id" > "$state/events/.worker-session.tmp.$$"
     mv -f "$state/events/.worker-session.tmp.$$" "$state/events/worker-session"
+    printf '%s bind\\n' "$(date +%s%N)" >> "$state/events/log"
   fi
 fi
 `;

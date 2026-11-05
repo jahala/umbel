@@ -149,12 +149,11 @@ describe('ensureGlobalHooks', () => {
     const stopStat = await stat(stopFile);
     expect(stopStat.isFile()).toBe(true);
 
-    // events/log must have at least one line
+    // events/log must have at least one line, naming the event
     const logContent = await Bun.file(join(sessionEventsDir, 'log')).text();
     expect(logContent.trim().length).toBeGreaterThan(0);
-    // Should be a nanosecond timestamp (large integer)
     const ts = logContent.trim().split('\n')[0];
-    expect(ts).toMatch(/^\d+$/);
+    expect(ts).toMatch(/^\d+ stop$/);
   });
 });
 
@@ -349,7 +348,10 @@ describe('BIND_HOOK_SCRIPT and identity', () => {
     const events = sessionEvents(sessionId);
     expect(await Bun.file(join(events, 'stop')).exists()).toBe(false);
     expect(await Bun.file(join(events, 'transcript-path')).exists()).toBe(false);
-    expect(await Bun.file(join(events, 'log')).exists()).toBe(false);
+    // Only the bind is logged; the ignored stop adds nothing.
+    const logLines = (await Bun.file(join(events, 'log')).text()).trim().split('\n');
+    expect(logLines).toHaveLength(1);
+    expect(logLines[0]).toMatch(/^\d+ bind$/);
   });
 
   test('stop.sh fires for the bound session', async () => {
@@ -364,6 +366,54 @@ describe('BIND_HOOK_SCRIPT and identity', () => {
     const events = sessionEvents(sessionId);
     expect(await Bun.file(join(events, 'stop')).exists()).toBe(true);
     expect((await Bun.file(join(events, 'transcript-path')).text()).trim()).toBe('/own.jsonl');
+  });
+
+  test('events/log names each event, so `umbel logs` reads as a timeline', async () => {
+    const env = await setup();
+    const { notifyScriptPath, bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-log';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+    const logLines = async (): Promise<string[]> =>
+      (await Bun.file(join(sessionEvents(sessionId), 'log')).text()).trim().split('\n');
+
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_own' });
+    await fire(notifyScriptPath, sessionId, {
+      session_id: 'ses_own',
+      notification_type: 'permission_prompt',
+      message: 'may I?',
+    });
+
+    const lines = await logLines();
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^\d+ bind$/);
+    expect(lines[1]).toMatch(/^\d+ notify$/);
+  });
+
+  test('a bind event that does not bind writes no log line', async () => {
+    const env = await setup();
+    const { bindScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-log-once';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_own' });
+    await fire(bindScriptPath, sessionId, { session_id: 'ses_later' });
+
+    const lines = (await Bun.file(join(sessionEvents(sessionId), 'log')).text()).trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^\d+ bind$/);
+  });
+
+  test('turn-start.sh appends "<timestamp> turn-start"', async () => {
+    const env = await setup();
+    const { turnStartScriptPath } = await ensureGlobalHooks(env);
+    const sessionId = 'worker-turn-start';
+    await mkdir(sessionEvents(sessionId), { recursive: true });
+
+    await fire(turnStartScriptPath, sessionId, {});
+
+    const lines = (await Bun.file(join(sessionEvents(sessionId), 'log')).text()).trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^\d+ turn-start$/);
   });
 
   test('notify.sh ignores another session notification once bound', async () => {

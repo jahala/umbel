@@ -53,7 +53,7 @@ Adapters are injected into operations. Operations are called by faces. Providers
 │     ├─ stop                      # touch'd by stop.sh on each end-of-turn
 │     ├─ transcript-path           # captured from hook payload (jq)
 │     ├─ worker-session            # the session id bound at startup (bind.sh)
-│     └─ log                       # appended nanosecond timestamps
+│     └─ log                       # "<nanosecond timestamp> <event>" lines: bind, turn-start, stop, notify
 │  └─ transcript.jsonl             # agy only: the worker's stdout, recorded by stream.sh
 ├─ hooks/stop.sh                   # global, sessions reference it
 ├─ hooks/bind.sh                   # global: records the worker's session id once
