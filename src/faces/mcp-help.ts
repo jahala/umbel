@@ -17,7 +17,8 @@ Verbs are short-lived. Per-session state lives in $UMBEL_STATE/sessions/<name>/ 
 - wait: blocks until a condition is met. Default: Stop hook fires (end-of-turn).
 - read: returns the last assistant message from the session's transcript file. Call AFTER wait.
 - kill: tears down one or more sessions and leaves each directory as a tombstone (events/dead, logs, transcript); purge=true removes it. Pass names=[a, b, c], or select live sessions with prefix and/or repo (never both forms). dryRun=true lists the targets and kills nothing. The result reports each session as killed, already dead or not found; one failure does not stop the others. There is no "all": killing every session on a shared machine is the accident this guards against.
-- ls: lists live sessions; pass all=true to include the dead ones (tombstones), which umbel_read and umbel_actions still answer for. Each session records the repository it runs in; repo=<a path inside a repository> keeps only that repository.
+- prune: sweeps tombstones (a dead session's directory and tmux remains) and never touches a live session. Same selectors as kill: names=[a, b], or prefix and/or repo. olderThan="24h" spares records younger than that; dryRun=true lists and removes nothing. A live session a selector matches is reported and left alone.
+- ls: lists live sessions;
 
 ## Anonymous vs named
 

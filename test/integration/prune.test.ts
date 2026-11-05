@@ -16,10 +16,12 @@
  * are what the claim is about.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { run } from '../../src/adapters/exec.ts';
 import { hasSession, killSession } from '../../src/adapters/tmux.ts';
 import { runCli } from '../../src/faces/cli.ts';
 import { send } from '../../src/operations/send.ts';
@@ -31,6 +33,36 @@ import { waitFor } from '../../src/operations/wait.ts';
 const DIE_MS = 1500;
 
 const HOUR_MS = 60 * 60 * 1000;
+
+const RUN_ID = randomBytes(3).toString('hex');
+let sequence = 0;
+
+// `pd-<run id><n>`: a prefix unique to this run, so a selector cannot reach
+// another worker on the shared machine even by accident.
+function nameOf(base: string): string {
+  sequence += 1;
+  return `${base}-${RUN_ID}${sequence}`;
+}
+
+const PREFIX = `pd-${RUN_ID}`;
+
+async function gitRepo(path: string): Promise<void> {
+  await run(['git', 'init', '-q', path]);
+  await run([
+    'git',
+    '-C',
+    path,
+    '-c',
+    'user.email=umbel@example.invalid',
+    '-c',
+    'user.name=umbel',
+    'commit',
+    '-q',
+    '--allow-empty',
+    '-m',
+    'init',
+  ]);
+}
 
 let tmpDir = '';
 let restoreState: (() => void) | undefined;
@@ -66,9 +98,12 @@ async function newState(): Promise<Record<string, string | undefined>> {
 async function spawnFake(
   env: Record<string, string | undefined>,
   fakeEnv: Record<string, string> = {},
+  name?: string,
+  cwd = tmpDir,
 ): Promise<string> {
   const { session } = await spawn({
-    cwd: tmpDir,
+    cwd,
+    ...(name !== undefined ? { name } : {}),
     claudeBin: join(import.meta.dir, '../fixtures/fake-claude.sh'),
     env: {
       ...env,
@@ -83,12 +118,28 @@ async function spawnFake(
 
 // A worker that dies partway through its turn: no hook fires, so `wait` finds
 // the dead pane and writes the record the sweep has to find.
-async function dieMidTurn(env: Record<string, string | undefined>): Promise<string> {
-  const name = await spawnFake(env, { FAKE_CLAUDE_DIE_MS: String(DIE_MS) });
-  const { sinceMtime } = await send({ name, prompt: 'go', env });
-  const result = await waitFor({ name, sinceMtime, env, defaultTimeoutMs: 20_000 });
+async function dieMidTurn(
+  env: Record<string, string | undefined>,
+  name?: string,
+  cwd = tmpDir,
+): Promise<string> {
+  const created = await spawnFake(env, { FAKE_CLAUDE_DIE_MS: String(DIE_MS) }, name, cwd);
+  const { sinceMtime } = await send({ name: created, prompt: 'go', env });
+  const result = await waitFor({ name: created, sinceMtime, env, defaultTimeoutMs: 20_000 });
   expect(result.reason).toBe('dead');
-  return name;
+  return created;
+}
+
+// A session torn down from outside: the pane is gone, the directory and its
+// meta stay. That is a dead session the sweep has to find.
+async function deadByTeardown(
+  env: Record<string, string | undefined>,
+  name: string,
+  cwd = tmpDir,
+): Promise<string> {
+  const created = await spawnFake(env, {}, name, cwd);
+  await killSession(created, env);
+  return created;
 }
 
 function sessionDirOf(name: string): string {
@@ -195,6 +246,159 @@ describe('prune — dead sessions go, live ones stay', () => {
     expect(existsSync(join(sessionDirOf(fresh), 'events', 'dead'))).toBe(true);
     expect(await hasSession(fresh, env)).toBe(true);
   }, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// The selectors (umbel#170)
+// ---------------------------------------------------------------------------
+//
+// An overnight build leaves a few hundred dead sessions. The conductor needs
+// to remove that run's and leave older dead sessions of other projects alone,
+// so a sweep takes the same names, prefix and repo a kill takes, and an
+// `--older-than` can still narrow it.
+
+describe('prune — --prefix', () => {
+  test('sweeps only the dead sessions whose name matches', async () => {
+    const env = await newState();
+    const matches = [
+      await deadByTeardown(env, nameOf(PREFIX)),
+      await deadByTeardown(env, nameOf(PREFIX)),
+    ];
+    const other = await deadByTeardown(env, nameOf('other'));
+
+    const swept = await cli(['prune', '--prefix', PREFIX]);
+
+    expect(swept.code).toBe(0);
+    for (const name of matches) {
+      expect(swept.stdout).toContain(`removed ${name}`);
+      expect(existsSync(sessionDirOf(name))).toBe(false);
+    }
+    expect(swept.stdout).not.toContain(other);
+    expect(existsSync(sessionDirOf(other))).toBe(true);
+  }, 60_000);
+});
+
+describe('prune — --repo', () => {
+  test("sweeps only that repository's dead sessions", async () => {
+    const env = await newState();
+    const repoA = join(tmpDir, 'repo-a');
+    const repoB = join(tmpDir, 'repo-b');
+    await gitRepo(repoA);
+    await gitRepo(repoB);
+    const inA = await deadByTeardown(env, nameOf(PREFIX), repoA);
+    const inB = await deadByTeardown(env, nameOf(PREFIX), repoB);
+
+    const swept = await cli(['prune', '--repo', repoA]);
+
+    expect(swept.code).toBe(0);
+    expect(swept.stdout).toContain(`removed ${inA}`);
+    expect(existsSync(sessionDirOf(inA))).toBe(false);
+    expect(swept.stdout).not.toContain(inB);
+    expect(existsSync(sessionDirOf(inB))).toBe(true);
+  }, 60_000);
+});
+
+describe('prune — a live match', () => {
+  test('is reported and left alone', async () => {
+    const env = await newState();
+    const dead = await deadByTeardown(env, nameOf(PREFIX));
+    const live = await spawnFake(env, {}, nameOf(PREFIX));
+
+    const swept = await cli(['prune', '--prefix', PREFIX]);
+
+    expect(swept.code).toBe(0);
+    expect(swept.stdout).toContain(`removed ${dead}`);
+    expect(swept.stdout).toContain(`kept ${live} (live)`);
+    expect(existsSync(sessionDirOf(dead))).toBe(false);
+    expect(await hasSession(live, env)).toBe(true);
+    expect(existsSync(join(sessionDirOf(live), 'meta.json'))).toBe(true);
+
+    // The worker still answers after the sweep passed over it.
+    const { sinceMtime } = await send({ name: live, prompt: 'hello', env });
+    const result = await waitFor({ name: live, sinceMtime, env, defaultTimeoutMs: 20_000 });
+    expect(result.reason).toBe('stop');
+  }, 60_000);
+});
+
+describe('prune — --dry-run', () => {
+  test('reports what it would remove and removes nothing', async () => {
+    const env = await newState();
+    const dead = await dieMidTurn(env, nameOf(PREFIX));
+
+    const dry = await cli(['prune', '--prefix', PREFIX, '--dry-run']);
+
+    expect(dry.code).toBe(0);
+    expect(dry.stdout).toContain(`would remove ${dead}`);
+    expect(existsSync(sessionDirOf(dead))).toBe(true);
+    expect(await hasSession(dead, env)).toBe(true);
+
+    const real = await cli(['prune', '--prefix', PREFIX]);
+    expect(real.code).toBe(0);
+    expect(real.stdout).toContain(`removed ${dead}`);
+    expect(existsSync(sessionDirOf(dead))).toBe(false);
+  }, 60_000);
+});
+
+describe('prune — a selector with --older-than', () => {
+  test('keeps a matched record inside the grace period and leaves other names alone', async () => {
+    const env = await newState();
+    const aged = await dieMidTurn(env, nameOf(PREFIX));
+    await backdateDeath(aged, 2 * HOUR_MS);
+    const fresh = await dieMidTurn(env, nameOf(PREFIX));
+    // A dead session of another name, old enough to go: only the prefix may
+    // keep it.
+    const elsewhere = await dieMidTurn(env, nameOf('other'));
+    await backdateDeath(elsewhere, 2 * HOUR_MS);
+
+    const swept = await cli(['prune', '--prefix', PREFIX, '--older-than', '1h']);
+
+    expect(swept.code).toBe(0);
+    expect(swept.stdout).toContain(`removed ${aged}`);
+    expect(existsSync(sessionDirOf(aged))).toBe(false);
+    expect(existsSync(join(sessionDirOf(fresh), 'events', 'dead'))).toBe(true);
+    expect(await hasSession(fresh, env)).toBe(true);
+    expect(existsSync(sessionDirOf(elsewhere))).toBe(true);
+  }, 90_000);
+});
+
+describe('prune — names', () => {
+  test('sweeps exactly the named dead session, and reports a named live one', async () => {
+    const env = await newState();
+    const dead = await deadByTeardown(env, nameOf('nm'));
+    const live = await spawnFake(env, {}, nameOf('nm'));
+    const untouched = await deadByTeardown(env, nameOf('nm'));
+
+    const swept = await cli(['prune', dead, live]);
+
+    expect(swept.code).toBe(0);
+    expect(swept.stdout).toContain(`removed ${dead}`);
+    expect(swept.stdout).toContain(`kept ${live} (live)`);
+    expect(swept.stdout).not.toContain(untouched);
+    expect(existsSync(sessionDirOf(dead))).toBe(false);
+    expect(await hasSession(live, env)).toBe(true);
+    expect(existsSync(sessionDirOf(untouched))).toBe(true);
+  }, 60_000);
+
+  test('a name umbel holds no record of is reported, and the run exits non-zero', async () => {
+    await newState();
+    const ghost = `ghost-${RUN_ID}`;
+
+    const { code, stdout } = await cli(['prune', ghost]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain(`not found ${ghost}`);
+  }, 60_000);
+});
+
+describe('prune — usage', () => {
+  test('names and selectors cannot be mixed', async () => {
+    await newState();
+
+    const { code, stderr } = await cli(['prune', `probe-${RUN_ID}`, '--prefix', PREFIX]);
+
+    expect(code).toBe(2);
+    expect(stderr).toContain('prune:');
+  });
 });
 
 // ---------------------------------------------------------------------------

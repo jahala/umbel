@@ -1,9 +1,9 @@
 import { unlink } from 'node:fs/promises';
-import { UmbelUsageError } from '../core/errors.ts';
 import type { DeadEvent } from '../core/types.ts';
 import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
+import { checkSelection, resolveWantedRepo, selectSessions } from './select.ts';
 import { status } from './status.ts';
 
 // ---------------------------------------------------------------------------
@@ -93,27 +93,23 @@ export interface KillManyOpts {
 export async function killMany(opts: KillManyOpts): Promise<KillResult[]> {
   const env = opts.env ?? {};
   const names = opts.names ?? [];
-  const selecting = opts.prefix !== undefined || opts.repo !== undefined;
+  checkSelection('kill', opts);
+  const wantedRepo =
+    opts.repo === undefined
+      ? undefined
+      : await resolveWantedRepo(opts.repo, { ...defaultDeps, ...opts.deps });
 
-  if (names.length > 0 && selecting) {
-    throw new UmbelUsageError('kill: name the sessions or select them with prefix/repo, not both.');
-  }
-  if (names.length === 0 && !selecting) {
-    throw new UmbelUsageError('kill: give a session name, or select with prefix or repo.');
-  }
-
-  const targets =
+  const candidates =
     names.length > 0
-      ? [...new Set(names)]
+      ? []
       : (
           await status({
             env,
             ...(opts.repo !== undefined ? { repo: opts.repo } : {}),
             ...(opts.deps !== undefined ? { deps: opts.deps } : {}),
           })
-        )
-          .map((entry) => entry.name)
-          .filter((name) => opts.prefix === undefined || name.startsWith(opts.prefix));
+        ).map((entry) => ({ name: entry.name, repo: entry.repo }));
+  const targets = selectSessions(opts, candidates, wantedRepo);
 
   const results: KillResult[] = [];
   for (const name of targets) {
