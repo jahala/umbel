@@ -13,20 +13,28 @@ import { stateDir } from './fs-state.ts';
 // startup (umbel#118). A CLI the worker starts inherits UMBEL_STATE and
 // UMBEL_SESSION_ID, so its own end of turn would otherwise fire the worker's
 // stop. The id is the provider's session id; each provider's start event binds
-// it once through bind.sh. Unbound (an older provider, or an event that holds no
-// id) keeps the old behaviour, so a missing jq never silences a worker.
+// it once through bind.sh. Once bound, an event that carries no id is refused
+// too: it cannot be shown to be the worker's own, and a nested CLI's event is
+// exactly the case the binding exists to reject (umbel#160). With nothing bound
+// the old behaviour stands, and so does it when jq is missing, so a machine
+// without jq never silences a worker (agy's stream wrapper sends no id and
+// never binds).
 const WORKER_IDENTITY_GUARD: string = `mkdir -p "$state/events"
 payload=$(cat || true)
+hook_has_jq=0
 event_session=''
 if command -v jq >/dev/null 2>&1; then
+  hook_has_jq=1
   event_session=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null || true)
 fi
 bound_session=''
 if [ -f "$state/events/worker-session" ]; then
   bound_session=$(cat "$state/events/worker-session" 2>/dev/null || true)
 fi
-if [ -n "$bound_session" ] && [ -n "$event_session" ] && [ "$event_session" != "$bound_session" ]; then
-  exit 0
+if [ -n "$bound_session" ] && [ "$hook_has_jq" -eq 1 ]; then
+  if [ -z "$event_session" ] || [ "$event_session" != "$bound_session" ]; then
+    exit 0
+  fi
 fi
 `;
 
