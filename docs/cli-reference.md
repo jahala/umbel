@@ -491,6 +491,7 @@ umbel read [--json] <name>
 - If the session JSONL has not been discovered yet (too soon after spawn), the command errors with exit code 1.
 - A killed (not purged) session still answers: the tombstone keeps the transcript path and the provider's transcript, so this is the call that reads a dead worker's last answer.
 - The JSONL reader joins consecutive assistant partial entries and only trusts entries carrying `stop_reason` — partial streams without it are not yet the final response.
+- opencode writes one assistant message per step. A step that only calls a tool carries no text, so the newest message can be empty while the turn already said something. The answer is the newest text in the turn that is still open, and the search stops at the last user message, so text from an earlier turn is never returned. `actions` and `diff` apply the same rule: a message with no text is a step, not a turn.
 - A read taken within 5 seconds of the stop waits for the turn's final message before reading, so `usage` covers the turn that just ended, not the one before it.
 
 **Examples**
@@ -594,7 +595,7 @@ umbel capture reviewer --lines 50
 
 ### logs
 
-Print the session event log (`~/.umbel/sessions/<name>/events/log`). Each line is a nanosecond timestamp appended when the Stop hook fires.
+Print the session event log (`~/.umbel/sessions/<name>/events/log`). Each hook appends one line, `<nanosecond timestamp> <event>`, where the event is `bind`, `turn-start`, `stop` or `notify`. The lines print as recorded, in order, so the log reads as the worker's timeline. A line written by an older umbel holds only the timestamp and still prints.
 
 ```
 umbel logs <name> [--follow]

@@ -53,7 +53,7 @@ Adapters are injected into operations. Operations are called by faces. Providers
 │     ├─ stop                      # touch'd by stop.sh on each end-of-turn
 │     ├─ transcript-path           # captured from hook payload (jq)
 │     ├─ worker-session            # the session id bound at startup (bind.sh)
-│     └─ log                       # appended nanosecond timestamps
+│     └─ log                       # "<nanosecond timestamp> <event>" lines: bind, turn-start, stop, notify
 │  └─ transcript.jsonl             # agy only: the worker's stdout, recorded by stream.sh
 ├─ hooks/stop.sh                   # global, sessions reference it
 ├─ hooks/bind.sh                   # global: records the worker's session id once
@@ -85,7 +85,7 @@ if command -v jq >/dev/null 2>&1; then
   printf '%s' "$payload" | jq -r '.transcript_path // empty' > "$state/events/transcript-path" 2>/dev/null || true
 fi
 touch "$state/events/stop"
-date +%s%N >> "$state/events/log"
+printf '%s stop\n' "$(date +%s%N)" >> "$state/events/log"
 ```
 
 Wait semantics: **mtime snapshot of `events/stop` before send → watch for mtime advance → done.** Handles "Stop fired before we started watching" and concurrent waiters correctly. The canonical source is `STOP_HOOK_SCRIPT` in `src/adapters/hooks.ts`; do not duplicate elsewhere.

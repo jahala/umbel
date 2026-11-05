@@ -242,8 +242,8 @@ describe('a killed session still answers for the turn it did', () => {
 
     const logs = await cli(['logs', name]);
     expect(logs.code).toBe(0);
-    // stop.sh appends a nanosecond timestamp per end-of-turn.
-    expect(logs.stdout.trim()).toMatch(/^\d+$/m);
+    // stop.sh appends "<nanosecond timestamp> stop" per end-of-turn.
+    expect(logs.stdout.trim()).toMatch(/^\d+ stop$/m);
 
     const acted = await cli(['actions', name]);
     expect(acted.code).toBe(0);

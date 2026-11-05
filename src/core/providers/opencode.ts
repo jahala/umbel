@@ -59,25 +59,26 @@ async function forOwnSession(sessionID) {
     const tmp = bindPath + ".tmp." + process.pid;
     await writeFile(tmp, String(sessionID), "utf8");
     await rename(tmp, bindPath);
+    await logLine(dir, "bind");
     return dir;
   }
   if (!sessionID || String(sessionID) !== bound) return null;
   return dir;
 }
 
-async function logLine(dir) {
-  await appendFile(join(dir, "log"), String(Date.now() * 1_000_000) + "\\n", "utf8");
+async function logLine(dir, event) {
+  await appendFile(join(dir, "log"), String(Date.now() * 1_000_000) + " " + event + "\\n", "utf8");
 }
 
 async function fireTurnStart(dir) {
   await writeFile(join(dir, "turn-start"), "", "utf8");
-  await logLine(dir);
+  await logLine(dir, "turn-start");
 }
 
 async function fireStop(dir, sessionID) {
   await writeFile(join(dir, "session-id"), String(sessionID ?? ""), "utf8");
   await writeFile(join(dir, "stop"), "", "utf8");
-  await logLine(dir);
+  await logLine(dir, "stop");
 }
 
 async function fireNotification(dir, tool, message) {
@@ -92,7 +93,7 @@ async function fireNotification(dir, tool, message) {
     }) + "\\n",
     "utf8",
   );
-  await logLine(dir);
+  await logLine(dir, "notify");
 }
 
 export const Plugin = async () => ({
@@ -116,56 +117,40 @@ export default Plugin;
 `;
 
 // ---------------------------------------------------------------------------
-// parseTranscript — parse opencode export JSON, return last assistant text.
+// parseTranscript — parse opencode export JSON, return the current turn's text.
 // Pure / total: never throws; returns '' on empty/whitespace/malformed input.
 // ---------------------------------------------------------------------------
 
 type JsonObj = Record<string, unknown>;
 
 function parseTranscript(content: string): string {
-  if (content.trim().length === 0) return '';
-  let obj: unknown;
-  try {
-    obj = JSON.parse(content);
-  } catch {
-    return '';
-  }
-  if (obj === null || typeof obj !== 'object') return '';
-  const root = obj as JsonObj;
-  const messages = root.messages;
-  if (!Array.isArray(messages) || messages.length === 0) return '';
+  const root = parseRoot(content);
+  if (root === null) return '';
+  return answerOfCurrentTurn(root);
+}
 
-  // Find the last message whose info.role === 'assistant'.
-  let lastAssistantMsg: JsonObj | null = null;
+// opencode writes one assistant message per step. A step that only calls a tool
+// holds step-start/tool/step-finish and no text, so the newest message can be
+// empty while the turn already said something. The answer is the newest
+// assistant text after the last user message. Reading stops at that user
+// message: text before it belongs to the previous turn, and returning it would
+// pass an old answer off as the new one.
+function answerOfCurrentTurn(root: JsonObj): string {
+  const messages = root.messages;
+  if (!Array.isArray(messages)) return '';
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m === null || typeof m !== 'object') continue;
     const msg = m as JsonObj;
     const info = msg.info;
-    if (info !== null && typeof info === 'object') {
-      const inf = info as JsonObj;
-      if (inf.role === 'assistant') {
-        lastAssistantMsg = msg;
-        break;
-      }
-    }
+    if (info === null || typeof info !== 'object') continue;
+    const role = (info as JsonObj).role;
+    if (role === 'user') return '';
+    if (role !== 'assistant') continue;
+    const text = extractTextFromParts(msg);
+    if (text.length > 0) return text;
   }
-
-  if (lastAssistantMsg === null) return '';
-
-  const parts = lastAssistantMsg.parts;
-  if (!Array.isArray(parts)) return '';
-
-  const textParts: string[] = [];
-  for (const part of parts) {
-    if (part === null || typeof part !== 'object') continue;
-    const p = part as JsonObj;
-    if (p.type === 'text' && typeof p.text === 'string') {
-      textParts.push(p.text);
-    }
-  }
-
-  return textParts.join('');
+  return '';
 }
 
 // ---------------------------------------------------------------------------
@@ -224,15 +209,21 @@ function parseRoot(content: string): JsonObj | null {
 
 // ---------------------------------------------------------------------------
 // extractOpencodeTurnsFromContent — pure, total: one Turn per assistant
-// message, in order. Index is 0-based. Text = concatenation of type:'text'
-// parts. Never throws; returns [] for empty/malformed input.
+// message that carries text, in order. A message with no text is a tool step,
+// not an answer, so it makes no turn (same rule as parseTranscript). Index is
+// 0-based. Text = concatenation of type:'text' parts. Never throws; returns []
+// for empty/malformed input.
 // ---------------------------------------------------------------------------
 
 export function extractOpencodeTurnsFromContent(content: string): Turn[] {
   const root = parseRoot(content);
   if (root === null) return [];
-  const assistants = extractAssistantMessages(root);
-  return assistants.map((msg, idx) => ({ index: idx, text: extractTextFromParts(msg) }));
+  return answerMessages(root).map((msg, idx) => ({ index: idx, text: extractTextFromParts(msg) }));
+}
+
+// Assistant messages that carry text, in order.
+function answerMessages(root: JsonObj): JsonObj[] {
+  return extractAssistantMessages(root).filter((msg) => extractTextFromParts(msg).length > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -317,9 +308,6 @@ export function extractOpencodeActionsFromContent(content: string): ActionManife
     }
   }
 
-  const lastAssistant: JsonObj | null =
-    assistants.length > 0 ? (assistants[assistants.length - 1] ?? null) : null;
-
   return {
     toolsUsed,
     filesRead,
@@ -327,8 +315,8 @@ export function extractOpencodeActionsFromContent(content: string): ActionManife
     filesWritten,
     bashCommands,
     errors,
-    finalMessage: lastAssistant !== null ? extractTextFromParts(lastAssistant) : '',
-    turnCount: assistants.length,
+    finalMessage: answerOfCurrentTurn(root),
+    turnCount: answerMessages(root).length,
   };
 }
 

@@ -62,7 +62,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_capture:
     'Snapshot N lines from the tmux pane. Human inspection only — use umbel_read to parse agent output.',
   umbel_logs:
-    "Read the session's event log. Each end-of-turn appends a timestamp. For lifecycle debugging.",
+    "Read the session's event log. Each hook appends one line, '<nanosecond timestamp> <event>', where the event is bind, turn-start, stop or notify. For lifecycle debugging.",
   umbel_help:
     'Get umbel reference docs. `topic` ∈ {lifecycle, workflow, providers} for a section; omit for the index.',
 } as const;

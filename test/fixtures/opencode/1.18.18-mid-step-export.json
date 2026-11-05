@@ -1,0 +1,252 @@
+{
+  "info": {
+    "id": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+    "slug": "eager-island",
+    "projectID": "global",
+    "directory": "/private/tmp/umbel-probe-work-168",
+    "path": "private/tmp/umbel-probe-work-168",
+    "title": "Temp directory listing and workspace observations",
+    "agent": "build",
+    "model": {
+      "id": "big-pickle",
+      "providerID": "opencode"
+    },
+    "version": "1.18.18",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 18613,
+      "output": 1801,
+      "reasoning": 271,
+      "cache": {
+        "read": 407552,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1793874216279,
+      "updated": 1793874717840
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1793874700651
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "big-pickle"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_1ab43a96b001BAOyJ5LOHebDBo",
+        "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "First reply with one paragraph about rivers, using no tools. Then run the bash commands 'sleep 6' and 'echo alpha' one at a time. Then reply with one paragraph about mountains.",
+          "id": "prt_1ab43a96b0022zlyXtYlUfIKND",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43a96b001BAOyJ5LOHebDBo"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_1ab43a96b001BAOyJ5LOHebDBo",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/private/tmp/umbel-probe-work-168",
+          "root": "/"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 21218,
+          "input": 64,
+          "output": 133,
+          "reasoning": 29,
+          "cache": {
+            "write": 0,
+            "read": 20992
+          }
+        },
+        "modelID": "big-pickle",
+        "providerID": "opencode",
+        "time": {
+          "created": 1793874706318,
+          "completed": 1793874714644
+        },
+        "finish": "tool-calls",
+        "id": "msg_1ab43bf8d001zAo3kbDTfduVYP",
+        "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "prt_1ab43c4a9001anGpkFDXjZRnPs",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43bf8d001zAo3kbDTfduVYP"
+        },
+        {
+          "type": "reasoning",
+          "text": "I need: paragraph on rivers (no tools), then sleep 6, then echo alpha (one at a time), then paragraph on mountains.",
+          "time": {
+            "start": 1793874707629,
+            "end": 1793874707630
+          },
+          "id": "prt_1ab43c4ad001291ymNfb3a1Wfp",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43bf8d001zAo3kbDTfduVYP"
+        },
+        {
+          "type": "text",
+          "text": "Rivers are the arteries of the landscape, gathering rain and snowmelt from high ground and carrying it downhill toward the sea. They carve valleys over millennia, deposit fertile silt on floodplains, and provide water for drinking, farming, and transport. A river's character shifts along its length, from a fast, narrow stream to a broad, slow current near its mouth. Civilizations have clustered along their banks for exactly this reason: reliable water and rich soil.",
+          "time": {
+            "start": 1793874707631,
+            "end": 1793874708632
+          },
+          "id": "prt_1ab43c4af001cpCA4IPaXJZTtF",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43bf8d001zAo3kbDTfduVYP"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "chatcmpl-tool-808291c0d7e8cc4f",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "sleep 6"
+            },
+            "output": "(no output)",
+            "metadata": {
+              "output": "(no output)",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "sleep 6",
+            "time": {
+              "start": 1793874708628,
+              "end": 1793874714641
+            }
+          },
+          "id": "prt_1ab43c8480014oQMrdYaS8F70K",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43bf8d001zAo3kbDTfduVYP"
+        },
+        {
+          "reason": "tool-calls",
+          "type": "step-finish",
+          "tokens": {
+            "total": 21218,
+            "input": 64,
+            "output": 133,
+            "reasoning": 29,
+            "cache": {
+              "write": 0,
+              "read": 20992
+            }
+          },
+          "cost": 0,
+          "id": "prt_1ab43e012001UUix2JQkXsYAIN",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43bf8d001zAo3kbDTfduVYP"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_1ab43a96b001BAOyJ5LOHebDBo",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/private/tmp/umbel-probe-work-168",
+          "root": "/"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 21270,
+          "input": 111,
+          "output": 39,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 21120
+          }
+        },
+        "modelID": "big-pickle",
+        "providerID": "opencode",
+        "time": {
+          "created": 1793874714645,
+          "completed": 1793874715939
+        },
+        "finish": "tool-calls",
+        "id": "msg_1ab43e0150013M7wufFmMQAdmC",
+        "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "prt_1ab43e50e001tfJ3H2BNa6mEnZ",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43e0150013M7wufFmMQAdmC"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "chatcmpl-tool-a4ca8d86df60424f",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "echo alpha"
+            },
+            "output": "alpha\n",
+            "metadata": {
+              "output": "alpha\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "echo alpha",
+            "time": {
+              "start": 1793874715935,
+              "end": 1793874715937
+            }
+          },
+          "id": "prt_1ab43e51800117QM1XB7Vhmlxm",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43e0150013M7wufFmMQAdmC"
+        },
+        {
+          "reason": "tool-calls",
+          "type": "step-finish",
+          "tokens": {
+            "total": 21270,
+            "input": 111,
+            "output": 39,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 21120
+            }
+          },
+          "cost": 0,
+          "id": "prt_1ab43e52200178rwnd2k8pwKkp",
+          "sessionID": "ses_e54c3baa8ffejjD3dZTd5Yabl8",
+          "messageID": "msg_1ab43e0150013M7wufFmMQAdmC"
+        }
+      ]
+    }
+  ]
+}
