@@ -1,678 +1,707 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<!doctype html>
+<!-- umbel · its page in the garden's bed design, built from plotplot .brand/reference/product.html at v1.11.0 -->
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>umbel — fan your agent session out across every agent CLI</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231C1610'/><line x1='16' y1='27' x2='16' y2='17.5' stroke='%234A9E3F' stroke-width='2' stroke-linecap='round'/><g stroke='%2384C56A' stroke-width='1.7' fill='none' stroke-linecap='round'><line x1='16' y1='17.5' x2='6' y2='9'/><line x1='16' y1='17.5' x2='16' y2='6'/><line x1='16' y1='17.5' x2='26' y2='9'/><line x1='16' y1='17.5' x2='10.5' y2='7'/><line x1='16' y1='17.5' x2='21.5' y2='7'/></g><g fill='%23F2A93B'><circle cx='6' cy='9' r='3'/><circle cx='16' cy='6' r='3'/><circle cx='26' cy='9' r='3'/><circle cx='10.5' cy='7' r='2.4'/><circle cx='21.5' cy='7' r='2.4'/></g></svg>">
-<meta name="description" content="umbel drives claude, codex, gemini, and opencode as interactive workers in tmux — spawned, prompted, and waited on from your shell, an MCP server, or a YAML workflow. One binary, one provider contract, the subscription you already pay for.">
-
+<title>umbel · fan out agent CLIs from one stem · a plotplot garden tool</title>
+<meta name="description" content="umbel lets one agent run others: it starts agent CLIs as workers in tmux, sends them tasks, waits for each turn to end and reads the answers back.">
+<link rel="icon" href=".brand/products/umbel/assets/umbel-mark.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Hanken+Grotesk:wght@400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Protest+Riot&family=Hanken+Grotesk:wght@400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var s=localStorage.getItem('pp-theme');if(s)r.setAttribute('data-theme',s);else if(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)r.setAttribute('data-theme','dark');})();</script>
 <style>
-/* ─────────────────────────────────────────────────────────────────────────
-   umbel landing page — set in the plotplot brand (v2.0.0). a plotplot garden tool.
-   Every value below resolves to .brand/ (palette, type, layout, surface, motion).
-   umbel's claimed accent is Sunlight #E89227 — "fan out agent CLIs".
-   ───────────────────────────────────────────────────────────────────────── */
-:root {
-  /* shared family palette — colors.md */
-  --pp-primary:      #357E2C;
-  --pp-primary-deep: #2C6B2A;
-  --pp-leaf:         #4A9E3F;
-  --pp-forest:       #214A2C;
-  --pp-accent:       #E89227;   /* sunlight — umbel's bloom */
-  --pp-amber-ink:    #A86518;   /* sunlight as a word — labels */
+  /* ── tokens and theme ── */
+  :root{
+    /* color: shared family palette */
+    --pp-primary:#357E2C; --pp-primary-deep:#2C6B2A; --pp-leaf:#4A9E3F; --pp-forest:#214A2C;
+    --pp-accent:#E89227; --pp-marigold:#F4B63A; --pp-amber-ink:#A86518;
+    --pp-text:#3A2718; --pp-text-soft:#786148;
+    --pp-bg:#FAF5E9; --pp-bg-band:#F2EAD6; --pp-bg-artifact:#FCFAF2; --pp-surface:#F5EEDD; --pp-border:#E2D8C0;
+    /* semantic */
+    --pp-healthy:#46913C; --pp-caution:#B0741C; --pp-error:#BC4126; --pp-info:#3F7186; --pp-muted:#9A8C72;
+    /* product blooms */
+    --pp-mull:#76D4FF; --pp-glean:#0096B3; --pp-cultivate:#09636B; --pp-graft:#FEAA68; --pp-petals:#CC6A37;
+    --pp-tend:#98D98D; --pp-pleach:#779C46; --pp-umbel:#545E05; --pp-tilth:#F7D4B7; --pp-mycelium:#C9A18D; --pp-weeder:#A37A6E; --pp-well:#4D5972;
+    /* soil-night terminal (fixed in both themes) */
+    --pp-term-bg:#1C1610; --pp-term-surface:#262019; --pp-term-border:#403628;
+    --pp-term-green:#84C56A; --pp-term-sun:#F2A93B; --pp-term-text:#F3ECD9;
+    /* type */
+    --pp-font-heading:'Protest Riot',Georgia,serif;
+    --pp-font-body:'Hanken Grotesk',system-ui,sans-serif;
+    --pp-font-code:'JetBrains Mono',monospace;
+    /* space */
+    --pp-space-4xs:4px; --pp-space-3xs:8px; --pp-space-2xs:12px; --pp-space-xs:16px;
+    --pp-space-sm:24px; --pp-space-md:32px; --pp-space-lg:48px; --pp-space-xl:64px;
+    --pp-space-2xl:96px; --pp-space-3xl:128px;
+    --pp-container-max:1200px; --pp-gutter:32px;
+    /* radius */
+    --pp-radius-xs:3px; --pp-radius-sm:6px; --pp-radius-md:8px; --pp-radius-lg:10px;
+    --pp-radius-xl:12px; --pp-radius-full:999px;
+    /* shadow: ink-tinted */
+    --pp-shadow-rest:0 1px 0 #E2D8C0, 0 12px 40px -16px rgba(58,39,24,0.35);
+    --pp-shadow-lift:0 2px 4px rgba(58,39,24,0.05), 0 14px 32px rgba(58,39,24,0.08);
+    /* motion */
+    --pp-ease-petal:cubic-bezier(0.22,1,0.36,1);
 
-  --pp-text:         #3A2718;
-  --pp-text-soft:    #786148;
-  --pp-bg:           #FAF5E9;
-  --pp-bg-band:      #F2EAD6;
-  --pp-bg-artifact:  #FCFAF2;
-  --pp-surface:      #F5EEDD;
-  --pp-border:       #E2D8C0;
+    /* allotment layer: aliases of palette tokens, no new values */
+    --sign-dark:var(--pp-term-bg);
+    --sign-light:var(--pp-term-text);
 
-  --pp-healthy: #46913C;
-  --pp-caution: #B0741C;
-  --pp-error:   #BC4126;
-  --pp-info:    #3F7186;
-  --pp-muted:   #9A8C72;
+    --pp-weeder-word:#8F675B;
+    /* swap: the bed. its bloom, its bloom as a word (the bloom's ink where it has one, else --pp-text with
+       a bloom underline on the live word), and the sign ink that reads on the bloom (Product Accents) */
+    --bed:var(--pp-umbel); --bed-word:var(--pp-text); --bed-on:var(--sign-light);
+  }
+  [data-theme="dark"]{
+    --pp-primary:#84C56A; --pp-accent:#F2A93B; --pp-leaf:#9FD08A;
+    --pp-text:#F3ECD9; --pp-text-soft:#C9BBA0;
+    --pp-bg:#1C1610; --pp-bg-band:#211A12; --pp-surface:#262019; --pp-border:#403628;
+    --pp-cultivate:#1E6F77; --pp-umbel:#5F6A18; --pp-well:#58647E;
+    --pp-weeder-word:#A37A6E;
+    --pp-shadow-rest:0 1px 0 #403628, 0 12px 40px -16px rgba(8,6,4,0.6);
+    --pp-shadow-lift:0 2px 4px rgba(8,6,4,0.3), 0 14px 32px rgba(8,6,4,0.45);
+  }
 
-  /* product blooms — for the garden footer only */
-  --pp-tilth:  #4E88A6;
-  --pp-tend:   #D6502F;
-  --pp-petals: #E588A0;
-  --pp-pleach: #97539B;
-  --pp-umbel:  #E89227;
+  /* ── base type (shared with the landing page) ── */
+  *{box-sizing:border-box}
+  html{font-size:18px;scroll-behavior:smooth}
+  body{margin:0;background:var(--pp-bg);color:var(--pp-text);
+    font-family:var(--pp-font-body);font-size:1.0625rem;line-height:1.65;
+    -webkit-font-smoothing:antialiased;transition:background .4s var(--pp-ease-petal),color .4s var(--pp-ease-petal)}
+  .wrap{max-width:var(--pp-container-max);margin:0 auto;padding:0 var(--pp-gutter)}
+  .g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:var(--pp-space-sm)}
+  .margin{grid-column:1 / span 3}
+  .content{grid-column:4 / -1}
+  h1,h2,h4{font-family:var(--pp-font-heading);margin:0;font-weight:520;text-wrap:balance}
+  h2{font-size:clamp(2.2rem,3.6vw,3rem);line-height:1.05;letter-spacing:-.015em}
+  p{margin:0;text-wrap:pretty}
+  a{color:var(--pp-primary);text-decoration:none}
+  code{font-family:var(--pp-font-code);color:var(--pp-text)}
+  :focus-visible{outline:2px solid var(--pp-primary);outline-offset:3px;border-radius:var(--pp-radius-xs)}
+  .label{font-family:var(--pp-font-code);font-size:.7rem;font-weight:500;text-transform:uppercase;
+    letter-spacing:.18em;color:var(--pp-text-soft)}
+  h2.label{line-height:1.65;padding-top:var(--pp-space-4xs)}
+  .lede{font-size:1.15rem;line-height:1.55;color:var(--pp-text-soft)}
+  .arrow{font-family:var(--pp-font-code);font-weight:500}
+  /* the pictogram sprite's one stroke */
+  .glyph{fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 
-  /* soil-night terminal — colors.md */
-  --pp-term-bg:      #1C1610;
-  --pp-term-surface: #262019;
-  --pp-term-border:  #403628;
-  --pp-term-green:   #84C56A;
-  --pp-term-sun:     #F2A93B;
-  --pp-term-text:    #F3ECD9;
-  --pp-term-soft:    #C9BBA0;
+  /* ── buttons: one coloured, one ghost ── */
+  .cta{display:flex;align-items:center;flex-wrap:wrap;gap:var(--pp-space-2xs);margin-top:var(--pp-space-lg)}
+  .btn{font-weight:600;font-size:1rem;border-radius:var(--pp-radius-sm);
+    padding:var(--pp-space-2xs) var(--pp-space-sm);display:inline-flex;align-items:center;gap:var(--pp-space-3xs);
+    transition:transform .18s ease-out,background .18s ease-out,box-shadow .18s ease-out}
+  .btn.sun{background:var(--pp-accent);color:var(--pp-term-bg)}
+  .btn.sun:hover{transform:translateY(-1px);box-shadow:var(--pp-shadow-lift)}
+  .btn.ghost{box-shadow:inset 0 0 0 1.5px var(--pp-border)}
+  .btn.ghost:hover{box-shadow:inset 0 0 0 1.5px var(--pp-primary);transform:translateY(-1px)}
+  .btn:active{transform:translateY(1px)}
 
-  /* type — typography.md */
-  --font-heading: 'Fraunces', Georgia, serif;
-  --font-body:    'Hanken Grotesk', system-ui, sans-serif;
-  --font-code:    'JetBrains Mono', monospace;
+  /* ── header and inchworm ── */
+  .site{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--pp-bg) 88%,transparent);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--pp-border)}
+  .site > .wrap{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;
+    padding-top:var(--pp-space-xs);padding-bottom:var(--pp-space-xs)}
+  .brand{display:inline-flex;align-items:center;gap:var(--pp-space-3xs);color:var(--pp-text)}
+  .wordmark{font-family:var(--pp-font-heading);font-weight:600;font-size:1.4rem;letter-spacing:-.01em}
+  .wmark{width:28px;height:28px;flex:none}
+  .w-tile{fill:var(--bed)}
+  .w-ink{stroke:var(--bed-on)}
+  .w-ink-fill{fill:var(--bed-on)}
+  .nav{display:flex;align-items:center;gap:var(--pp-space-sm)}
+  .nav a{font-family:var(--pp-font-code);font-size:.72rem;font-weight:500;text-transform:uppercase;
+    letter-spacing:.16em;color:var(--pp-text-soft);transition:color .18s ease-out}
+  .nav a:hover{color:var(--pp-primary)}
+  .toggle{background:transparent;border:1px solid var(--pp-border);border-radius:var(--pp-radius-full);
+    width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;
+    color:var(--pp-text-soft);cursor:pointer;transition:color .18s ease-out,border-color .18s ease-out}
+  .toggle:hover{color:var(--pp-primary);border-color:var(--pp-primary)}
+  .toggle svg{width:18px;height:18px}
+  /* inchworm: walks the header's bottom line (ground = container y 40); body and head from the family green */
+  .inchworm{position:absolute;left:0;right:0;bottom:-4px;height:44px;overflow:hidden;pointer-events:none;z-index:0}
+  .inchworm svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .iw-body{stroke:var(--pp-primary);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+  .iw-rings{stroke:var(--pp-forest);stroke-width:5;stroke-dasharray:1 3.5;opacity:.35}
+  .iw-head{fill:var(--pp-primary)}
+  .iw-eye{fill:var(--pp-bg)}
 
-  /* radius — components.md */
-  --radius-xs: 3px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 12px;
+  /* ── direction sign: back to the garden, this bed, the next bed ── */
+  .waysign{background:var(--bed);color:var(--bed-on)}
+  .waysign .wrap{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch}
+  .waysign :focus-visible{outline-color:var(--bed-on)}
+  .way{display:flex;align-items:center;gap:var(--pp-space-2xs);padding:var(--pp-space-2xs) 0;
+    font-family:var(--pp-font-code);font-size:.72rem;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--bed-on)}
+  a.way{transition:gap .2s ease-out}
+  a.way:hover{gap:var(--pp-space-xs)}
+  .way .big{font-size:1.1rem;letter-spacing:0}
+  .way.here{padding:var(--pp-space-2xs) var(--pp-space-md);border-left:1px solid color-mix(in srgb,var(--bed-on) 30%,transparent);border-right:1px solid color-mix(in srgb,var(--bed-on) 30%,transparent)}
+  .way.next{justify-content:flex-end}
+  .way .sep{opacity:.5}
+  .w-plate{height:30px;min-width:30px;border-radius:var(--pp-radius-sm);border:1.5px solid var(--bed-on);display:inline-flex;align-items:center;justify-content:center;font-weight:700;letter-spacing:0;padding:0 var(--pp-space-4xs)}
+  .pn{font-family:var(--pp-font-heading);font-weight:600;font-size:1.05rem;letter-spacing:0;text-transform:none}
+  .big-pn{font-size:1.5rem;font-style:italic;font-variation-settings:"SOFT" 100,"WONK" 1}
 
-  /* shadow — components.md (ink-tinted) */
-  --shadow-rest: 0 1px 0 #E2D8C0, 0 12px 40px -16px rgba(58,39,24,0.35);
-  --shadow-lift: 0 2px 4px rgba(58,39,24,0.05), 0 14px 32px rgba(58,39,24,0.08);
-  --shadow-float: 0 2px 6px rgba(58,39,24,0.07), 0 18px 44px rgba(58,39,24,0.12);
+  /* ── hero: title beside the pitch, then the product frame ── */
+  .hero{position:relative;z-index:2}
+  .hero .wrap{position:relative}
+  /* guide lines: one even 96px rhythm across the full width, centred, fading from the top down to nothing */
+  .hero::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+    background-image:linear-gradient(to right,var(--pp-border) 0 1px,transparent 1px);
+    background-size:96px 100%;background-position:center top;background-repeat:repeat-x;
+    -webkit-mask-image:linear-gradient(to bottom,var(--pp-text),transparent);
+    mask-image:linear-gradient(to bottom,var(--pp-text),transparent)}
+  .hero-grid{position:relative;z-index:1;padding-top:var(--pp-space-xl);padding-bottom:0;row-gap:var(--pp-space-xl);align-items:start}
+  .hero-title{grid-column:1 / span 7;align-self:center}
+  .hero h1{font-size:clamp(3.4rem,7.2vw,6.4rem);line-height:.95;font-weight:640;letter-spacing:-.02em;
+    font-variation-settings:"SOFT" 20}
+  .hero h1 em{font-weight:560;color:var(--bed-word);text-decoration:underline;text-decoration-color:var(--bed);text-decoration-thickness:.11em;text-underline-offset:.12em;text-decoration-skip-ink:none;font-variation-settings:"SOFT" 100,"WONK" 1}
+  .hero-copy{grid-column:8 / span 5;align-self:start;padding-top:var(--pp-space-3xs)}
+  .sig{font-family:var(--pp-font-heading);font-style:italic;font-size:1.25rem;margin-bottom:var(--pp-space-sm);
+    display:flex;align-items:center;gap:var(--pp-space-2xs)}
+  .sig::before{content:"";width:32px;height:2px;background:var(--bed);flex:none}
+  /* the terminal: soil-night, fixed in both themes */
+  .hero-term{grid-column:1 / -1}
+  .term{background:var(--pp-term-bg);border:1px solid var(--pp-term-border);border-radius:var(--pp-radius-md);overflow:hidden}
+  .hero-term .term{color:var(--pp-term-text);box-shadow:var(--pp-shadow-rest);font-family:var(--pp-font-code)}
+  .term-bar{display:flex;align-items:center;gap:var(--pp-space-3xs);
+    padding:var(--pp-space-2xs) var(--pp-space-xs);background:var(--pp-term-surface);border-bottom:1px solid var(--pp-term-border)}
+  .tdot{width:11px;height:11px;border-radius:var(--pp-radius-full)}
+  .tdot.e{background:var(--pp-error)}
+  .tdot.c{background:var(--pp-caution)}
+  .tdot.k{background:var(--pp-healthy)}
+  .term-title{margin-left:var(--pp-space-3xs);font-size:.74rem;opacity:.6}
+  .term pre{margin:0;padding:var(--pp-space-md);font-family:var(--pp-font-code);font-size:.74rem;line-height:1.8;
+    white-space:pre-wrap;color:var(--pp-term-text);overflow-x:auto}
+  .hero-term pre{padding:var(--pp-space-sm);font-size:.76rem}
+  .t-prompt{color:var(--pp-term-green)}
+  .t-path{color:var(--pp-term-sun)}
+  .t-dim{opacity:.55}
+  .t-err{color:var(--pp-term-text);background:var(--pp-error);padding:0 var(--pp-space-4xs);border-radius:var(--pp-radius-xs);font-weight:700}
+  .t-rule{color:var(--pp-term-sun);font-weight:700}
+  .caption{display:flex;align-items:center;gap:var(--pp-space-3xs);margin-top:var(--pp-space-2xs);
+    font-family:var(--pp-font-code);font-size:.74rem;letter-spacing:.06em;color:var(--pp-text-soft)}
+  .caption b{color:var(--pp-text)}
+  .ldot{width:10px;height:10px;border-radius:var(--pp-radius-full);flex:none}
+  .ldot.err{background:var(--pp-error)}
 
-  /* motion — components.md */
-  --ease-petal: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-unfold: 0.8s;
-  --dur-micro: 0.22s;
+  /* ── sections: label in the margin, content on the right ── */
+  .sec{padding-top:var(--pp-space-2xl);padding-bottom:var(--pp-space-2xl);border-top:1px solid var(--pp-border);row-gap:var(--pp-space-md)}
+  .sec.tight{border-top:0;padding-top:0}
+  .content > h2{margin-bottom:var(--pp-space-md)}
+  .body{font-size:1.1rem;color:var(--pp-text-soft);max-width:58ch}
+  .body strong{color:var(--pp-text);font-weight:600}
+  /* status dots: umbrella colours, never bramble */
+  .dot{width:9px;height:9px;border-radius:var(--pp-radius-full);flex:none;display:inline-block}
+  .dot.ok{background:var(--pp-healthy)}
+  .dot.err{background:var(--pp-error)}
+  .dot.cau{background:var(--pp-caution)}
 
-  /* layout — layout.md */
-  --container: 1200px;
-  --gutter: 32px;
-}
+  /* what it refuses */
+  .refuses{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pp-space-xs) var(--pp-space-lg)}
+  .refuses li{font-family:var(--pp-font-heading);font-size:1.4rem;line-height:1.25}
+  .refuses li{position:relative;padding-left:1.1em}
+  .refuses li::before{content:"*";position:absolute;left:0;top:.08em;font-family:var(--pp-font-heading);color:var(--bed-word)}
 
-[data-theme="dark"] {
-  --pp-primary: #84C56A;
-  --pp-primary-deep: #9FD08A;
-  --pp-accent: #F2A93B;
-  --pp-amber-ink: #F2A93B;
-  --pp-leaf: #9FD08A;
-  --pp-text: #F3ECD9;
-  --pp-text-soft: #C9BBA0;
-  --pp-bg: #1C1610;
-  --pp-bg-band: #211A12;
-  --pp-bg-artifact: #211A12;
-  --pp-surface: #262019;
-  --pp-border: #403628;
-  --pp-muted: #C9BBA0;
-}
+  /* faces */
+  .faces{list-style:none;margin:0;padding:0}
+  .face{display:grid;grid-template-columns:2rem minmax(0,11rem) minmax(0,1fr);column-gap:var(--pp-space-sm);align-items:baseline;
+    padding-top:var(--pp-space-sm);padding-bottom:var(--pp-space-sm);border-bottom:1px solid var(--pp-border)}
+  .face:first-child{padding-top:0}
+  .face:last-child{border-bottom:0;padding-bottom:0}
+  .face .n{font-family:var(--pp-font-code);font-size:.78rem;color:var(--pp-text-soft)}
+  .face .cmd{font-family:var(--pp-font-code);font-weight:700;font-size:1.02rem}
+  .face .cmd span{font-weight:400;color:var(--pp-text-soft)}
+  .face .what{color:var(--pp-text-soft);max-width:52ch}
 
-*, *::before, *::after { box-sizing: border-box; }
-html { font-size: 18px; -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
-@media (max-width: 880px) { html { font-size: 17px; } }
-@media (max-width: 520px) { html { font-size: 16px; } }
+  /* proof band: forest under the frame's lower edge, the map's own numbers as sign numerals */
+  .proofband{position:relative;z-index:1;background:var(--pp-forest);color:var(--pp-term-text);
+    margin-top:calc(-1 * var(--pp-space-3xl));padding-top:calc(var(--pp-space-3xl) + var(--pp-space-xl));padding-bottom:var(--pp-space-xl)}
+  .proofband .label{color:var(--pp-term-text);opacity:.78}
+  .pb-at{opacity:.7}
+  .figures{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:var(--pp-space-sm) 0 0;border-top:1px solid rgba(243,236,217,.18)}
+  .figures div{display:flex;flex-direction:column-reverse;justify-content:flex-end;gap:var(--pp-space-3xs);
+    padding:var(--pp-space-sm) var(--pp-space-sm) 0;border-left:1px solid rgba(243,236,217,.18)}
+  .figures div:first-child{border-left:0;padding-left:0}
+  .figures dd{margin:0;font-family:var(--pp-font-heading);font-weight:600;font-size:clamp(3rem,6.4vw,5.4rem);line-height:.95;
+    letter-spacing:-.02em;font-variant-numeric:lining-nums tabular-nums}
+  .figures div:nth-child(3) dd{color:var(--pp-term-green)}
+  .figures dt{font-family:var(--pp-font-code);font-size:.68rem;font-weight:500;text-transform:uppercase;letter-spacing:.16em;opacity:.78}
 
-body {
-  margin: 0;
-  font-family: var(--font-body);
-  font-weight: 400;
-  font-size: 1.0625rem;
-  line-height: 1.65;
-  color: var(--pp-text);
-  background: var(--pp-bg);
-  -webkit-font-smoothing: antialiased;
-  transition: background var(--dur-micro) ease, color var(--dur-micro) ease;
-}
+  .sec.first{border-top:0}
 
-h1, h2, h3, h4 { font-family: var(--font-heading); font-optical-sizing: auto; margin: 0; color: var(--pp-text); }
-h1 { font-size: clamp(3.4rem, 6vw, 4.6rem); line-height: 1.04; font-weight: 620; letter-spacing: -0.015em; }
-h2 { font-size: 2.4rem; line-height: 1.12; font-weight: 560; letter-spacing: -0.01em; }
-h3 { font-size: 1.6rem; line-height: 1.2; font-weight: 560; }
-h4 { font-size: 1.25rem; line-height: 1.3; font-weight: 560; }
-h1 em, h2 em { font-style: italic; font-weight: inherit; color: var(--pp-amber-ink); }
-p { margin: 0; }
-a { color: var(--pp-primary); text-decoration: none; }
-a:hover { color: var(--pp-primary-deep); }
+  /* signs: a row of tiles, hairline seams */
+  .signs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+    border:1px solid var(--pp-border);border-radius:var(--pp-radius-md);overflow:hidden}
+  .signs li{background:var(--pp-surface);outline:1px solid var(--pp-border);padding:var(--pp-space-sm);display:flex;flex-direction:column;gap:var(--pp-space-3xs)}
+  .signs b{font-family:var(--pp-font-heading);font-weight:560;font-size:1.45rem;line-height:1.15}
+  .signs li > span:last-child{color:var(--pp-text-soft);font-size:.95rem;line-height:1.45}
+  .sg-n{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:var(--pp-radius-sm);
+    background:var(--bed);color:var(--bed-on);font-family:var(--pp-font-code);font-weight:700;font-size:.82rem;margin-bottom:var(--pp-space-3xs)}
+  .signs.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .states li{border-top:6px solid var(--st)}
+  .st-dot{width:14px;height:14px;border-radius:var(--pp-radius-full);background:var(--st);margin-bottom:var(--pp-space-3xs)}
+  .st-done{--st:var(--pp-healthy)} .st-fail{--st:var(--pp-error)} .st-needs{--st:var(--pp-caution)} .st-open{--st:var(--pp-muted)}
 
-.container { max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
-section { padding: 112px 0; }
-@media (max-width: 880px) { section { padding: 80px 0; } }
-.band { background: var(--pp-bg-band); }
+  .after{margin-top:var(--pp-space-md);font-family:var(--pp-font-heading);font-style:italic;font-size:1.6rem;line-height:1.2}
 
-.kicker {
-  font-family: var(--font-code); font-size: 0.8rem; font-weight: 500;
-  letter-spacing: 0.12em; text-transform: uppercase; color: var(--pp-amber-ink);
-  margin-bottom: 20px;
-}
-.lede { font-size: 1.3rem; line-height: 1.5; font-weight: 400; color: var(--pp-text-soft); max-width: 62ch; }
-.measure { max-width: 54ch; }
-.section-head { max-width: 64ch; margin-bottom: 56px; }
-.section-head p { margin-top: 16px; }
+  /* allowances */
+  .allow-list{list-style:none;margin:var(--pp-space-sm) 0 0;padding:0;display:grid;row-gap:var(--pp-space-3xs)}
+  .allow-list li{display:grid;grid-template-columns:minmax(0,17rem) minmax(0,1fr);column-gap:var(--pp-space-sm);align-items:baseline}
+  .allow-list code{font-size:.84rem}
+  .allow-list span{font-size:.95rem;color:var(--pp-text-soft)}
 
-:where(a, button, .btn, summary):focus-visible {
-  outline: 2px solid var(--pp-primary); outline-offset: 3px; border-radius: var(--radius-xs);
-}
+  /* install */
+  .install .term{margin-top:var(--pp-space-md)}
+  .then{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--pp-space-2xs);margin-top:var(--pp-space-sm);color:var(--pp-text-soft)}
+  .then code{font-size:.9rem}
 
-/* ── buttons — components.md conventions ── */
-.btn {
-  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-body);
-  font-size: 1rem; font-weight: 600; padding: 12px 22px; border-radius: var(--radius-sm);
-  border: 1.5px solid transparent; cursor: pointer; transition: all var(--dur-micro) ease;
-  text-decoration: none; line-height: 1;
-}
-.btn-sun { background: var(--pp-accent); color: #3A2718; }             /* sunlight fill, ink text — never flips with theme */
-.btn-sun:hover { color: #3A2718; filter: brightness(0.96); transform: translateY(-1px); }
-.btn-sun:active { transform: translateY(0); }
-.btn-primary { background: var(--pp-primary); color: var(--pp-bg); }
-.btn-primary:hover { background: var(--pp-primary-deep); color: var(--pp-bg); transform: translateY(-1px); }
-.btn-outline { background: transparent; border-color: var(--pp-primary); color: var(--pp-primary); }
-.btn-outline:hover { background: var(--pp-surface); }
+  /* where it sits: entries in the index style */
+  .sits{list-style:none;margin:0;padding:0;display:grid;row-gap:var(--pp-space-md)}
+  .sit{display:grid;grid-template-columns:44px minmax(0,1fr);column-gap:var(--pp-space-sm);align-items:center;color:var(--pp-text)}
+  .plate{width:44px;height:44px;border-radius:var(--pp-radius-sm);background:var(--bloom);
+    display:flex;align-items:center;justify-content:center;font-family:var(--pp-font-code);font-weight:700;font-size:.95rem;color:var(--on)}
+  .plate.soon{background:transparent;box-shadow:inset 0 0 0 2px var(--bloom);color:var(--pp-text)}
+  .sit b{display:block;font-family:var(--pp-font-heading);font-weight:520;font-size:1.35rem;line-height:1.2;transition:color .18s ease-out}
+  a.sit:hover b{color:var(--pp-primary)}
+  .sit .label{display:block;margin-top:var(--pp-space-4xs)}
 
-/* ── nav ── */
-header.nav {
-  position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--pp-bg) 88%, transparent);
-  backdrop-filter: blur(8px); border-bottom: 1px solid var(--pp-border);
-}
-.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: var(--pp-text); }
-.brand:hover { color: var(--pp-text); }
-.nav-links { display: flex; align-items: center; gap: 28px; }
-.nav-links a { color: var(--pp-text-soft); font-size: 0.95rem; font-weight: 500; }
-.nav-links a:hover { color: var(--pp-primary); }
-.nav-right { display: flex; align-items: center; gap: 16px; }
-.theme-toggle {
-  width: 34px; height: 34px; display: inline-grid; place-items: center; border-radius: var(--radius-sm);
-  border: 1px solid var(--pp-border); background: var(--pp-surface); color: var(--pp-text-soft); cursor: pointer;
-}
-.theme-toggle:hover { color: var(--pp-primary); }
-@media (max-width: 880px) { .nav-links { display: none; } }
+  /* ── footer: the garden footer, the family's shared surface (components.md) ── */
+  .gf{background:var(--pp-forest);color:var(--pp-term-text)}
+  .gf-wrap{max-width:var(--pp-container-max);margin:0 auto;padding:var(--pp-space-xl) var(--pp-gutter) var(--pp-space-lg)}
+  .gf a{color:var(--pp-term-green)}
+  .gf a:hover{color:var(--pp-term-text)}
+  .gf h4{font-size:1.05rem;margin:0 0 var(--pp-space-xs)}
+  .gf .wordmark{color:var(--pp-term-text)}
+  .gf .mark{width:28px;height:28px;flex:none}
+  .gf .m-stem{fill:none;stroke:var(--pp-term-green);stroke-width:2;stroke-linecap:round}
+  .gf .m-leaf{fill:var(--pp-term-green)}
+  .gf .m-bloom{fill:var(--pp-marigold)}
+  .gf-plot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pp-space-2xs) var(--pp-space-md);
+    padding-bottom:var(--pp-space-md);margin-bottom:var(--pp-space-lg);
+    border-bottom:1px solid rgba(243,236,217,.14)}
+  .gf-plotbrand{display:inline-flex;align-items:center;gap:var(--pp-space-3xs)}
+  .gf-plotbrand .wordmark{font-size:1.45rem}
+  .gf-plotline{flex:1;min-width:18ch;opacity:.8;font-size:1rem}
+  .gf-plotlink{font-family:var(--pp-font-code);font-size:.82rem;white-space:nowrap}
+  .gf-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:var(--pp-space-xl)}
+  .gf-soft{margin-top:var(--pp-space-2xs);opacity:.78;font-size:.95rem;max-width:42ch}
+  .gf-garden{display:flex;flex-wrap:wrap;gap:var(--pp-space-3xs)}
+  .gf-garden a,.gf-garden > span{display:inline-flex;align-items:center;gap:var(--pp-space-4xs);
+    font-family:var(--pp-font-code);font-size:.82rem;color:var(--pp-term-text);
+    padding:var(--pp-space-4xs) var(--pp-space-2xs);
+    border-radius:var(--pp-radius-full);background:rgba(243,236,217,.07)}
+  .gf-garden a:hover{background:rgba(243,236,217,.14)}
+  .gf-garden a.is-current{background:color-mix(in srgb,var(--bloom) 18%,transparent)}
+  .gf-dot{width:8px;height:8px;border-radius:var(--pp-radius-full);background:var(--bloom);flex:none}
+  .gf-bottom{margin-top:var(--pp-space-xl);padding-top:var(--pp-space-sm);
+    border-top:1px solid rgba(243,236,217,.14);display:flex;flex-wrap:wrap;
+    gap:var(--pp-space-3xs);justify-content:space-between;
+    font-family:var(--pp-font-code);font-size:.74rem;opacity:.72}
+  .gf :focus-visible{outline-color:var(--pp-term-green)}
 
-/* ── hero ── */
-.hero { padding: 92px 0 72px; }
-.hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
-@media (max-width: 880px) { .hero-grid { grid-template-columns: 1fr; gap: 44px; } }
-.hero h1 { margin-bottom: 24px; }
-.hero .lede { margin-bottom: 32px; }
-.hero-cta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
-.hero-note { margin-top: 18px; font-family: var(--font-code); font-size: 0.82rem; color: var(--pp-muted); }
+  /* ── motion: progressive enhancement, gated on .js ── */
+  .js .rise{opacity:0;transform:translateY(20px);transition:opacity .9s var(--pp-ease-petal),transform .9s var(--pp-ease-petal)}
+  .js .hero .rise{transform:translateY(30px);transition:opacity .8s var(--pp-ease-petal),transform .8s var(--pp-ease-petal)}
+  .js .rise.in{opacity:1;transform:none}
+  /* this bed blooms in on the map */
+  @keyframes bloom{from{opacity:0;transform:scale(.6) rotate(-14deg)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    .js .rise{opacity:1!important;transform:none!important;transition:none!important}
+      .inchworm{display:none}
+  }
 
-/* ── the umbel motif: one stem → radiating pedicels → provider blooms ── */
-.umbel-fig { display: grid; gap: 16px; }
-.umbel-svg { width: 100%; height: auto; display: block; }
-.umbel-svg .stem { stroke: var(--pp-forest); stroke-width: 2; fill: none; opacity: 0.55; }
-.umbel-svg .pedicel { stroke: var(--pp-primary); stroke-width: 1.6; fill: none; }
-.umbel-svg .bloom { transform-origin: center; }
-.umbel-svg .bloom-label { font-family: var(--font-code); font-size: 11px; fill: var(--pp-text-soft); }
-.umbel-svg .core { fill: var(--pp-accent); }
+  /* ── breakpoints: the brand's two ── */
+  @media (max-width:880px){
+    html{font-size:17px}
+    .margin,.content,.hero-title,.hero-copy,.hero-term{grid-column:1 / -1}
+    .waysign .wrap{grid-template-columns:1fr 1fr}
+    .way.here{grid-column:1 / -1;grid-row:1;padding-left:0;padding-right:0;
+      border:0;border-bottom:1px solid color-mix(in srgb,var(--bed-on) 30%,transparent)}
+    .sec{row-gap:var(--pp-space-sm)}
+    .figures{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .figures div:nth-child(3){border-left:0;padding-left:0}
+    .signs,.signs.three{grid-template-columns:1fr}
+    .gf-grid{grid-template-columns:1fr;gap:var(--pp-space-lg)}
+  }
+  @media (max-width:520px){
+    html{font-size:16px}
+    .wrap,.gf-wrap{padding-left:var(--pp-space-xs);padding-right:var(--pp-space-xs)}
+    .nav{gap:var(--pp-space-xs)}
+    .nav .lbl,.way .sub{display:none}
+    .way{letter-spacing:.1em}
+      .term pre{padding:var(--pp-space-xs);font-size:.64rem;overflow-wrap:anywhere}
+    .hero-term pre{font-size:.7rem}
+    .refuses{grid-template-columns:1fr}
+    .refuses li{font-size:1.25rem}
+    .face{grid-template-columns:1.5rem minmax(0,1fr);row-gap:var(--pp-space-4xs)}
+    .face .what{grid-column:2}
+    .allow-list li{grid-template-columns:1fr}
+  }
+  /* Protest Riot has one weight and no italic, so every heading-face element uses it as drawn, never faked */
+  html{font-synthesis:none}
+  .hero h1,
+  .big-pn,
+  .figures dd,
+  .hero h1 em,
+  .lf-step,
+  .pains b,
+  .pn,
+  .sig,
+  .signs b,
+  .sit b,
+  .wordmark,
+  h1,
+  h2,
+  h4{font-weight:400!important;font-style:normal!important;font-variation-settings:normal!important;letter-spacing:0!important}
+  /* the script's loops need room between lines */
+  .hero h1{line-height:1.1!important}
+  h2{line-height:1.25!important}
 
-/* ── terminal pane — components.md ── */
-.term {
-  background: var(--pp-term-bg); border: 1px solid var(--pp-term-border); border-radius: var(--radius-md);
-  box-shadow: var(--shadow-rest); overflow: hidden; font-family: var(--font-code); font-size: 0.86rem; line-height: 1.6;
-}
-.term-bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; background: var(--pp-term-surface); border-bottom: 1px solid var(--pp-term-border); }
-.term-bar .dot { width: 11px; height: 11px; border-radius: 50%; }
-.term-bar .dot.r { background: var(--pp-error); } .term-bar .dot.y { background: var(--pp-caution); } .term-bar .dot.g { background: var(--pp-healthy); }
-.term-bar .title { margin-left: 8px; color: var(--pp-term-soft); font-size: 0.76rem; letter-spacing: 0.04em; }
-.term-body { padding: 18px 18px 20px; color: var(--pp-term-text); white-space: pre-wrap; }
-.term-body .pr { color: var(--pp-term-sun); }                /* prompt $ */
-.term-body .cmd { color: var(--pp-term-text); }
-.term-body .ok { color: var(--pp-term-green); }
-.term-body .dim { color: var(--pp-term-soft); }
-
-/* ── cards / grids ── */
-.grid { display: grid; gap: 24px; }
-.grid-2 { grid-template-columns: repeat(2, 1fr); }
-.grid-3 { grid-template-columns: repeat(3, 1fr); }
-.grid-4 { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 880px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
-.card {
-  background: var(--pp-surface); border: 1px solid var(--pp-border); border-radius: var(--radius-lg);
-  padding: 28px; transition: transform var(--dur-micro) ease, box-shadow var(--dur-micro) ease;
-}
-.card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
-.card h4 { margin-bottom: 12px; }
-.card p { color: var(--pp-text-soft); font-size: 0.98rem; }
-.card .num { font-family: var(--font-code); font-size: 0.8rem; color: var(--pp-amber-ink); font-weight: 500; }
-
-/* ── beats (lifecycle) ── */
-.beats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 16px; }
-@media (max-width: 880px) { .beats { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 520px) { .beats { grid-template-columns: 1fr; } }
-.beat { position: relative; border-top: 2px solid var(--pp-border); padding-top: 20px; }
-.beat::before { content: ""; position: absolute; top: -2px; left: 0; width: 36px; height: 2px; background: var(--pp-accent); }
-.beat .step { font-family: var(--font-code); font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pp-amber-ink); }
-.beat .verb { font-family: var(--font-code); font-weight: 700; color: var(--pp-primary); font-size: 1.3rem; margin-top: 8px; display: flex; align-items: baseline; gap: 8px; }
-.beat .verb .seq { color: var(--pp-muted); font-weight: 400; font-size: 1rem; }
-.beat p { color: var(--pp-text-soft); font-size: 0.95rem; margin-top: 12px; }
-
-/* ── faces (tabs) ── */
-.faces-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
-.face-tab {
-  font-family: var(--font-code); font-size: 0.85rem; font-weight: 500; padding: 9px 16px;
-  border-radius: var(--radius-full, 999px); border: 1px solid var(--pp-border); background: var(--pp-surface);
-  color: var(--pp-text-soft); cursor: pointer; transition: all var(--dur-micro) ease;
-}
-.face-tab[aria-selected="true"] { background: var(--pp-primary); color: var(--pp-bg); border-color: var(--pp-primary); }
-.face-panel { display: none; }
-.face-panel.active { display: block; }
-.face-layout { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 36px; align-items: center; }
-@media (max-width: 880px) { .face-layout { grid-template-columns: 1fr; gap: 24px; } }
-.face-layout h3 { margin-bottom: 12px; }
-.face-layout p { color: var(--pp-text-soft); }
-.code {
-  background: var(--pp-term-bg); border: 1px solid var(--pp-term-border); border-radius: var(--radius-md);
-  padding: 20px 22px; font-family: var(--font-code); font-size: 0.84rem; line-height: 1.7; color: var(--pp-term-text);
-  white-space: pre; overflow-x: auto; box-shadow: var(--shadow-rest);
-}
-.code .k { color: var(--pp-term-sun); } .code .s { color: var(--pp-term-green); } .code .c { color: var(--pp-term-soft); }
-
-/* ── providers ── */
-.prov { display: flex; flex-direction: column; gap: 8px; }
-.prov .badge {
-  align-self: flex-start; font-family: var(--font-code); font-size: 0.72rem; letter-spacing: 0.05em;
-  padding: 3px 10px; border-radius: 999px; background: var(--pp-bg-band); color: var(--pp-amber-ink); margin-top: auto;
-}
-
-/* ── two-column "for you" ── */
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-@media (max-width: 880px) { .split { grid-template-columns: 1fr; } }
-.split ul { list-style: none; margin: 16px 0 0; padding: 0; }
-.split li { padding: 9px 0 9px 28px; position: relative; color: var(--pp-text-soft); border-bottom: 1px solid var(--pp-border); }
-.split li::before { position: absolute; left: 0; top: 9px; font-family: var(--font-code); }
-.split .yes li::before { content: "→"; color: var(--pp-primary); }
-.split .no li::before { content: "·"; color: var(--pp-muted); font-weight: 700; }
-.split h3 .tag { font-family: var(--font-code); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; }
-
-/* ── install / status ── */
-.copyrow { display: flex; align-items: stretch; gap: 0; max-width: 520px; }
-.copyrow code {
-  flex: 1; font-family: var(--font-code); font-size: 0.92rem; background: var(--pp-term-bg); color: var(--pp-term-text);
-  padding: 14px 18px; border-radius: var(--radius-sm) 0 0 var(--radius-sm); border: 1px solid var(--pp-term-border);
-}
-.copyrow button {
-  font-family: var(--font-body); font-weight: 600; font-size: 0.9rem; padding: 0 18px; cursor: pointer;
-  background: var(--pp-primary); color: var(--pp-bg); border: none; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-.copyrow button:hover { background: var(--pp-primary-deep); }
-.status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--pp-border); border: 1px solid var(--pp-border); border-radius: var(--radius-lg); overflow: hidden; }
-@media (max-width: 520px) { .status-grid { grid-template-columns: 1fr; } }
-.status-cell { background: var(--pp-bg-artifact); padding: 22px 24px; }
-.status-cell .label { font-family: var(--font-code); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pp-amber-ink); }
-.status-cell .val { font-family: var(--font-heading); font-size: 1.5rem; font-weight: 560; margin-top: 6px; }
-.status-cell .val small { font-family: var(--font-body); font-size: 0.85rem; color: var(--pp-text-soft); font-weight: 400; }
-
-.req { list-style: none; padding: 0; margin: 20px 0 0; }
-.req li { padding: 8px 0; color: var(--pp-text-soft); border-bottom: 1px solid var(--pp-border); }
-.req li b { color: var(--pp-text); font-weight: 600; }
-
-/* ── footer / garden ── */
-footer { background: var(--pp-forest); color: #F3ECD9; padding: 80px 0 48px; }
-footer a { color: #9FD08A; }
-footer a:hover { color: #FAF5E9; }
-footer h4 { color: #FAF5E9; font-size: 1.05rem; margin-bottom: 16px; }
-.foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 40px; }
-@media (max-width: 880px) { .foot-grid { grid-template-columns: 1fr; gap: 32px; } }
-.garden { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
-.garden a {
-  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-code); font-size: 0.85rem;
-  padding: 8px 12px; border-radius: 999px; background: rgba(250,245,233,0.06); color: #F3ECD9;
-}
-.garden a:hover { background: rgba(250,245,233,0.12); color: #FAF5E9; }
-.garden .dot { width: 8px; height: 8px; border-radius: 50%; }
-.foot-soft { color: #C9BBA0; font-size: 0.92rem; line-height: 1.6; }
-.foot-bottom { margin-top: 56px; padding-top: 24px; border-top: 1px solid rgba(250,245,233,0.12); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: #C9BBA0; font-size: 0.85rem; }
-
-/* ── motion: things unfold (ease-petal). reduced-motion disables all. ── */
-.reveal { opacity: 0; transform: translateY(30px); }
-.revealed .reveal, .reveal.revealed { opacity: 1; transform: none; transition: opacity var(--dur-unfold) var(--ease-petal), transform var(--dur-unfold) var(--ease-petal); }
-.stagger > * { opacity: 0; transform: translateY(30px); }
-.stagger.revealed > * { opacity: 1; transform: none; transition: opacity var(--dur-unfold) var(--ease-petal), transform var(--dur-unfold) var(--ease-petal); }
-.stagger.revealed > *:nth-child(2) { transition-delay: 0.1s; }
-.stagger.revealed > *:nth-child(3) { transition-delay: 0.2s; }
-.stagger.revealed > *:nth-child(4) { transition-delay: 0.3s; }
-.bloom { animation: bloom 0.62s var(--ease-petal) both; }
-@keyframes bloom { from { transform: scale(0.6) rotate(-14deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
-
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .reveal, .stagger > * { opacity: 1 !important; transform: none !important; transition: none !important; }
-  .bloom { animation: none !important; }
-}
+  /* under construction (components.md): a ribbon across the hero's top-right corner on a bed page
+     whose product is planted but not yet shipping. hazard tape in sunlight and soil; it scrolls
+     with the page and takes no clicks; the hero copy stops short of it */
+  .wip{position:absolute;top:0;right:0;width:240px;height:240px;overflow:hidden;z-index:30;pointer-events:none}
+  .wip span{position:absolute;top:68px;right:-74px;width:340px;transform:rotate(45deg);
+    display:flex;align-items:center;justify-content:center;
+    padding:var(--pp-space-3xs) 0;background:var(--pp-accent);color:var(--pp-term-bg);
+    font-family:var(--pp-font-code);font-size:.64rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+    box-shadow:var(--pp-shadow-lift)}
+  .wip span::before,.wip span::after{content:"";position:absolute;left:0;right:0;height:6px;
+    background:repeating-linear-gradient(-45deg,var(--pp-term-bg) 0 6px,var(--pp-accent) 6px 12px)}
+  .wip span::before{top:-6px}
+  .wip span::after{bottom:-6px}
+  .hero:has(.wip) .hero-copy{padding-right:clamp(0px,calc(190px - max(var(--pp-gutter),(100vw - var(--pp-container-max)) / 2 + var(--pp-gutter))),160px)}
+  @media (max-width:880px){
+    .hero:has(.wip) .hero-copy{padding-right:0}
+    .wip{position:relative;width:auto;height:auto;overflow:visible}
+    .wip span{position:relative;top:auto;right:auto;width:auto;transform:none;margin:6px 0;padding:var(--pp-space-4xs) 0;font-size:.6rem}
+  }
+  .note{margin-top:var(--pp-space-sm)}
+  .body code{font-size:.86em}
 </style>
 </head>
-<body>
+<body id="top">
 
-<!-- ═══ nav ═══ -->
-<header class="nav">
-  <div class="container nav-inner">
+<!-- pictogram sprite: same stroke and grid as the landing page -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="g-no" viewBox="0 0 24 24"><g class="glyph"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></g></symbol>
+  <symbol id="g-map" viewBox="0 0 24 24"><g class="glyph"><path d="M3 6.5 9 4.5l6 2 6-2v13l-6 2-6-2-6 2z"/><path d="M9 4.5v13M15 6.5v13"/></g></symbol>
+  <symbol id="g-gate" viewBox="0 0 24 24"><g class="glyph"><path d="M4 3v18M20 3v18M4 7.5h16M4 16.5h16M4 16.5 20 7.5"/></g></symbol>
+  <symbol id="g-commit" viewBox="0 0 24 24"><g class="glyph"><circle cx="12" cy="12" r="3.5"/><path d="M2.5 12h6M15.5 12h6"/></g></symbol>
+  <symbol id="g-pr" viewBox="0 0 24 24"><g class="glyph"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="19" r="2.2"/><path d="M6 7.2v9.6M18 16.8V10a3 3 0 0 0-3-3h-4"/><path d="M13 4.5 10.5 7l2.5 2.5"/></g></symbol>
+</svg>
+
+<header class="site">
+  <div class="wrap">
     <a class="brand" href="#top" aria-label="umbel home">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-        <line x1="13" y1="24" x2="13" y2="14" stroke="var(--pp-forest)" stroke-width="1.6"/>
-        <g stroke="var(--pp-primary)" stroke-width="1.4" fill="none">
-          <line x1="13" y1="14" x2="5" y2="6"/><line x1="13" y1="14" x2="13" y2="4"/>
-          <line x1="13" y1="14" x2="21" y2="6"/><line x1="13" y1="14" x2="9" y2="5"/><line x1="13" y1="14" x2="17" y2="5"/>
+      <svg class="wmark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect class="w-tile" width="24" height="24" rx="5.5"/>
+        <g transform="translate(3.36 3.36) scale(0.72)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path class="w-ink" stroke-width="2" d="M12 22 V14.5"/>
+          <path class="w-ink" stroke-width="2" d="M12 14.5 C8.4 14.3 5.6 12.6 4.2 9.6 M12 14.5 C9.6 12.8 8 9.8 7.6 6.4 M12 14.5 V5 M12 14.5 C14.4 12.8 16 9.8 16.4 6.4 M12 14.5 C15.6 14.3 18.4 12.6 19.8 9.6"/>
+          <circle class="w-ink-fill" cx="4.2" cy="9.2" r="2"/>
+          <circle class="w-ink-fill" cx="7.6" cy="5.6" r="2"/>
+          <circle class="w-ink-fill" cx="12" cy="4.2" r="2"/>
+          <circle class="w-ink-fill" cx="16.4" cy="5.6" r="2"/>
+          <circle class="w-ink-fill" cx="19.8" cy="9.2" r="2"/>
         </g>
-        <g fill="var(--pp-accent)"><circle cx="5" cy="6" r="2.4"/><circle cx="13" cy="4" r="2.4"/><circle cx="21" cy="6" r="2.4"/><circle cx="9" cy="5" r="2"/><circle cx="17" cy="5" r="2"/></g>
       </svg>
-      umbel
+      <span class="wordmark">umbel</span>
     </a>
-    <nav class="nav-links">
-      <a href="#how">how it works</a>
-      <a href="#faces">the four faces</a>
-      <a href="#providers">providers</a>
-      <a href="#start">start</a>
-      <a href="https://github.com/jahala/umbel">source</a>
+    <nav class="nav" aria-label="page">
+      <a href="#why" class="lbl">why</a>
+      <a href="#how" class="lbl">verbs</a>
+      <a href="#install" class="lbl">install</a>
+      <a href="https://github.com/jahala/umbel">source ↗</a>
+      <button class="toggle" id="theme" type="button" aria-label="Toggle soil-night">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 13.2A9 9 0 1 1 10.8 3 7 7 0 0 0 21 13.2z"/></svg>
+      </button>
     </nav>
-    <div class="nav-right">
-      <button class="theme-toggle" id="themeToggle" aria-label="toggle dark mode" title="toggle soil-night">◐</button>
-      <a class="btn btn-sun" href="#start">get umbel</a>
-    </div>
+  </div>
+  <!-- inchworm: a looper walking the header line. static worm without JS; hidden under reduced motion -->
+  <div class="inchworm" aria-hidden="true">
+    <svg fill="none">
+      <path class="iw-body" d="M22 37.5 C23.5 16, 42.5 16, 44 37.5"/>
+      <path class="iw-rings" d="M22 37.5 C23.5 16, 42.5 16, 44 37.5"/>
+      <circle class="iw-head" cx="45.5" cy="36" r="3.4"/>
+      <circle class="iw-eye" cx="46.8" cy="35" r="1"/>
+    </svg>
   </div>
 </header>
 
-<main id="top">
-
-<!-- ═══ hero ═══ -->
-<section class="hero">
-  <div class="container hero-grid">
-    <div class="reveal">
-      <div class="kicker">spawn · send · wait · read</div>
-      <h1>drive <em>every</em> agent CLI from one session.</h1>
-      <p class="lede">umbel runs claude, codex, gemini, and opencode as interactive workers in tmux — spawned, prompted, and waited on from your shell, an MCP server, or a YAML workflow. one binary, one provider contract, the subscription you already pay for.</p>
-      <div class="hero-cta">
-        <a class="btn btn-sun" href="#start">get umbel</a>
-        <a class="btn btn-outline" href="https://github.com/jahala/umbel">view source</a>
-      </div>
-      <p class="hero-note">an umbel: one stem, many stalks, every bloom fed from a single point.</p>
-    </div>
-    <div class="umbel-fig reveal">
-      <!-- the umbel motif: one control point fanning out to four provider blooms -->
-      <svg class="umbel-svg" viewBox="0 0 440 230" role="img" aria-label="One control point fanning out to claude, codex, deepseek, gemini, and opencode workers.">
-        <path class="stem" d="M220 228 L220 150"/>
-        <g class="pedicel">
-          <path d="M220 150 C150 132 82 102 48 72"/>
-          <path d="M220 150 C190 124 152 96 134 64"/>
-          <path d="M220 150 C214 112 226 90 220 60"/>
-          <path d="M220 150 C250 124 288 96 306 64"/>
-          <path d="M220 150 C290 132 358 102 392 72"/>
-        </g>
-        <circle class="core" cx="220" cy="150" r="6.5"/>
-        <g class="bloom" style="--d:0s">
-          <circle cx="48" cy="58" r="14" fill="var(--pp-primary)"/><text class="bloom-label" x="48" y="32" text-anchor="middle">claude</text>
-        </g>
-        <g class="bloom"><circle cx="134" cy="50" r="14" fill="var(--pp-forest)"/><text class="bloom-label" x="134" y="24" text-anchor="middle">codex</text></g>
-        <g class="bloom"><circle cx="220" cy="46" r="14" fill="var(--pp-info)"/><text class="bloom-label" x="220" y="20" text-anchor="middle">deepseek</text></g>
-        <g class="bloom"><circle cx="306" cy="50" r="14" fill="var(--pp-leaf)"/><text class="bloom-label" x="306" y="24" text-anchor="middle">gemini</text></g>
-        <g class="bloom"><circle cx="392" cy="58" r="14" fill="var(--pp-accent)"/><text class="bloom-label" x="392" y="32" text-anchor="middle">opencode</text></g>
-        <rect x="170" y="160" width="100" height="22" rx="11" fill="var(--pp-bg-band)" stroke="var(--pp-border)" stroke-width="1"/>
-        <text class="bloom-label" x="220" y="175" text-anchor="middle" fill="var(--pp-amber-ink)">your session</text>
-      </svg>
-      <div class="term" aria-hidden="true">
-        <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">umbel — supervisor</span></div>
-<div class="term-body"><span class="pr">$</span> <span class="cmd">umbel spawn --name reviewer --provider codex --cwd ./wt/a</span>
-<span class="ok">spawned: reviewer</span>
-<span class="pr">$</span> <span class="cmd">umbel spawn --name tester --provider gemini --cwd ./wt/b</span>
-<span class="ok">spawned: tester</span>
-<span class="pr">$</span> <span class="cmd">umbel send reviewer "review the diff, write findings.md"</span>
-<span class="pr">$</span> <span class="cmd">umbel wait reviewer</span>
-<span class="dim">reviewer · stop · 2 files touched · findings.md</span></div>
-      </div>
-    </div>
+<nav class="waysign" aria-label="where umbel sits in the garden">
+  <div class="wrap">
+    <a class="way back" href="https://plotplot.ai"><span class="big" aria-hidden="true">←</span><b class="pn">plotplot</b> <span class="sub"><span class="sep">·</span> the garden</span></a>
+    <span class="way here" aria-current="page"><span class="w-node" aria-hidden="true">C</span>build <span class="sep">/</span> <span class="w-plate">08</span><b class="pn big-pn">umbel</b></span>
+    <a class="way next" href="https://jahala.github.io/tilth/">09 <b class="pn">tilth</b> <span class="sub"><span class="sep">·</span> code intelligence</span><span class="big" aria-hidden="true">→</span></a>
   </div>
-</section>
+</nav>
 
-<!-- ═══ the gap ═══ -->
-<section class="band" id="why">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="kicker">the gap</div>
-      <h2>your agent can't reach the other agents.</h2>
-      <p class="lede">a claude session plans and writes — but it can't pick up a codex session, or run a gemini tester in parallel. and every vendor prices its <code>-p</code> / <code>--print</code> mode at API rates while the interactive TUI you already pay for sits idle.</p>
-    </div>
-    <div class="grid grid-2 stagger">
-      <div class="card">
-        <h4>one provider, one session</h4>
-        <p>you're billed for claude, codex, or gemini as an interactive subscription — but that surface is a terminal, not an API. a script can't drive it, and your agent can't fan work out to a sibling.</p>
-      </div>
-      <div class="card">
-        <h4>umbel makes the TUI programmable</h4>
-        <p>a clean surface over the interactive binary of whichever vendor you pay for — so the work runs against your subscription, not per-token billing on top. add opencode and you get free local workers in the same breath.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ how it works ═══ -->
-<section id="how">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="kicker">one point, many workers</div>
-      <h2>spawn a worker. command it. read it back.</h2>
-      <p>each worker is a named tmux session running a provider's TUI in its own directory — a git worktree, if you like, so several run in parallel without stepping on each other. a supervisor — your agent, a script, or a workflow — drives them and reads structured results back.</p>
-    </div>
-    <div class="beats stagger reveal">
-      <div class="beat"><div class="step">step 01</div><div class="verb">spawn<span class="seq">→</span></div><p>start a worker on a provider, in a cwd. returns a session name the other verbs route by.</p></div>
-      <div class="beat"><div class="step">step 02</div><div class="verb">send<span class="seq">→</span></div><p>enqueue a prompt. returns immediately — pair it with wait.</p></div>
-      <div class="beat"><div class="step">step 03</div><div class="verb">wait<span class="seq">→</span></div><p>block until the turn ends. resolves <span style="color:var(--pp-primary)">stop</span>, <span style="color:var(--pp-amber-ink)">needs-input</span>, idle, or dead — never a guess.</p></div>
-      <div class="beat"><div class="step">step 04</div><div class="verb">read</div><p>the last message verbatim, or a structured digest of what changed. then loop, or kill.</p></div>
-    </div>
-    <div class="grid grid-2 reveal" style="margin-top:56px">
-      <div class="card">
-        <div class="num">completion, not guesswork</div>
-        <h4 style="margin-top:8px">read from the provider's own lifecycle</h4>
-        <p>done is read from each provider's native end-of-turn event — claude's <code>Stop</code>, gemini's <code>AfterAgent</code> — never by scraping the terminal. a worker blocked on a permission prompt is reported as needs-input, with the question, so a supervisor answers instead of hanging.</p>
-      </div>
-      <div class="card">
-        <div class="num">no daemon</div>
-        <h4 style="margin-top:8px">tmux is the daemon; the filesystem is the store</h4>
-        <p>every <code>umbel</code> call is short-lived. session state lives under <code>~/.umbel/</code>; output is read from each provider's transcript, structured — so you ask "what happened?" and get files touched, commands run, and errors, not a wall of text.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ the four faces ═══ -->
-<section class="band" id="faces">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="kicker">four faces, one contract</div>
-      <h2>the surface that fits where you are.</h2>
-      <p>the same worker — spawn, send, wait, read — reached through whichever surface suits the caller. the worker is the noun; orchestration stays with you.</p>
-    </div>
-    <div class="reveal">
-      <div class="faces-tabs" role="tablist" aria-label="umbel surfaces">
-        <button class="face-tab" role="tab" aria-selected="true" data-face="mcp">MCP server</button>
-        <button class="face-tab" role="tab" aria-selected="false" data-face="cli">CLI supervisor</button>
-        <button class="face-tab" role="tab" aria-selected="false" data-face="wf">workflow YAML</button>
-        <button class="face-tab" role="tab" aria-selected="false" data-face="p">umbel -p</button>
-      </div>
-
-      <div class="face-panel active" data-face="mcp">
-        <div class="face-layout">
-          <div><h3>mount it in your agent</h3><p>point an MCP host at <code>umbel mcp</code> and your agent gets <code>umbel_spawn</code>, <code>umbel_send</code>, <code>umbel_wait</code>, <code>umbel_read</code>, <code>umbel_kill</code>, plus an on-demand <code>umbel_help</code> — so it learns when to reach for a worker without drowning in upfront context.</p></div>
-          <div class="code"><span class="c">// .mcp.json</span>
-{ <span class="s">"mcpServers"</span>: {
-    <span class="s">"umbel"</span>: { <span class="s">"command"</span>: <span class="s">"umbel"</span>, <span class="s">"args"</span>: [<span class="s">"mcp"</span>] }
-} }</div>
+<main>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div class="hero-grid g12">
+        <div class="hero-title rise">
+          <h1 id="hero-title">Fan out from one <em>stem</em>.</h1>
         </div>
-      </div>
 
-      <div class="face-panel" data-face="cli">
-        <div class="face-layout">
-          <div><h3>the verbs, from your shell</h3><p>useful in scripts, in cron, or anywhere you drive umbel without an MCP host. the provider is recorded per session, so later verbs route on their own.</p></div>
-          <div class="code"><span class="k">umbel</span> spawn --name reviewer --provider claude --cwd ./wt/review
-<span class="k">umbel</span> spawn --name fixer    --provider codex  --cwd ./wt/fix
-<span class="k">umbel</span> send reviewer <span class="s">"review the diff, write findings.md"</span>
-<span class="k">umbel</span> wait reviewer
-<span class="k">umbel</span> read reviewer</div>
+        <div class="hero-copy rise">
+          <p class="sig">many flowers, one stem.</p>
+          <p class="lede"><strong>umbel lets one agent run others.</strong> From inside your agent session, or from your shell, it starts an agent CLI as a worker in tmux, sends it a task, waits for the turn to end and reads the answer back. Workers can run different CLIs, side by side, in parallel. One binary, as a command line, an MCP server or a workflow file, with no daemon to look after.</p>
+          <div class="cta">
+            <a class="btn sun" href="#install">Install umbel <span class="arrow" aria-hidden="true">↓</span></a>
+            <a class="btn ghost" href="https://github.com/jahala/umbel">View source <span class="arrow" aria-hidden="true">↗</span></a>
+          </div>
         </div>
-      </div>
 
-      <div class="face-panel" data-face="wf">
-        <div class="face-layout">
-          <div><h3>declarative pipelines</h3><p>multi-step, mixed-provider per step. steps with satisfied <code>needs</code> run in the same wave; outputs flow downstream.</p></div>
-          <div class="code"><span class="k">workers:</span>
-  reviewer: { provider: claude, cwd: ./wt/review }
-  fixer:    { provider: codex,  cwd: ./wt/fix }
-<span class="k">steps:</span>
-  - run: reviewer
-    prompt: <span class="s">"Review PR #{{ env.PR }}. Write findings.md."</span>
-    outputs: { review: file:./wt/review/findings.md }
-  - run: fixer
-    needs: [reviewer]
-    prompt: <span class="s">"Apply:\n{{ steps.reviewer.outputs.review }}"</span></div>
-        </div>
+        <figure class="hero-term rise" style="margin:0">
+          <div class="term">
+            <div class="term-bar"><span class="tdot e"></span><span class="tdot c"></span><span class="tdot k"></span><span class="term-title">two workers in parallel · one finds the bug, one writes the tests</span></div>
+<pre class="term-body"><span class="t-prompt">$</span> umbel spawn finder --cwd ./wt/find
+spawned: finder
+<span class="t-prompt">$</span> umbel spawn tester --cwd ./wt/test
+spawned: tester
+<span class="t-prompt">$</span> umbel send finder "Why does slugify('Hello Big World') give 'hello-big world'?"
+<span class="t-prompt">$</span> umbel send tester "Write failing tests for slugify in slug.test.js."
+<span class="t-prompt">$</span> umbel status
+<span class="t-dim">NAME    STATUS  RUNNING  CWD</span>
+finder  <span class="t-rule">busy</span>    0:41     ./wt/find
+tester  <span class="t-rule">busy</span>    0:38     ./wt/test
+<span class="t-prompt">$</span> umbel wait finder &amp;&amp; umbel read finder
+replace(' ', '-') swaps only the first space. Use replaceAll, or /\s+/g.
+<span class="t-prompt">$</span> umbel wait tester &amp;&amp; umbel actions tester
+<span class="t-path">wrote</span>  slug.test.js   +18 lines
+<span class="t-path">ran</span>    bun test       3 failing, as asked
+<span class="t-prompt">$</span> umbel kill finder tester
+killed finder
+killed tester
+</pre>
+          </div>
+        </figure>
       </div>
+    </div>
+  </section>
 
-      <div class="face-panel" data-face="p">
-        <div class="face-layout">
-          <div><h3>a drop-in for <code>claude -p</code></h3><p>the same flags as the vendor print modes, with provider as a parameter. defaults to claude, so <code>umbel -p</code> mirrors <code>claude -p</code>.</p></div>
-          <div class="code"><span class="k">umbel</span> -p <span class="s">"summarise $FILE"</span> --provider claude --model sonnet
-<span class="k">umbel</span> -p <span class="s">"summarise $FILE"</span> --provider codex  --model o4-mini
-<span class="k">umbel</span> -p <span class="s">"summarise $FILE"</span> --provider opencode --model ollama/qwen2.5-coder  <span class="c"># local, free</span></div>
-        </div>
-      </div>
+  <section class="proofband" aria-labelledby="proof-title">
+    <div class="wrap">
+      <h2 class="label" id="proof-title">umbel 0.0.1, as it ships <span class="pb-at">· commit 4305563 · 5 nov 2026</span></h2>
+      <dl class="figures">
+        <div><dt>tests</dt><dd>1,256</dd></div>
+        <div><dt>agent CLIs it can drive</dt><dd>5</dd></div>
+        <div><dt>MCP tools</dt><dd>13</dd></div>
+        <div><dt>daemons to run</dt><dd>0</dd></div>
+      </dl>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ═══ providers ═══ -->
-<section id="providers">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="kicker">claude · codex · gemini · opencode</div>
-      <h2>the subscription you pay for — <em>and</em> any model.</h2>
-      <p>one provider contract, four CLIs behind it. the cloud vendors run on the subscription you already hold; opencode opens a second lane — local, free, or your own key — so a free worker can labour beside the paid ones.</p>
+  <section class="wrap" id="why" aria-labelledby="why-title"><div class="sec first g12">
+    <p class="label margin">why</p>
+    <div class="content rise">
+      <h2 id="why-title">One agent can't start another.</h2>
+      <p class="body">An agent session can read and write files, but it cannot start a second agent and hand it work, least of all one that runs a different CLI. Agent CLIs also bill their scripted mode per token, while the interactive one runs on the subscription you already pay for. <strong>umbel drives the interactive CLI for you.</strong> It knows a turn has ended from the CLI's own lifecycle event, and reads the answer from the CLI's transcript, never by scraping the screen.</p>
     </div>
-    <div class="grid grid-4 stagger reveal">
-      <div class="card prov"><h4>claude</h4><p>Claude Code over its interactive TUI. point it at any Anthropic-compatible endpoint via env, too.</p><span class="badge">subscription</span></div>
-      <div class="card prov"><h4>codex</h4><p>OpenAI's Codex CLI — a tight completion loop, driven the same way.</p><span class="badge">subscription</span></div>
-      <div class="card prov"><h4>gemini</h4><p>Google's Gemini CLI for analysis and long-context summarisation.</p><span class="badge">subscription</span></div>
-      <div class="card prov"><h4>opencode</h4><p>bring any model: <code>ollama/…</code> local, free keyless Zen, or your own key.</p><span class="badge" style="color:var(--pp-primary)">local · free · byok</span></div>
-    </div>
-  </div>
-</section>
+  </div></section>
 
-<!-- ═══ is umbel for you ═══ -->
-<section class="band">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="kicker">the honest answer</div>
-      <h2>is umbel for you?</h2>
-      <p>umbel runs one unit of agent work reliably and hands back a result you can branch on. orchestration belongs to the caller, not to umbel. so:</p>
-    </div>
-    <div class="split reveal">
-      <div class="yes">
-        <h3>reach for umbel when <span class="tag" style="color:var(--pp-primary)">— a fit</span></h3>
-        <ul>
-          <li>you want a provider you aren't — a codex reviewer from a claude session</li>
-          <li>workers run in parallel in separate worktrees</li>
-          <li>a persistent worker across many turns — review → fix → verify</li>
-          <li>you'd rather spend the subscription than the API bill</li>
-        </ul>
-      </div>
-      <div class="no">
-        <h3>reach for your host's subagent when <span class="tag" style="color:var(--pp-muted)">— not this</span></h3>
-        <ul>
-          <li>a single-shot research question with one answer</li>
-          <li>a context-isolated one-shot result your host already gives you</li>
-          <li>there's no tmux, or no provider CLI installed</li>
-          <li>you need orchestration logic baked in — that stays yours</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
+  <section class="wrap" aria-labelledby="does-title"><div class="sec tight g12">
+    <h2 class="label margin" id="does-title">what it does</h2>
+    <ul class="refuses content rise">
+      <li>starts a worker in tmux</li>
+      <li>sends it a task</li>
+      <li>waits for the turn to end</li>
+      <li>reads the answer back</li>
+      <li>runs workflow steps in parallel</li>
+      <li>stands in for a CLI's print mode</li>
+    </ul>
+  </div></section>
 
-<!-- ═══ start + the project ═══ -->
-<section id="start">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="kicker">start</div>
-      <h2>one binary. build it, point an agent at it.</h2>
+  <section class="wrap" id="how" aria-labelledby="how-title"><div class="sec g12">
+    <p class="label margin">the verbs</p>
+    <div class="content rise">
+      <h2 id="how-title">Six verbs do most of the work</h2>
+      <ol class="faces">
+        <li class="face"><span class="n" aria-hidden="true">1</span><p class="cmd"><span>umbel</span> spawn</p><p class="what">starts a worker running an agent CLI in its own folder, in tmux. The CLI is a flag; the default needs none.</p></li>
+        <li class="face"><span class="n" aria-hidden="true">2</span><p class="cmd"><span>umbel</span> send</p><p class="what">types a task into the worker, as a person would.</p></li>
+        <li class="face"><span class="n" aria-hidden="true">3</span><p class="cmd"><span>umbel</span> wait</p><p class="what">returns when the turn ends, and its exit code says how it ended.</p></li>
+        <li class="face"><span class="n" aria-hidden="true">4</span><p class="cmd"><span>umbel</span> read</p><p class="what">prints the worker's last answer, taken from its transcript.</p></li>
+        <li class="face"><span class="n" aria-hidden="true">5</span><p class="cmd"><span>umbel</span> run</p><p class="what">runs a workflow file: named workers, steps that wait on each other, outputs passed along.</p></li>
+        <li class="face"><span class="n" aria-hidden="true">6</span><p class="cmd"><span>umbel</span> mcp</p><p class="what">serves the same verbs as MCP tools, so the agent you are talking to can run the others.</p></li>
+      </ol>
+      <p class="body note">And status, ls, kill, prune, attach, actions, diff, capture and logs, to watch workers and clean up after them.</p>
     </div>
-    <div class="face-layout reveal" style="align-items:start">
-      <div>
-        <h4 style="margin-bottom:16px">install</h4>
-        <div class="copyrow"><code id="installCmd">bun install &amp;&amp; bun run build</code><button id="copyBtn" aria-label="copy install command">copy</button></div>
-        <ul class="req">
-          <li><b>tmux</b> ≥ 3.0 — the substrate</li>
-          <li><b>macOS or Linux</b></li>
-          <li><b>at least one provider CLI</b> — claude, codex, gemini, or opencode</li>
-        </ul>
-        <p style="margin-top:20px; color:var(--pp-text-soft); font-size:0.95rem">a provider you don't have installed simply can't be selected — <code>umbel spawn</code> fails loudly, never silently.</p>
-      </div>
-      <div>
-        <h4 style="margin-bottom:16px">where umbel is</h4>
-        <div class="status-grid">
-          <div class="status-cell"><div class="label">version</div><div class="val">0.0.1</div></div>
-          <div class="status-cell"><div class="label">providers</div><div class="val">4 <small>claude · codex · gemini · opencode</small></div></div>
-          <div class="status-cell"><div class="label">surfaces</div><div class="val">4 <small>MCP · CLI · workflow · -p</small></div></div>
-        </div>
-        <p style="margin-top:16px; color:var(--pp-text-soft); font-size:0.92rem">this page grows with the project — it's checked against the brand on every change, and the numbers above move as umbel does. <a href="https://github.com/jahala/umbel">follow along on GitHub →</a></p>
-      </div>
-    </div>
-  </div>
-</section>
+  </div></section>
 
+  <section class="wrap" aria-labelledby="wait-title"><div class="sec tight g12">
+    <h2 class="label margin" id="wait-title">how a wait ends</h2>
+    <div class="content rise">
+      <ul class="signs states">
+        <li class="st-done"><span class="st-dot" aria-hidden="true"></span><b>exit 0</b><span>the turn ended, and the answer is ready to read</span></li>
+        <li class="st-needs"><span class="st-dot" aria-hidden="true"></span><b>exit 124</b><span>the deadline passed first</span></li>
+        <li class="st-fail"><span class="st-dot" aria-hidden="true"></span><b>exit 125</b><span>the worker exited before its turn was done</span></li>
+        <li class="st-open"><span class="st-dot" aria-hidden="true"></span><b>exit 126</b><span>the worker is waiting for a person: a permission, a prompt or a sign-in</span></li>
+      </ul>
+      <p class="after">A worker that needs you says so, and never waits in silence.</p>
+    </div>
+  </div></section>
+
+  <section class="wrap" id="install" aria-labelledby="install-title"><div class="sec install g12">
+    <div class="content rise">
+      <h2 id="install-title">Install</h2>
+      <p class="body">From source, on macOS or Linux. umbel needs tmux 3.0 or later and at least one agent CLI installed and signed in.</p>
+      <div class="term">
+<pre><span class="t-prompt">git</span> clone https://github.com/jahala/umbel &amp;&amp; cd umbel
+<span class="t-prompt">bun</span> install &amp;&amp; bun run build</pre>
+      </div>
+      <p class="body note">Then give your agent the verbs: add <code>umbel mcp</code> to its MCP servers.</p>
+    </div>
+  </div></section>
+
+  <section class="wrap" aria-labelledby="sits-title"><div class="sec g12">
+    <h2 class="label margin" id="sits-title">where it sits</h2>
+    <ul class="sits content rise">
+      <li><a class="sit" href="https://jahala.github.io/pleach/"><span class="plate" style="--bloom:var(--pp-pleach);--on:var(--sign-dark)">07</span><span><b>pleach conducts the work its workers do</b><span class="label">C build · the conductor</span></span></a></li>
+      <li><a class="sit" href="https://jahala.github.io/mycelium/"><span class="plate" style="--bloom:var(--pp-mycelium);--on:var(--sign-dark)">10</span><span><b>mycelium lets workers talk mid-turn</b><span class="label">the shed · peer messaging</span></span></a></li>
+      <li><a class="sit" href="https://jahala.github.io/weeder/"><span class="plate" style="--bloom:var(--pp-weeder);--on:var(--sign-dark)">11</span><span><b>weeder judges what they changed</b><span class="label">the shed · the judge</span></span></a></li>
+      <li><div class="sit"><span></span><span><b>in tmux, on your machine</b><span class="label">no daemon · state in ~/.umbel</span></span></div></li>
+    </ul>
+  </div></section>
 </main>
 
-<!-- ═══ footer / the garden ═══ -->
-<footer>
-  <div class="container">
-    <div class="foot-grid">
-      <div class="reveal">
-        <h4>umbel</h4>
-        <p class="foot-soft">a programmatic surface over interactive agent CLIs. spawn other-provider workers from inside your own session — reliably, and on the subscription you already pay for.</p>
-        <p class="foot-soft" style="margin-top:16px"><a href="https://github.com/jahala/umbel">github →</a> &nbsp; MIT licensed &nbsp; · &nbsp; <a href="https://github.com/jahala/umbel/blob/master/CONTRIBUTING.md">contributing</a></p>
-      </div>
-      <div class="reveal">
-        <h4>the plotplot garden</h4>
-        <div class="garden">
-          <a href="https://github.com/jahala/tilth"><span class="dot" style="background:var(--pp-tilth)"></span>tilth</a>
-          <a href="https://github.com/jahala/tend"><span class="dot" style="background:var(--pp-tend)"></span>tend</a>
-          <a href="https://github.com/jahala/petals"><span class="dot" style="background:var(--pp-petals)"></span>petals</a>
-          <a href="https://github.com/jahala/pleach"><span class="dot" style="background:var(--pp-pleach)"></span>pleach</a>
-          <a href="https://github.com/jahala/umbel" style="background:rgba(232,146,39,0.16)"><span class="dot" style="background:var(--pp-umbel)"></span>umbel</a>
-        </div>
-        <p class="foot-soft" style="margin-top:16px">small, sharp tools for building with agents.</p>
-      </div>
-      <div class="reveal">
-        <h4>nearby</h4>
-        <p class="foot-soft"><a href="https://github.com/jahala/walkie-clawkie">walkie-clawkie</a> — push-to-talk between agents mid-turn. umbel dispatches and waits; walkie-clawkie lets sessions talk while they run.</p>
-        <p class="foot-soft" style="margin-top:16px"><a href="https://buymeacoffee.com/jahala">buy me a coffee →</a></p>
-      </div>
+<!-- garden footer · shared family surface. swap ONLY: (1) the identity column, (2) the .is-current pill, (3) the repo links -->
+<footer class="gf">
+  <div class="gf-wrap">
+
+    <div class="gf-plot">
+      <a class="gf-plotbrand" href="https://plotplot.ai" aria-label="plotplot home">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="m-stem" d="M12 22 V8"/>
+          <path class="m-leaf" d="M12 17.6 C7.8 16.8 5.2 13.6 5.6 9.8 C9.3 10.4 12 13.2 12 17.6 Z"/>
+          <path class="m-leaf" d="M12 14.6 C16.2 13.8 18.8 10.6 18.4 6.8 C14.7 7.4 12 10.2 12 14.6 Z"/>
+          <circle class="m-bloom" cx="12" cy="4.6" r="2.5"/>
+        </svg>
+        <span class="wordmark">plotplot</span>
+      </a>
+      <p class="gf-plotline">a garden of small, sharp tools for building with AI.</p>
+      <a class="gf-plotlink" href="https://plotplot.ai">plotplot.ai →</a>
     </div>
-    <div class="foot-bottom">
+
+    <div class="gf-grid">
+
+      <div class="gf-col">
+        <h4>umbel</h4>
+        <p class="gf-soft">fan out agent CLIs from one stem. one agent starts others in tmux, hands them work and reads their answers.</p>
+        <p class="gf-soft"><a href="https://github.com/jahala/umbel">github →</a> &nbsp;·&nbsp; MIT</p>
+      </div>
+
+      <div class="gf-col">
+        <h4>the plotplot garden</h4>
+        <nav class="gf-garden" aria-label="the garden">
+          <span style="--bloom:var(--pp-mull)"><span class="gf-dot"></span>mull</span>
+          <span style="--bloom:var(--pp-glean)"><span class="gf-dot"></span>glean</span>
+          <span style="--bloom:var(--pp-cultivate)"><span class="gf-dot"></span>cultivate</span>
+          <span style="--bloom:var(--pp-graft)"><span class="gf-dot"></span>graft</span>
+          <span style="--bloom:var(--pp-petals)"><span class="gf-dot"></span>petals</span>
+          <span style="--bloom:var(--pp-tend)"><span class="gf-dot"></span>tend</span>
+          <a href="https://jahala.github.io/pleach/" style="--bloom:var(--pp-pleach)"><span class="gf-dot"></span>pleach</a>
+          <a href="#top" style="--bloom:var(--pp-umbel)" class="is-current" aria-current="page"><span class="gf-dot"></span>umbel</a>
+          <a href="https://jahala.github.io/tilth/" style="--bloom:var(--pp-tilth)"><span class="gf-dot"></span>tilth</a>
+          <a href="https://jahala.github.io/mycelium/" style="--bloom:var(--pp-mycelium)"><span class="gf-dot"></span>mycelium</a>
+          <a href="https://jahala.github.io/weeder/" style="--bloom:var(--pp-weeder)"><span class="gf-dot"></span>weeder</a>
+          <span style="--bloom:var(--pp-well)"><span class="gf-dot"></span>well</span>
+          <span style="--bloom:var(--pp-coldframe)"><span class="gf-dot"></span>coldframe</span>
+        </nav>
+        <p class="gf-soft">small, sharp tools for building with agents.</p>
+      </div>
+
+      <div class="gf-col">
+        <h4>nearby</h4>
+        <p class="gf-soft"><a href="https://github.com/jahala/mrkd">mrkd</a>, a native markdown viewer for macOS.</p>
+        <p class="gf-soft"><a href="https://buymeacoffee.com/jahala">buy me a coffee →</a></p>
+      </div>
+
+    </div>
+    <div class="gf-bottom">
       <span>© 2026 · a plotplot garden tool · MIT</span>
-      <span>aimed at solo developers automating their own work.</span>
+      <span>many flowers, one stem.</span>
     </div>
   </div>
 </footer>
 
 <script>
-(function () {
-  // theme toggle — soil at night
-  var root = document.documentElement, tg = document.getElementById('themeToggle');
-  try { var saved = localStorage.getItem('umbel-theme'); if (saved) root.setAttribute('data-theme', saved); } catch (e) {}
-  tg && tg.addEventListener('click', function () {
-    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    try { localStorage.setItem('umbel-theme', next); } catch (e) {}
-  });
-
-  // faces tabs
-  document.querySelectorAll('.face-tab').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      var f = tab.getAttribute('data-face');
-      document.querySelectorAll('.face-tab').forEach(function (t) { t.setAttribute('aria-selected', String(t === tab)); });
-      document.querySelectorAll('.face-panel').forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-face') === f); });
-    });
-  });
-
-  // copy install command
-  var cb = document.getElementById('copyBtn');
-  cb && cb.addEventListener('click', function () {
-    navigator.clipboard && navigator.clipboard.writeText(document.getElementById('installCmd').textContent);
-    var was = cb.textContent; cb.textContent = 'copied'; setTimeout(function () { cb.textContent = was; }, 1400);
-  });
-
-  // entrances — things unfold (reduced-motion handled in CSS + here)
-  var rm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (rm) { document.querySelectorAll('.reveal,.stagger').forEach(function (el) { el.classList.add('revealed'); }); return; }
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('revealed'); io.unobserve(e.target); } });
-  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-  document.querySelectorAll('.reveal,.stagger').forEach(function (el) { io.observe(el); });
+(function(){
+  var root=document.documentElement;
+  var t=document.getElementById('theme');
+  if(t){t.addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark';
+    root.setAttribute('data-theme',dark?'light':'dark');
+    localStorage.setItem('pp-theme',dark?'light':'dark');
+  });}
+  var items=document.querySelectorAll('.rise');
+  function show(el){el.classList.add('in');}
+  if(!('IntersectionObserver' in window)){Array.prototype.forEach.call(items,show);return;}
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){
+    if(e.isIntersecting){show(e.target);io.unobserve(e.target);}
+  });},{threshold:0,rootMargin:'0px 0px -6% 0px'});
+  Array.prototype.forEach.call(items,function(el){io.observe(el);});
+})();
+</script>
+<script>
+// inchworm: a looper on the header line. two-anchor gait with a constant body length: the rear is
+// drawn up into an arch, then the front reaches forward. every few strides it rears up and sways,
+// looking about; if a pointer comes close it finishes its step and goes stiff as a twig until the
+// pointer leaves. walks off the right edge, waits, walks in again. honours reduced motion.
+(function(){
+  var box=document.querySelector('.inchworm'); if(!box) return;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var svg=box.querySelector('svg'), header=box.parentNode;
+  var body=svg.querySelector('.iw-body'), rings=svg.querySelector('.iw-rings');
+  var head=svg.querySelector('.iw-head'), eye=svg.querySelector('.iw-eye');
+  var G=40, base=G-2.5, L=34, Lmin=10, DRAW=560, REACH=640, SENSE=2800, RISE=420;
+  var W=box.clientWidth; window.addEventListener('resize',function(){W=box.clientWidth;});
+  var rear, front, phase='away', tp=0, wait=1400, strides=0, nextSense=0, hover=false, left=0, angle=0;
+  function begin(){front=-30;rear=front-L;phase='draw';tp=0;strides=0;nextSense=4+Math.floor(Math.random()*5);}
+  function ease(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+  // cubic from rear to front; find the arch height that keeps the body length at L
+  function archLen(xr,xf,h){var k=(xf-xr)*.08,x0=xr,y0=0,len=0,i,t,u,x,y;
+    for(i=1;i<=16;i++){t=i/16;u=1-t;x=u*u*u*xr+3*u*u*t*(xr+k)+3*u*t*t*(xf-k)+t*t*t*xf;y=-(3*u*u*t+3*u*t*t)*h;
+      len+=Math.sqrt((x-x0)*(x-x0)+(y-y0)*(y-y0));x0=x;y0=y;} return len;}
+  function arch(xr,yr,xf,yf){var lo=0,hi=L,h,i;for(i=0;i<14;i++){h=(lo+hi)/2;if(archLen(xr,xf,h)<L)lo=h;else hi=h;}
+    var k=(xf-xr)*.08;return 'M'+xr.toFixed(1)+' '+yr.toFixed(1)+' C'+(xr+k).toFixed(1)+' '+(yr-h).toFixed(1)+', '+(xf-k).toFixed(1)+' '+(yf-h).toFixed(1)+', '+xf.toFixed(1)+' '+yf.toFixed(1);}
+  // rear half flat on the line, front half raised at angle a (degrees) from a soft bend
+  function raised(a){var r=a*Math.PI/180,p=rear+L*.45,s=L*.55-4,bx=p+4*Math.cos(r),by=base-4*Math.sin(r);
+    var fx=bx+s*Math.cos(r),fy=by-s*Math.sin(r);
+    return {d:'M'+rear.toFixed(1)+' '+base+' L'+(p-4).toFixed(1)+' '+base+' Q'+p.toFixed(1)+' '+base+' '+bx.toFixed(1)+' '+by.toFixed(1)+' L'+fx.toFixed(1)+' '+fy.toFixed(1),fx:fx,fy:fy,r:r};}
+  function draw(d,fx,fy,tilt){
+    body.setAttribute('d',d);rings.setAttribute('d',d);
+    var hx=fx+1.5*Math.cos(tilt)+1*Math.sin(tilt), hy=fy-1.5*Math.sin(tilt)-1*Math.cos(tilt)+0;
+    head.setAttribute('cx',hx.toFixed(1));head.setAttribute('cy',hy.toFixed(1));
+    eye.setAttribute('cx',(hx+1.3*Math.cos(tilt)+.4).toFixed(1));eye.setAttribute('cy',(hy-1-1.3*Math.sin(tilt)).toFixed(1));}
+  header.addEventListener('mousemove',function(e){var b=box.getBoundingClientRect(),x=e.clientX-b.left;
+    hover=phase!=='away'&&Math.abs(x-(rear+front)/2)<80;if(hover)left=0;});
+  header.addEventListener('mouseleave',function(){hover=false;});
+  var last=0;
+  function frame(ts){
+    var dt=last?Math.min(80,ts-last):16;last=ts;tp+=dt;var t,fy=base,ry=base,p;
+    if(phase==='away'){box.style.visibility='hidden';if(tp>=wait){begin();box.style.visibility='visible';}requestAnimationFrame(frame);return;}
+    if(phase==='draw'){t=Math.min(1,tp/DRAW);rear=(front-L)+(L-Lmin)*ease(t);ry=base-Math.sin(t*Math.PI)*2.5;
+      draw(arch(rear,ry,front,base),front,base,0);if(t>=1){phase='reach';tp=0;}}
+    else if(phase==='reach'){t=Math.min(1,tp/REACH);front=(rear+Lmin)+(L-Lmin)*ease(t);fy=base-Math.sin(t*Math.PI)*2.5;
+      draw(arch(rear,base,front,fy),front,fy,0);
+      if(t>=1){strides++;tp=0;phase=hover?'twig':(strides>=nextSense?'sense':'draw');}}
+    else if(phase==='sense'){t=tp/SENSE;
+      if(t<.25)angle=50*ease(t/.25);else if(t<.78)angle=50+9*Math.sin((t-.25)/.53*Math.PI*4);else angle=50*(1-ease(Math.min(1,(t-.78)/.22)));
+      p=raised(angle);draw(p.d,p.fx,p.fy,p.r);
+      if(t>=1){phase='draw';tp=0;strides=0;nextSense=4+Math.floor(Math.random()*5);}}
+    else if(phase==='twig'){ // rigid, straight, like a twig; holds while the pointer is near
+      if(!hover)left+=dt;
+      if(hover||left<900)angle=Math.min(38,angle+38*dt/RISE);else angle=Math.max(0,angle-38*dt/RISE);
+      p=raised(angle);draw(p.d,p.fx,p.fy,p.r);
+      if(!hover&&left>=900&&angle<=0){phase='draw';tp=0;left=0;}}
+    if(rear>W+30){phase='away';tp=0;wait=3000+Math.random()*4000;}
+    requestAnimationFrame(frame);}
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>

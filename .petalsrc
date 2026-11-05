@@ -1,5 +1,7 @@
+# .petalsrc: umbel takes the plotplot brand by tag. Its product layer is canonical here at
+# .brand/products/umbel/; the rest of .brand/ is fetched and git-ignored.
 brand:
-  source: github.com/jahala/plotplot-ai
-  version: v2.0.0
+  source: https://github.com/jahala/plotplot.git
+  version: v1.11.0
   product: umbel
   overrides: {}
