@@ -12,7 +12,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hasSession, killSession } from '../../src/adapters/tmux.ts';
@@ -153,6 +153,7 @@ describe('spawn --provider opencode --model', () => {
   test('a probe that fails refuses the spawn with its stderr and creates nothing', async () => {
     const { env, cfgPath, cwd } = await setup();
     const name = sessionName('f');
+    const callFile = join(tmpDir, 'probe-calls');
 
     const err = await rejection(
       spawn({
@@ -160,13 +161,66 @@ describe('spawn --provider opencode --model', () => {
         claudeBin: FAKE_OPENCODE,
         model: 'opencode/big-pickle',
         cwd,
-        env: { ...env, FAKE_OPENCODE_MODELS_EXIT: '3' },
+        env: { ...env, FAKE_OPENCODE_MODELS_EXIT: '3', FAKE_OPENCODE_MODELS_CALLS: callFile },
         name,
       }),
     );
 
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain('model catalogue unavailable');
+    // Only a locked database is retried; any other probe failure stands.
+    expect((await readFile(callFile, 'utf8')).trim().split('\n')).toHaveLength(1);
+    await expectNothingCreated(name, env, cfgPath);
+  });
+
+  test('a locked model database is retried until the probe answers', async () => {
+    const { env, cwd } = await setup();
+    const name = sessionName('lock');
+    const lockFile = join(tmpDir, 'locks');
+    await writeFile(lockFile, '2');
+
+    const { session } = await spawn({
+      provider: 'opencode',
+      claudeBin: FAKE_OPENCODE,
+      model: 'ollama/some-model',
+      cwd,
+      env: { ...env, FAKE_OPENCODE_MODELS_LOCKED: lockFile },
+      name,
+    });
+
+    expect(session.model).toBe('ollama/some-model');
+    expect(await hasSession(name, env)).toBe(true);
+    expect((await readFile(lockFile, 'utf8')).trim()).toBe('0');
+  });
+
+  test('a lock that never clears fails the spawn after a bounded number of attempts', async () => {
+    const { env, cfgPath, cwd } = await setup();
+    const name = sessionName('lockdead');
+    const lockFile = join(tmpDir, 'locks');
+    const callFile = join(tmpDir, 'calls');
+    await writeFile(lockFile, '99');
+
+    const err = await rejection(
+      spawn({
+        provider: 'opencode',
+        claudeBin: FAKE_OPENCODE,
+        model: 'opencode/big-pickle',
+        cwd,
+        env: {
+          ...env,
+          FAKE_OPENCODE_MODELS_LOCKED: lockFile,
+          FAKE_OPENCODE_MODELS_CALLS: callFile,
+        },
+        name,
+      }),
+    );
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).name).toBe('ModelListUnavailableError');
+    expect((err as Error).message).toContain('database is locked');
+    // One attempt plus three bounded retries: a lock that never clears ends
+    // the spawn instead of hanging it.
+    expect((await readFile(callFile, 'utf8')).trim().split('\n')).toHaveLength(4);
     await expectNothingCreated(name, env, cfgPath);
   });
 
