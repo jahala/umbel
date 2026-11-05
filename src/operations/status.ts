@@ -1,5 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { classifyNotification, type NeedsInputReason } from '../core/notification.ts';
 import { type RunningCommand, runningCommands } from '../core/procs.ts';
 import { PROVIDERS } from '../core/providers/registry.ts';
@@ -11,6 +11,7 @@ import { readDeathCause } from './death-record.ts';
 import type { Deps } from './deps.ts';
 import { defaultDeps } from './deps.ts';
 import { discoverTranscriptPath, knownTranscriptPath } from './resolve-jsonl.ts';
+import { resolveWantedRepo } from './select.ts';
 
 // ---------------------------------------------------------------------------
 // StatusEntry / StatusOpts
@@ -335,11 +336,8 @@ export async function status(opts: StatusOpts): Promise<StatusEntry[]> {
     return [entry];
   }
 
-  // Resolved before the loop so a worktree path matches the main worktree the
-  // spawn recorded. A path git no longer knows is matched as given, which keeps
-  // a session of a deleted repository findable by the path it recorded.
-  const wantedRepo =
-    opts.repo === undefined ? undefined : ((await d.git.repoRoot(opts.repo)) ?? resolve(opts.repo));
+  // A repo path resolves the way spawn recorded it; see resolveWantedRepo.
+  const wantedRepo = opts.repo === undefined ? undefined : await resolveWantedRepo(opts.repo, d);
 
   const names = await d.fs.listSessionNames(env);
   const entries: StatusEntry[] = [];

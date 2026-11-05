@@ -381,7 +381,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       case 'kill':
         return await verbKill(flags, rest);
       case 'prune':
-        return await verbPrune(flags);
+        return await verbPrune(flags, rest);
       case 'attach':
         return await verbAttach(flags, rest);
       case 'read':
@@ -774,17 +774,48 @@ function selectorLabel(request: KillRequest): string {
 // prune
 // ---------------------------------------------------------------------------
 
-async function verbPrune(flags: Map<string, string | boolean>): Promise<number> {
+async function verbPrune(
+  flags: Map<string, string | boolean>,
+  positionals: string[],
+): Promise<number> {
   const olderThan = flagStr(flags, 'older-than');
+  const prefix = flagStr(flags, 'prefix');
+  const repo = flagStr(flags, 'repo');
+  // A bare value flag parses as a boolean. Say what it needs instead of
+  // treating it as absent: a missing grace period sweeps more than was asked.
+  if (olderThan === undefined && flags.has('older-than')) {
+    throw new UmbelUsageError('--older-than needs a duration: --older-than 24h');
+  }
+  if (prefix === undefined && flags.has('prefix')) {
+    throw new UmbelUsageError('--prefix needs a value: --prefix NAME-PREFIX');
+  }
+  if (repo === undefined && flags.has('repo')) {
+    throw new UmbelUsageError('--repo needs a path: --repo PATH');
+  }
+  const dryRun = flagBool(flags, 'dry-run');
   const result = await prune({
-    env: getCliEnv(),
+    names: positionals,
+    ...(prefix !== undefined ? { prefix } : {}),
+    ...(repo !== undefined ? { repo } : {}),
+    dryRun,
     ...(olderThan !== undefined ? { olderThanMs: parseDuration(olderThan) } : {}),
+    env: getCliEnv(),
   });
   for (const name of result.removed) {
-    process.stdout.write(`removed ${name}\n`);
+    process.stdout.write(`${dryRun ? 'would remove' : 'removed'} ${name}\n`);
   }
-  process.stdout.write(`${result.removed.length} removed, ${result.kept.length} kept\n`);
-  return 0;
+  for (const name of result.live) process.stdout.write(`kept ${name} (live)\n`);
+  for (const name of result.notFound) process.stdout.write(`not found ${name}\n`);
+  const summary = [
+    `${result.removed.length} ${dryRun ? 'to remove' : 'removed'}`,
+    `${result.kept.length} kept`,
+    ...(result.live.length > 0 ? [`${result.live.length} live`] : []),
+    ...(result.notFound.length > 0 ? [`${result.notFound.length} not found`] : []),
+  ].join(', ');
+  process.stdout.write(`${summary}\n`);
+  // A name that was never a session is a miss: the caller asked for it and it
+  // was not there to sweep.
+  return result.notFound.length > 0 ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------

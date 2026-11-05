@@ -52,7 +52,7 @@ export const TOOL_DESCRIPTIONS = {
   umbel_kill:
     'Kill sessions by name (`names`), or select live sessions with `prefix` and/or `repo` (never mixed with names). `dryRun` lists the targets and kills nothing; `purge` removes each directory. Reports each session as killed, already dead or not found.',
   umbel_prune:
-    "Sweep tombstones: remove dead sessions' directories and their tmux remains. `olderThan` (e.g. '24h') spares younger records. Never touches a live session.",
+    "Sweep tombstones: remove dead sessions' directories and tmux remains. Select with `names`, or `prefix`/`repo` like umbel_kill (never mixed). `dryRun` lists only; `olderThan` (e.g. '24h') spares younger. A live match is reported, never removed.",
   umbel_read:
     "Read the last assistant response. Auto-truncates long responses to head+tail (>2000 tokens); pass `full:true`, `head`/`tail` (tokens), or `section` ('## Heading') to control. Call after umbel_wait returns. Token usage of the turn is in structuredContent.",
   umbel_actions:
@@ -133,7 +133,13 @@ export interface McpToolHandlers {
     dryRun: boolean;
     purge: boolean;
   }) => Promise<ToolResult>;
-  umbel_prune: (args: { olderThan?: string | undefined }) => Promise<ToolResult>;
+  umbel_prune: (args: {
+    names: string[];
+    prefix?: string | undefined;
+    repo?: string | undefined;
+    dryRun: boolean;
+    olderThan?: string | undefined;
+  }) => Promise<ToolResult>;
   umbel_read: (args: {
     name: string;
     head?: number | undefined;
@@ -276,8 +282,12 @@ export function createMcpTools(opts: McpServerOpts): McpToolHandlers {
 
     umbel_prune: async (args) => {
       const result = await prune({
-        env,
+        names: args.names,
+        ...(args.prefix !== undefined ? { prefix: args.prefix } : {}),
+        ...(args.repo !== undefined ? { repo: args.repo } : {}),
+        dryRun: args.dryRun,
         ...(args.olderThan !== undefined ? { olderThanMs: parseDuration(args.olderThan) } : {}),
+        env,
         ...(deps !== undefined ? { deps } : {}),
       });
       return {

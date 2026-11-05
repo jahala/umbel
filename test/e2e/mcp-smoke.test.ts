@@ -261,6 +261,7 @@ describe('mcp-smoke', () => {
       'umbel_status',
       'umbel_ls',
       'umbel_kill',
+      'umbel_prune',
       'umbel_read',
       'umbel_actions',
       'umbel_diff',

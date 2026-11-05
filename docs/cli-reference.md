@@ -406,19 +406,24 @@ umbel kill a b c
 
 ### prune
 
-Sweep tombstones. Removes the state directory and the tmux remains of every dead session — the pane a dead worker leaves standing, and the directory `kill` keeps. A live session is never touched: liveness is read from the pane, because a session whose worker has exited is still a session. After the sweep, nothing answers for that session: `read`, `actions` and `status <name>` are gone with its directory.
+Sweep tombstones. Removes the state directory and the tmux remains of every dead session: the pane a dead worker leaves standing, and the directory `kill` keeps. A live session is never removed: liveness is read from the pane, because a session whose worker has exited is still a session. After the sweep, nothing answers for that session: `read`, `actions` and `status <name>` are gone with its directory.
+
+`prune` takes the same selectors as `kill`: one or more names, or `--prefix` and/or `--repo`, and a session must match every selector given. Names and selectors cannot be mixed. A live session a selector matches is reported and left alone. With no selector, every dead session is swept.
 
 ```
-umbel prune [--older-than DURATION]
+umbel prune [<name>... | --prefix PREFIX [--repo PATH]] [--older-than DURATION] [flags...]
 ```
 
 **Flags**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--older-than DURATION` | off | Grace period. Keep any session that died more recently than this, dated from `events/dead` (or, for a worker nobody waited on, from when it was spawned). Format: `5m`, `30s`, `1h`. Without it, every dead session goes. |
+| `--prefix PREFIX` | off | Sweep only dead sessions whose name starts with `PREFIX`. |
+| `--repo PATH` | off | Sweep only dead sessions of the repository at `PATH`. A worktree path matches its main worktree. |
+| `--older-than DURATION` | off | Grace period. Keep any session that died more recently than this, dated from `events/dead` (or, for a worker nobody waited on, from when it was spawned). Format: `5m`, `30s`, `1h`. Without it, every matching dead session goes. |
+| `--dry-run` | off | Print the targets and remove nothing. |
 
-Prints one `removed <name>` line per swept session and a `N removed, M kept` summary.
+Prints one `removed <name>` line per swept session (`would remove <name>` with `--dry-run`), a `kept <name> (live)` line for a matched live session, and a `not found <name>` line for a named session umbel holds no record of. The summary is `N removed, M kept`, plus a count of live and not-found names when there are any. Exit code 1 means a named session was not found; 2 means names and selectors were mixed, or a flag lost its value.
 
 **Examples**
 
@@ -428,6 +433,13 @@ umbel prune
 
 # Keep the last day of post-mortems
 umbel prune --older-than 24h
+
+# Show what one overnight run left behind, then remove it
+umbel prune --prefix run-42- --dry-run
+umbel prune --prefix run-42-
+
+# One repository's dead sessions, older than an hour
+umbel prune --repo ~/src/umbel --older-than 1h
 ```
 
 ---

@@ -42,6 +42,22 @@ const ListFilterShape = z.object({
   repo: z.string().optional(),
 });
 
+// The cleanup selectors kill and prune share: one or more names, or a selector
+// over recorded sessions, and never both (umbel#94, umbel#170). kill takes it
+// for live sessions, prune for dead ones, so a selector means the same thing
+// wherever a conductor learned it.
+const CleanupSelectorShape = z.object({
+  // Names take exactly those sessions. A selector takes the sessions it
+  // matches, and the two forms cannot be mixed.
+  names: z.array(z.string().min(1)).default([]),
+  // Sessions whose name starts with this.
+  prefix: z.string().min(1).optional(),
+  // Sessions of this repository (umbel#65 resolves the main worktree).
+  repo: z.string().min(1).optional(),
+  // Report the targets and take nothing.
+  dryRun: z.boolean().default(false),
+});
+
 export const VerbSchemas = {
   spawn: z.object({
     name: z.string().optional(),
@@ -80,19 +96,10 @@ export const VerbSchemas = {
     ...ListFilterShape.shape,
   }),
   ls: ListFilterShape,
-  kill: z.object({
-    // Names kill exactly those sessions. A selector picks live sessions
-    // instead, and the two forms cannot be mixed.
-    names: z.array(z.string().min(1)).default([]),
-    // Live sessions whose name starts with this.
-    prefix: z.string().min(1).optional(),
-    // Live sessions of this repository (umbel#65 resolves the main worktree).
-    repo: z.string().min(1).optional(),
-    // Print the targets and kill nothing.
-    dryRun: z.boolean().default(false),
+  kill: CleanupSelectorShape.extend({
     purge: z.boolean().default(false),
   }),
-  prune: z.object({
+  prune: CleanupSelectorShape.extend({
     // Grace period for a tombstone, e.g. '24h'. Omitted, every dead session
     // is swept.
     olderThan: z.string().optional(),
@@ -357,14 +364,35 @@ export const VERB_HELP: Record<VerbName, VerbHelp> = {
     ],
   },
   prune: {
-    summary: "Remove dead sessions' directories and tmux remains",
-    usage: 'umbel prune [--older-than DURATION]',
-    positionals: [],
+    summary: 'Sweep dead sessions by name or by --prefix / --repo (--dry-run lists)',
+    usage: 'umbel prune [<name>... | --prefix PREFIX [--repo PATH]] [--older-than DURATION]',
+    positionals: [
+      {
+        token: 'NAME...',
+        field: 'names',
+        description: 'Session names. Cannot be mixed with --prefix or --repo.',
+      },
+    ],
     flags: [
+      {
+        field: 'prefix',
+        arg: 'PREFIX',
+        description: 'Dead sessions whose name starts with PREFIX.',
+      },
+      { field: 'repo', arg: 'PATH', description: 'Narrow the sweep to one repository.' },
       {
         field: 'olderThan',
         arg: 'DURATION',
         description: 'Keep sessions that died more recently than this, e.g. 24h.',
+      },
+      { field: 'dryRun', flag: '--dry-run', description: 'List the targets and remove nothing.' },
+    ],
+    exitCodes: [
+      { code: 0, meaning: 'Every selected session was swept or spared.' },
+      { code: 1, meaning: 'A named session was not found.' },
+      {
+        code: 2,
+        meaning: 'Usage error: names and a selector mixed, or a flag without its value.',
       },
     ],
   },
